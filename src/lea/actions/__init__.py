@@ -10,6 +10,11 @@ from lea.actions.models import (
     ActionProposal,
     generate_proposal_id,
 )
+from lea.actions.validation import (
+    ValidationIssue,
+    ValidationResult,
+    validate_proposal_data,
+)
 
 __all__ = [
     "ActionContractError",
@@ -17,5 +22,8 @@ __all__ = [
     "ActionStatus",
     "ConfirmationPolicy",
     "RiskLevel",
+    "ValidationIssue",
+    "ValidationResult",
     "generate_proposal_id",
+    "validate_proposal_data",
 ]
