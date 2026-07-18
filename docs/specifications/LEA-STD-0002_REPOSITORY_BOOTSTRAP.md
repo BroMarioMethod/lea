@@ -1,7 +1,7 @@
 ---
 title: Repository Bootstrap Standard
 document_id: LEA-STD-0002
-version: 0.1.0
+version: 0.1.1
 status: Accepted
 authors:
   - Marius du Preez
@@ -20,8 +20,8 @@ review_required: false
 |---|---|
 | Status | Accepted |
 | Requires Review | No |
-| Implementation | Not Started |
-| Test Status | Not Tested |
+| Implementation | Complete |
+| Test Status | Manually Tested |
 
 ---
 
