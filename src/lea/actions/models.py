@@ -51,6 +51,22 @@ class ActionProposal:
         frozen_parameters = freeze_parameters(self.parameters)
         object.__setattr__(self, "parameters", frozen_parameters)
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this proposal."""
+        from lea.actions.serialisation import proposal_to_dict
+
+        return proposal_to_dict(self)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: Mapping[str, object],
+    ) -> "ActionProposal":
+        """Construct a proposal from untrusted serialised data."""
+        from lea.actions.serialisation import proposal_from_dict
+
+        return proposal_from_dict(data)
+
     def _validate_proposal_id(self) -> None:
         """Validate the canonical UUID proposal identifier."""
         try:

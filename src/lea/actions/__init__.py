@@ -12,6 +12,10 @@ from lea.actions.models import (
     ExecutionResult,
     generate_proposal_id,
 )
+from lea.actions.serialisation import (
+    proposal_from_dict,
+    proposal_to_dict,
+)
 from lea.actions.validation import (
     ValidationIssue,
     ValidationResult,
@@ -29,5 +33,7 @@ __all__ = [
     "ValidationIssue",
     "ValidationResult",
     "generate_proposal_id",
+    "proposal_from_dict",
+    "proposal_to_dict",
     "validate_proposal_data",
 ]
