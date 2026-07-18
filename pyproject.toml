@@ -1,0 +1,60 @@
+[project]
+name = "lea"
+version = "0.1.0"
+description = "A local-first, specification-driven personal operating system for knowledge work."
+readme = "README.md"
+authors = [
+    { name = "Marius du Preez" },
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+lea = "lea:main"
+
+[build-system]
+requires = ["uv_build>=0.11.29,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "pytest>=9.1.1",
+    "ruff>=0.15.22",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "RUF",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "-ra",
+]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = [
+    "src",
+    "tests",
+]
