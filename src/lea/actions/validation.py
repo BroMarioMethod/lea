@@ -43,6 +43,12 @@ class ValidationIssue:
     message: str
     field: str | None = None
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this issue."""
+        from lea.actions.serialisation import validation_issue_to_dict
+
+        return validation_issue_to_dict(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
@@ -60,6 +66,12 @@ class ValidationResult:
             raise ValueError(
                 "An invalid validation result must contain at least one issue."
             )
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import validation_result_to_dict
+
+        return validation_result_to_dict(self)
 
 
 def validate_proposal_data(

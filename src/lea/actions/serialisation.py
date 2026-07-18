@@ -10,9 +10,15 @@ from lea.actions.enums import (
     RiskLevel,
 )
 from lea.actions.errors import ActionContractError
-from lea.actions.models import ActionProposal
+from lea.actions.models import (
+    ActionProposal,
+    ExecutionError,
+    ExecutionResult,
+)
 from lea.actions.validation import (
     SCHEMA_VERSION,
+    ValidationIssue,
+    ValidationResult,
     validate_proposal_data,
 )
 from lea.actions.values import FrozenJsonValue
@@ -85,3 +91,70 @@ def proposal_from_dict(
         created_at=datetime.fromisoformat(created_at),
         reason=cast(str | None, data["reason"]),
     )
+
+
+def validation_issue_to_dict(
+    issue: ValidationIssue,
+) -> dict[str, JsonValue]:
+    """Convert a validation issue to JSON-compatible data."""
+    return {
+        "code": issue.code,
+        "message": issue.message,
+        "field": issue.field,
+    }
+
+
+def validation_result_to_dict(
+    result: ValidationResult,
+) -> dict[str, JsonValue]:
+    """Convert a validation result to JSON-compatible data."""
+    return {
+        "valid": result.valid,
+        "issues": [validation_issue_to_dict(issue) for issue in result.issues],
+    }
+
+
+def execution_error_to_dict(
+    error: ExecutionError,
+) -> dict[str, JsonValue]:
+    """Convert an execution error to JSON-compatible data."""
+    details: dict[str, JsonValue] | None = None
+
+    if error.details is not None:
+        frozen_details = cast(
+            Mapping[str, FrozenJsonValue],
+            error.details,
+        )
+        details = {key: to_json_value(value) for key, value in frozen_details.items()}
+
+    return {
+        "code": error.code,
+        "message": error.message,
+        "details": details,
+    }
+
+
+def execution_result_to_dict(
+    result: ExecutionResult,
+) -> dict[str, JsonValue]:
+    """Convert an execution result to JSON-compatible data."""
+    output: dict[str, JsonValue] | None = None
+
+    if result.output is not None:
+        frozen_output = cast(
+            Mapping[str, FrozenJsonValue],
+            result.output,
+        )
+        output = {key: to_json_value(value) for key, value in frozen_output.items()}
+
+    error = execution_error_to_dict(result.error) if result.error is not None else None
+
+    return {
+        "proposal_id": result.proposal_id,
+        "success": result.success,
+        "status": result.status.value,
+        "output": output,
+        "error": error,
+        "started_at": result.started_at.isoformat(),
+        "completed_at": result.completed_at.isoformat(),
+    }

@@ -122,6 +122,12 @@ class ExecutionError:
             frozen_details = freeze_parameters(self.details)
             object.__setattr__(self, "details", frozen_details)
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this error."""
+        from lea.actions.serialisation import execution_error_to_dict
+
+        return execution_error_to_dict(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ExecutionResult:
@@ -193,3 +199,9 @@ class ExecutionResult:
             raise ActionContractError(
                 "A failed execution result must contain an execution error."
             )
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import execution_result_to_dict
+
+        return execution_result_to_dict(self)
