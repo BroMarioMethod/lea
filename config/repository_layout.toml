@@ -1,0 +1,41 @@
+schema_version = 1
+
+directories = [
+    ".github/workflows",
+    "config",
+    "context",
+    "docs/adr",
+    "docs/assets",
+    "docs/rfc",
+    "docs/specifications",
+    "knowledge",
+    "plugins",
+    "prompts",
+    "scripts",
+    "src/lea",
+    "tests",
+    "tools",
+]
+
+required_files = [
+    ".env.example",
+    ".gitignore",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+]
+
+tracked_empty_directories = [
+    ".github/workflows",
+    "context",
+    "docs/adr",
+    "docs/assets",
+    "docs/rfc",
+    "knowledge",
+    "plugins",
+    "prompts",
+    "scripts",
+    "src/lea",
+    "tests",
+    "tools",
+]
