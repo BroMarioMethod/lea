@@ -1,7 +1,7 @@
 ---
 title: Action Proposal Contract Specification
 document_id: LEA-SPEC-0002
-version: 0.1.1
+version: 0.1.2
 status: Accepted
 authors:
   - Marius du Preez
@@ -379,24 +379,35 @@ A valid result SHALL contain no issues.
 
 An invalid result SHALL contain at least one issue.
 
-### AP-016 — Proposal Validation
+### AP-016 — Proposal Data Validation
 
-The initial validator SHALL check:
+The initial validator SHALL accept an untrusted mapping representing proposed
+action data.
+
+It SHALL check, where applicable:
 
 - proposal identifier format;
 - action-name format;
 - non-empty source;
 - timezone-aware creation timestamp;
 - JSON compatibility of all parameters;
-- consistency between validation-result state and issue count.
+- recognised enum values;
+- required fields;
+- unknown fields;
+- supported schema version.
 
-Validation SHALL collect all detectable issues rather than stopping after the first issue where practical.
+Validation SHALL collect all independently detectable issues rather than
+stopping after the first issue where practical.
+
+A successfully constructed `ActionProposal` SHALL represent data that has
+already satisfied the contract’s construction invariants.
 
 ### AP-017 — Validation Purity
 
-Validation SHALL NOT:
+Validation of proposal data SHALL NOT:
 
-- modify the proposal;
+- modify the supplied mapping or its nested values;
+- construct or execute an action handler;
 - access the network;
 - write files;
 - execute plugins;
@@ -536,7 +547,8 @@ Automated tests SHALL cover at least:
 16. rejection of unknown fields;
 17. rejection of unsupported schema versions;
 18. immutability of contract records;
-19. absence of execution side effects during validation.
+19. collection of multiple proposal-data issues;
+20. absence of mutation or execution side effects during validation.
 
 ---
 
@@ -569,6 +581,8 @@ executing → failed
 This specification defines the states but does not yet implement a state-transition engine.
 
 A future workflow specification SHALL define which transitions are permitted and who may authorise them.
+
+Validation operates on untrusted proposal data before creation of the immutable `ActionProposal` record.
 
 ---
 
