@@ -8,6 +8,8 @@ from lea.actions.enums import (
 from lea.actions.errors import ActionContractError
 from lea.actions.models import (
     ActionProposal,
+    ExecutionError,
+    ExecutionResult,
     generate_proposal_id,
 )
 from lea.actions.validation import (
@@ -21,6 +23,8 @@ __all__ = [
     "ActionProposal",
     "ActionStatus",
     "ConfirmationPolicy",
+    "ExecutionError",
+    "ExecutionResult",
     "RiskLevel",
     "ValidationIssue",
     "ValidationResult",
