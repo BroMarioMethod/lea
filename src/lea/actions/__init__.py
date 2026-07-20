@@ -27,6 +27,7 @@ from lea.actions.transitions import (
     TransitionIssue,
     TransitionResult,
     can_transition,
+    transition_proposal,
 )
 from lea.actions.validation import (
     ValidationIssue,
@@ -58,6 +59,7 @@ __all__ = [
     "proposal_from_dict",
     "proposal_to_dict",
     "proposal_to_dict",
+    "transition_proposal",
     "validate_proposal_data",
     "validate_proposal_data",
     "validation_issue_to_dict",
