@@ -2,7 +2,7 @@
 title: Audit Integrity and Verification Specification
 document_id: LEA-SPEC-0007
 version: 0.1.1
-status: Draft
+status: Accepted
 authors:
   - Marius du Preez
   - OpenAI ChatGPT
