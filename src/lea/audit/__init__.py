@@ -1,3 +1,4 @@
+from lea.audit.errors import AuditStoreError
 from lea.audit.events import (
     AUDIT_SCHEMA_VERSION,
     AuditEvent,
@@ -18,11 +19,14 @@ from lea.audit.serialisation import (
     audit_event_from_dict,
     audit_event_to_dict,
 )
+from lea.audit.store import JsonlAuditStore
 
 __all__ = [
     "AUDIT_SCHEMA_VERSION",
     "AuditEvent",
     "AuditEventType",
+    "AuditStoreError",
+    "JsonlAuditStore",
     "audit_action_execution",
     "audit_confirmation_decision_application",
     "audit_confirmation_evaluation",
