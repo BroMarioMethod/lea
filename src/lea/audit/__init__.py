@@ -34,6 +34,7 @@ from lea.audit.serialisation import (
     audit_event_to_dict,
 )
 from lea.audit.store import JsonlAuditStore
+from lea.audit.verification import verify_integrity_chain
 
 __all__ = [
     "AUDIT_SCHEMA_VERSION",
@@ -64,4 +65,5 @@ __all__ = [
     "integrity_envelope_from_dict",
     "integrity_envelope_to_dict",
     "validate_sha256_hash",
+    "verify_integrity_chain",
 ]
