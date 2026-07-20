@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from lea.actions import (
+    ActionExecutionResult,
     ActionHandlerRegistry,
     ActionProposal,
     ActionStatus,
@@ -15,11 +16,13 @@ from lea.actions import (
     ValidationResult,
     apply_confirmation_decision,
     apply_confirmation_policy,
+    execute_action,
     transition_proposal,
     validate_proposal_data,
 )
 from lea.audit import (
     AuditEvent,
+    audit_action_execution,
     audit_confirmation_decision_application,
     audit_confirmation_policy_application,
     audit_proposal_created,
@@ -30,6 +33,7 @@ from lea.orchestration.contracts import (
     AuditEventIdSource,
     AuditSink,
     ConfirmationOrchestrationResult,
+    ExecutionOrchestrationResult,
     OrchestrationIssue,
     OrchestrationOutcome,
     SubmissionResult,
@@ -252,6 +256,87 @@ class ActionOrchestrator:
             outcome=_confirmation_outcome(decision_application.proposal.status),
             proposal=decision_application.proposal,
             decision_application=decision_application,
+            persisted_events=(event,),
+        )
+
+    def execute(
+        self,
+        proposal: ActionProposal,
+    ) -> ExecutionOrchestrationResult:
+        """Execute one approved proposal through the registered handler."""
+        try:
+            started_at = self._next_utc_timestamp()
+            completed_at = self._next_utc_timestamp()
+        except Exception:
+            return _invalid_execution(
+                proposal=proposal,
+                code="execution_timestamp_failed",
+                message=("Execution timestamps could not be obtained."),
+            )
+
+        try:
+            execution = execute_action(
+                proposal,
+                self._registry,
+                started_at=started_at,
+                completed_at=completed_at,
+            )
+        except Exception:
+            return _invalid_execution(
+                proposal=proposal,
+                code="execution_boundary_failed",
+                message=("The action execution boundary could not complete."),
+            )
+
+        if execution.execution is None:
+            return ExecutionOrchestrationResult(
+                outcome=OrchestrationOutcome.INVALID_OPERATION,
+                proposal=execution.proposal,
+                execution=execution,
+                persisted_events=(),
+                issue=OrchestrationIssue(
+                    code="execution_rejected",
+                    message=("The action was rejected before execution began."),
+                    operation="execute",
+                    proposal_id=proposal.proposal_id,
+                ),
+            )
+
+        try:
+            event = audit_action_execution(
+                execution,
+                event_id=self._next_event_id(),
+            )
+        except Exception:
+            return _invalid_execution(
+                proposal=execution.proposal,
+                code="execution_audit_event_failed",
+                message=("The action-execution audit event could not be created."),
+                execution=execution,
+            )
+
+        try:
+            self._audit_sink.append(event)
+        except Exception:
+            return ExecutionOrchestrationResult(
+                outcome=OrchestrationOutcome.AUDIT_FAILED,
+                proposal=execution.proposal,
+                execution=execution,
+                persisted_events=(),
+                issue=OrchestrationIssue(
+                    code="audit_append_failed",
+                    message=(
+                        "The action-execution audit event could not be persisted."
+                    ),
+                    operation="execute",
+                    proposal_id=proposal.proposal_id,
+                ),
+            )
+
+        return ExecutionOrchestrationResult(
+            outcome=_execution_outcome(execution),
+            proposal=execution.proposal,
+            execution=execution,
             persisted_events=(event,),
         )
 
@@ -525,6 +610,38 @@ def _invalid_confirmation(
             code=code,
             message=message,
             operation="confirm",
+            proposal_id=proposal.proposal_id,
+        ),
+    )
+
+
+def _execution_outcome(
+    execution: ActionExecutionResult,
+) -> OrchestrationOutcome:
+    """Map a completed execution boundary result to an outcome."""
+    if execution.success:
+        return OrchestrationOutcome.EXECUTION_SUCCEEDED
+
+    return OrchestrationOutcome.EXECUTION_FAILED
+
+
+def _invalid_execution(
+    *,
+    proposal: ActionProposal,
+    code: str,
+    message: str,
+    execution: ActionExecutionResult | None = None,
+) -> ExecutionOrchestrationResult:
+    """Return a structured execution dependency failure."""
+    return ExecutionOrchestrationResult(
+        outcome=OrchestrationOutcome.INVALID_OPERATION,
+        proposal=proposal,
+        execution=execution,
+        persisted_events=(),
+        issue=OrchestrationIssue(
+            code=code,
+            message=message,
+            operation="execute",
             proposal_id=proposal.proposal_id,
         ),
     )
