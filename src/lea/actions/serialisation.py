@@ -4,6 +4,15 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import cast
 
+from lea.actions.confirmation import (
+    ConfirmationDecisionApplicationResult,
+    ConfirmationEvaluation,
+    ConfirmationEvaluationResult,
+    ConfirmationIssue,
+    ConfirmationPolicyApplicationResult,
+    ConfirmationRecord,
+    ConfirmationRecordResult,
+)
 from lea.actions.enums import (
     ActionStatus,
     ConfirmationPolicy,
@@ -205,4 +214,126 @@ def transition_result_to_dict(
         "proposal": proposal_to_dict(result.proposal),
         "transition": transition,
         "issues": [transition_issue_to_dict(issue) for issue in result.issues],
+    }
+
+
+def confirmation_evaluation_to_dict(
+    evaluation: ConfirmationEvaluation,
+) -> dict[str, JsonValue]:
+    """Convert a confirmation evaluation to JSON-compatible data."""
+    return {
+        "proposal_id": evaluation.proposal_id,
+        "risk_level": evaluation.risk_level.value,
+        "confirmation_policy": evaluation.confirmation_policy.value,
+        "requirement": evaluation.requirement.value,
+        "evaluated_at": evaluation.evaluated_at.isoformat(),
+        "reason_code": evaluation.reason_code,
+        "explanation": evaluation.explanation,
+    }
+
+
+def confirmation_issue_to_dict(
+    issue: ConfirmationIssue,
+) -> dict[str, JsonValue]:
+    """Convert a confirmation issue to JSON-compatible data."""
+    return {
+        "code": issue.code,
+        "message": issue.message,
+        "proposal_id": issue.proposal_id,
+        "field": issue.field,
+    }
+
+
+def confirmation_evaluation_result_to_dict(
+    result: ConfirmationEvaluationResult,
+) -> dict[str, JsonValue]:
+    """Convert a confirmation evaluation result to JSON-compatible data."""
+    evaluation = (
+        confirmation_evaluation_to_dict(result.evaluation)
+        if result.evaluation is not None
+        else None
+    )
+
+    return {
+        "success": result.success,
+        "evaluation": evaluation,
+        "issues": [confirmation_issue_to_dict(issue) for issue in result.issues],
+    }
+
+
+def confirmation_record_to_dict(
+    record: ConfirmationRecord,
+) -> dict[str, JsonValue]:
+    """Convert a human confirmation record to JSON-compatible data."""
+    return {
+        "proposal_id": record.proposal_id,
+        "decision": record.decision.value,
+        "actor": record.actor,
+        "decided_at": record.decided_at.isoformat(),
+        "reason": record.reason,
+    }
+
+
+def confirmation_record_result_to_dict(
+    result: ConfirmationRecordResult,
+) -> dict[str, JsonValue]:
+    """Convert a confirmation record result to JSON-compatible data."""
+    record = (
+        confirmation_record_to_dict(result.record)
+        if result.record is not None
+        else None
+    )
+
+    return {
+        "success": result.success,
+        "record": record,
+        "issues": [confirmation_issue_to_dict(issue) for issue in result.issues],
+    }
+
+
+def confirmation_policy_application_result_to_dict(
+    result: ConfirmationPolicyApplicationResult,
+) -> dict[str, JsonValue]:
+    """Convert a confirmation-policy application result."""
+    evaluation = (
+        confirmation_evaluation_to_dict(result.evaluation)
+        if result.evaluation is not None
+        else None
+    )
+    transition = (
+        action_transition_to_dict(result.transition)
+        if result.transition is not None
+        else None
+    )
+
+    return {
+        "success": result.success,
+        "proposal": proposal_to_dict(result.proposal),
+        "evaluation": evaluation,
+        "transition": transition,
+        "issues": [confirmation_issue_to_dict(issue) for issue in result.issues],
+    }
+
+
+def confirmation_decision_application_result_to_dict(
+    result: ConfirmationDecisionApplicationResult,
+) -> dict[str, JsonValue]:
+    """Convert a confirmation-decision application result."""
+    record = (
+        confirmation_record_to_dict(result.record)
+        if result.record is not None
+        else None
+    )
+    transition = (
+        action_transition_to_dict(result.transition)
+        if result.transition is not None
+        else None
+    )
+
+    return {
+        "success": result.success,
+        "proposal": proposal_to_dict(result.proposal),
+        "record": record,
+        "transition": transition,
+        "issues": [confirmation_issue_to_dict(issue) for issue in result.issues],
     }

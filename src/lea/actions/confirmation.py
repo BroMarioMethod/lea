@@ -95,6 +95,14 @@ class ConfirmationEvaluation:
         if not self.explanation.strip():
             raise ActionContractError("explanation must be a non-empty string.")
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this evaluation."""
+        from lea.actions.serialisation import (
+            confirmation_evaluation_to_dict,
+        )
+
+        return confirmation_evaluation_to_dict(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ConfirmationRecord:
@@ -122,6 +130,12 @@ class ConfirmationRecord:
                 "reason must be a non-empty string when provided."
             )
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this record."""
+        from lea.actions.serialisation import confirmation_record_to_dict
+
+        return confirmation_record_to_dict(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ConfirmationIssue:
@@ -131,6 +145,12 @@ class ConfirmationIssue:
     message: str
     proposal_id: str
     field: str | None = None
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this issue."""
+        from lea.actions.serialisation import confirmation_issue_to_dict
+
+        return confirmation_issue_to_dict(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +190,14 @@ class ConfirmationEvaluationResult:
                 "at least one issue."
             )
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import (
+            confirmation_evaluation_result_to_dict,
+        )
+
+        return confirmation_evaluation_result_to_dict(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ConfirmationRecordResult:
@@ -205,6 +233,14 @@ class ConfirmationRecordResult:
             raise ActionContractError(
                 "A failed confirmation record result must contain at least one issue."
             )
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import (
+            confirmation_record_result_to_dict,
+        )
+
+        return confirmation_record_result_to_dict(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,6 +287,14 @@ class ConfirmationPolicyApplicationResult:
                 "A failed confirmation-policy application must contain "
                 "at least one issue."
             )
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import (
+            confirmation_policy_application_result_to_dict,
+        )
+
+        return confirmation_policy_application_result_to_dict(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +347,14 @@ class ConfirmationDecisionApplicationResult:
                 "A failed confirmation-decision application must contain "
                 "at least one issue."
             )
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import (
+            confirmation_decision_application_result_to_dict,
+        )
+
+        return confirmation_decision_application_result_to_dict(self)
 
 
 def evaluate_confirmation(
