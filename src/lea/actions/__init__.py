@@ -20,6 +20,14 @@ from lea.actions.serialisation import (
     validation_issue_to_dict,
     validation_result_to_dict,
 )
+from lea.actions.transitions import (
+    TERMINAL_STATUSES,
+    TRANSITION_TABLE,
+    ActionTransition,
+    TransitionIssue,
+    TransitionResult,
+    can_transition,
+)
 from lea.actions.validation import (
     ValidationIssue,
     ValidationResult,
@@ -27,15 +35,21 @@ from lea.actions.validation import (
 )
 
 __all__ = [
+    "TERMINAL_STATUSES",
+    "TRANSITION_TABLE",
     "ActionContractError",
     "ActionProposal",
     "ActionStatus",
+    "ActionTransition",
     "ConfirmationPolicy",
     "ExecutionError",
     "ExecutionResult",
     "RiskLevel",
+    "TransitionIssue",
+    "TransitionResult",
     "ValidationIssue",
     "ValidationResult",
+    "can_transition",
     "execution_error_to_dict",
     "execution_result_to_dict",
     "generate_proposal_id",
