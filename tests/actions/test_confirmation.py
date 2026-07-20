@@ -15,12 +15,15 @@ from lea.actions import (
     ConfirmationEvaluationResult,
     ConfirmationIssue,
     ConfirmationPolicy,
+    ConfirmationPolicyApplicationResult,
     ConfirmationRecord,
     ConfirmationRecordResult,
     ConfirmationRequirement,
     RiskLevel,
+    apply_confirmation_policy,
     evaluate_confirmation,
     record_confirmation,
+    transition_proposal,
 )
 
 PROPOSAL_ID = "4b10f26d-0c54-4f3d-a14c-bce8a743116f"
@@ -546,4 +549,170 @@ def test_failed_record_result_rejects_record() -> None:
             success=False,
             record=record,
             issues=(issue,),
+        )
+
+
+def test_apply_policy_approves_when_confirmation_is_not_required() -> None:
+    """A proposal should be approved when confirmation is unnecessary."""
+    proposal = create_validated_proposal(
+        RiskLevel.LOW,
+        ConfirmationPolicy.NEVER,
+    )
+    original_data = proposal.to_dict()
+
+    result = apply_confirmation_policy(
+        proposal,
+        applied_at=EVALUATED_AT,
+    )
+
+    assert result.success is True
+    assert result.proposal.status is ActionStatus.APPROVED
+    assert result.evaluation is not None
+    assert result.evaluation.requirement is ConfirmationRequirement.NOT_REQUIRED
+    assert result.transition is not None
+    assert result.transition.from_status is ActionStatus.VALIDATED
+    assert result.transition.to_status is ActionStatus.APPROVED
+    assert result.transition.transitioned_at == EVALUATED_AT
+    assert result.issues == ()
+
+    assert proposal.status is ActionStatus.VALIDATED
+    assert proposal.to_dict() == original_data
+
+
+def test_apply_policy_waits_when_confirmation_is_required() -> None:
+    """A proposal should pause when human confirmation is required."""
+    proposal = create_validated_proposal(
+        RiskLevel.HIGH,
+        ConfirmationPolicy.NEVER,
+    )
+
+    result = apply_confirmation_policy(
+        proposal,
+        applied_at=EVALUATED_AT,
+    )
+
+    assert result.success is True
+    assert result.proposal.status is ActionStatus.AWAITING_CONFIRMATION
+    assert result.evaluation is not None
+    assert result.evaluation.requirement is ConfirmationRequirement.REQUIRED
+    assert result.evaluation.reason_code == "high_risk_override"
+    assert result.transition is not None
+    assert result.transition.from_status is ActionStatus.VALIDATED
+    assert result.transition.to_status is ActionStatus.AWAITING_CONFIRMATION
+    assert result.transition.transitioned_at == EVALUATED_AT
+    assert result.issues == ()
+
+
+def test_apply_policy_rejects_invalid_proposal_status() -> None:
+    """Policy application should fail outside the validated state."""
+    proposal = ActionProposal(
+        proposal_id=PROPOSAL_ID,
+        action="task.create",
+        parameters={},
+        source="user",
+        status=ActionStatus.PROPOSED,
+        created_at=datetime(2026, 7, 20, 17, 0, tzinfo=UTC),
+    )
+
+    result = apply_confirmation_policy(
+        proposal,
+        applied_at=EVALUATED_AT,
+    )
+
+    assert result.success is False
+    assert result.proposal is proposal
+    assert result.evaluation is None
+    assert result.transition is None
+    assert result.issues[0].code == "invalid_proposal_status"
+
+
+def test_apply_policy_uses_same_timestamp_for_both_records() -> None:
+    """Evaluation and transition should represent one workflow event."""
+    proposal = create_validated_proposal(
+        RiskLevel.MEDIUM,
+        ConfirmationPolicy.WHEN_REQUIRED,
+    )
+
+    result = apply_confirmation_policy(
+        proposal,
+        applied_at=EVALUATED_AT,
+    )
+
+    assert result.evaluation is not None
+    assert result.transition is not None
+    assert result.evaluation.evaluated_at == EVALUATED_AT
+    assert result.transition.transitioned_at == EVALUATED_AT
+
+
+def test_successful_policy_application_requires_evaluation() -> None:
+    """Successful policy application should contain an evaluation."""
+    proposal = create_validated_proposal(
+        RiskLevel.LOW,
+        ConfirmationPolicy.NEVER,
+    )
+
+    transition_result = transition_proposal(
+        proposal,
+        ActionStatus.APPROVED,
+        transitioned_at=EVALUATED_AT,
+    )
+
+    assert transition_result.transition is not None
+
+    with pytest.raises(
+        ActionContractError,
+        match="must contain an evaluation record",
+    ):
+        ConfirmationPolicyApplicationResult(
+            success=True,
+            proposal=transition_result.proposal,
+            evaluation=None,
+            transition=transition_result.transition,
+            issues=(),
+        )
+
+
+def test_successful_policy_application_requires_transition() -> None:
+    """Successful policy application should contain a transition."""
+    proposal = create_validated_proposal(
+        RiskLevel.LOW,
+        ConfirmationPolicy.NEVER,
+    )
+    evaluation_result = evaluate_confirmation(
+        proposal,
+        evaluated_at=EVALUATED_AT,
+    )
+
+    assert evaluation_result.evaluation is not None
+
+    with pytest.raises(
+        ActionContractError,
+        match="must contain a transition record",
+    ):
+        ConfirmationPolicyApplicationResult(
+            success=True,
+            proposal=proposal,
+            evaluation=evaluation_result.evaluation,
+            transition=None,
+            issues=(),
+        )
+
+
+def test_failed_policy_application_requires_issues() -> None:
+    """Failed policy application should contain structured issues."""
+    proposal = create_validated_proposal(
+        RiskLevel.LOW,
+        ConfirmationPolicy.NEVER,
+    )
+
+    with pytest.raises(
+        ActionContractError,
+        match="at least one issue",
+    ):
+        ConfirmationPolicyApplicationResult(
+            success=False,
+            proposal=proposal,
+            evaluation=None,
+            transition=None,
+            issues=(),
         )

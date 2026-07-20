@@ -12,6 +12,7 @@ from lea.actions.enums import (
 )
 from lea.actions.errors import ActionContractError
 from lea.actions.models import ActionProposal
+from lea.actions.transitions import ActionTransition, transition_proposal
 
 
 class ConfirmationRequirement(StrEnum):
@@ -196,6 +197,52 @@ class ConfirmationRecordResult:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class ConfirmationPolicyApplicationResult:
+    """Result of applying confirmation policy to a validated proposal."""
+
+    success: bool
+    proposal: ActionProposal
+    evaluation: ConfirmationEvaluation | None
+    transition: ActionTransition | None
+    issues: tuple[ConfirmationIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Enforce consistency between application-result fields."""
+        if self.success:
+            if self.evaluation is None:
+                raise ActionContractError(
+                    "A successful confirmation-policy application must "
+                    "contain an evaluation record."
+                )
+
+            if self.transition is None:
+                raise ActionContractError(
+                    "A successful confirmation-policy application must "
+                    "contain a transition record."
+                )
+
+            if self.issues:
+                raise ActionContractError(
+                    "A successful confirmation-policy application must "
+                    "not contain issues."
+                )
+
+            return
+
+        if self.transition is not None:
+            raise ActionContractError(
+                "A failed confirmation-policy application must not "
+                "contain a transition record."
+            )
+
+        if not self.issues:
+            raise ActionContractError(
+                "A failed confirmation-policy application must contain "
+                "at least one issue."
+            )
+
+
 def evaluate_confirmation(
     proposal: ActionProposal,
     *,
@@ -321,6 +368,80 @@ def record_confirmation(
     return ConfirmationRecordResult(
         success=True,
         record=record,
+        issues=(),
+    )
+
+
+def apply_confirmation_policy(
+    proposal: ActionProposal,
+    *,
+    applied_at: datetime | None = None,
+) -> ConfirmationPolicyApplicationResult:
+    """Evaluate and apply confirmation policy without executing an action."""
+    evaluation_result = evaluate_confirmation(
+        proposal,
+        evaluated_at=applied_at,
+    )
+
+    if not evaluation_result.success:
+        return ConfirmationPolicyApplicationResult(
+            success=False,
+            proposal=proposal,
+            evaluation=None,
+            transition=None,
+            issues=evaluation_result.issues,
+        )
+
+    evaluation = evaluation_result.evaluation
+
+    if evaluation is None:
+        raise ActionContractError(
+            "Successful confirmation evaluation did not contain an evaluation record."
+        )
+
+    if evaluation.requirement is ConfirmationRequirement.REQUIRED:
+        target_status = ActionStatus.AWAITING_CONFIRMATION
+        transition_reason = evaluation.explanation
+    else:
+        target_status = ActionStatus.APPROVED
+        transition_reason = evaluation.explanation
+
+    transition_result = transition_proposal(
+        proposal,
+        target_status,
+        reason=transition_reason,
+        transitioned_at=evaluation.evaluated_at,
+    )
+
+    if not transition_result.success:
+        issues = tuple(
+            ConfirmationIssue(
+                code=issue.code,
+                message=issue.message,
+                proposal_id=proposal.proposal_id,
+                field="status",
+            )
+            for issue in transition_result.issues
+        )
+
+        return ConfirmationPolicyApplicationResult(
+            success=False,
+            proposal=proposal,
+            evaluation=evaluation,
+            transition=None,
+            issues=issues,
+        )
+
+    if transition_result.transition is None:
+        raise ActionContractError(
+            "Successful proposal transition did not contain a transition record."
+        )
+
+    return ConfirmationPolicyApplicationResult(
+        success=True,
+        proposal=transition_result.proposal,
+        evaluation=evaluation,
+        transition=transition_result.transition,
         issues=(),
     )
 
