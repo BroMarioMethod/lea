@@ -23,6 +23,10 @@ from lea.actions.enums import (
     RiskLevel,
 )
 from lea.actions.errors import ActionContractError
+from lea.actions.execution import (
+    ActionHandler,
+    ActionHandlerRegistry,
+)
 from lea.actions.models import (
     ActionProposal,
     ExecutionError,
@@ -68,6 +72,8 @@ __all__ = [
     "TERMINAL_STATUSES",
     "TRANSITION_TABLE",
     "ActionContractError",
+    "ActionHandler",
+    "ActionHandlerRegistry",
     "ActionProposal",
     "ActionStatus",
     "ActionTransition",
