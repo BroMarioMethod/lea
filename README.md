@@ -21,7 +21,25 @@ The current repository foundation includes:
 - a shared local quality-check script;
 - GitHub Actions continuous integration.
 
-Core assistant functionality has not yet been implemented.
+The current core action workflow includes:
+
+- immutable action proposals;
+- deterministic proposal validation;
+- structured validation issues;
+- explicit risk levels and confirmation policies;
+- deterministic proposal-state transitions;
+- terminal-state and invalid-transition protection;
+- confirmation-policy evaluation;
+- mandatory human confirmation for high- and critical-risk proposals;
+- immutable approval, rejection and cancellation records;
+- deterministic application of confirmation decisions;
+- UTC-aware audit timestamps;
+- deterministic JSON-compatible serialisation.
+
+Approval permits workflow progression only. It does not execute an action.
+
+Action execution, plugins, persistent audit storage, authentication and user
+interfaces remain under development.
 
 ## Design principles
 
@@ -151,18 +169,23 @@ It creates missing required paths while preserving existing valid content.
 
 ## Documentation
 
-Engineering standards are stored under:
+Engineering standards and behavioural specifications are stored under:
 
 ```text
 docs/specifications/
 ```
 
-Current accepted standards include:
+Current accepted standards and specifications include:
 
 - `LEA-STD-0001` — Repository Layout Standard
 - `LEA-STD-0002` — Repository Bootstrap Standard
+- `LEA-SPEC-0001` — Core Application Skeleton Specification
+- `LEA-SPEC-0002` — Action Proposal Contract Specification
+- `LEA-SPEC-0003` — Action State Transition Specification
+- `LEA-SPEC-0004` — Confirmation and Approval Policy Specification
 
-Additional architecture, installation, development, security and deployment documentation will be added as the project progresses.
+Behaviour is specified before implementation and updated when automated test
+coverage confirms completion.
 
 ## Contributing
 
