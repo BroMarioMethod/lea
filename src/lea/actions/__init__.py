@@ -23,6 +23,13 @@ from lea.actions.enums import (
     RiskLevel,
 )
 from lea.actions.errors import ActionContractError
+from lea.actions.execution import (
+    ActionExecutionIssue,
+    ActionExecutionResult,
+    ActionHandler,
+    ActionHandlerRegistry,
+    execute_action,
+)
 from lea.actions.models import (
     ActionProposal,
     ExecutionError,
@@ -30,6 +37,8 @@ from lea.actions.models import (
     generate_proposal_id,
 )
 from lea.actions.serialisation import (
+    action_execution_issue_to_dict,
+    action_execution_result_to_dict,
     action_transition_to_dict,
     confirmation_decision_application_result_to_dict,
     confirmation_evaluation_result_to_dict,
@@ -68,6 +77,10 @@ __all__ = [
     "TERMINAL_STATUSES",
     "TRANSITION_TABLE",
     "ActionContractError",
+    "ActionExecutionIssue",
+    "ActionExecutionResult",
+    "ActionHandler",
+    "ActionHandlerRegistry",
     "ActionProposal",
     "ActionStatus",
     "ActionTransition",
@@ -88,6 +101,8 @@ __all__ = [
     "TransitionResult",
     "ValidationIssue",
     "ValidationResult",
+    "action_execution_issue_to_dict",
+    "action_execution_result_to_dict",
     "action_transition_to_dict",
     "apply_confirmation_decision",
     "apply_confirmation_policy",
@@ -100,6 +115,7 @@ __all__ = [
     "confirmation_record_result_to_dict",
     "confirmation_record_to_dict",
     "evaluate_confirmation",
+    "execute_action",
     "execution_error_to_dict",
     "execution_result_to_dict",
     "generate_proposal_id",
