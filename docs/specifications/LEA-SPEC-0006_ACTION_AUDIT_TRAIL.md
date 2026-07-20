@@ -1,7 +1,7 @@
 ---
 title: Action Audit Trail Specification
 document_id: LEA-SPEC-0006
-version: 0.1.1
+version: 0.1.2
 status: Accepted
 authors:
   - Marius du Preez
@@ -20,8 +20,8 @@ review_required: false
 |---|---|
 | Status | Accepted |
 | Requires Review | No |
-| Implementation | Not Started |
-| Test Status | Not Tested |
+| Implementation | Complete |
+| Test Status | Passed - 292 tests |
 
 ---
 

@@ -40,11 +40,17 @@ The current core action workflow includes:
 - immutable `approved → executing → succeeded` workflow progression;
 - structured failed execution with `executing → failed`;
 - safe containment of handler exceptions and invalid output;
-- deterministic JSON-compatible serialisation.
+- deterministic JSON-compatible serialisation;
+- immutable audit-event records with canonical event types;
+- deterministic audit-event factories for existing workflow records;
+- append-only UTF-8 JSONL audit persistence;
+- ordered audit retrieval and exact proposal filtering;
+- structured malformed-record errors with physical line numbers;
+- explicit runtime paths, optional parent creation and optional `fsync`.
 
 Approval permits workflow progression only. It does not execute an action.
 
-Domain-specific handlers, plugin discovery, persistent audit storage,
+Domain-specific handlers, plugin discovery, cryptographic audit integrity,
 authentication and user interfaces remain under development.
 
 ## Design principles
@@ -190,9 +196,19 @@ Current accepted standards and specifications include:
 - `LEA-SPEC-0003` — Action State Transition Specification
 - `LEA-SPEC-0004` — Confirmation and Approval Policy Specification
 - `LEA-SPEC-0005` — Action Execution Boundary Specification
+- `LEA-SPEC-0006` — Action Audit Trail Specification
 
 Behaviour is specified before implementation and updated when automated test
 coverage confirms completion.
+
+Operational guidance for the append-only JSONL audit store is available in:
+
+```text
+docs/05_AUDIT_STORAGE.md
+```
+
+The current audit store assumes a single writer and does not yet provide
+cryptographic tamper evidence.
 
 ## Contributing
 
