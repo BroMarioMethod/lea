@@ -29,6 +29,7 @@ from lea.audit.integrity import (
     integrity_envelope_to_dict,
     validate_sha256_hash,
 )
+from lea.audit.integrity_store import IntegrityJsonlAuditStore
 from lea.audit.serialisation import (
     audit_event_from_dict,
     audit_event_to_dict,
@@ -46,6 +47,7 @@ __all__ = [
     "AuditIntegrityVerificationResult",
     "AuditStoreError",
     "IntegrityEnvelope",
+    "IntegrityJsonlAuditStore",
     "JsonlAuditStore",
     "audit_action_execution",
     "audit_confirmation_decision_application",
