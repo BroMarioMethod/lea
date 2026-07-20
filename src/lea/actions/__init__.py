@@ -37,6 +37,8 @@ from lea.actions.models import (
     generate_proposal_id,
 )
 from lea.actions.serialisation import (
+    action_execution_issue_to_dict,
+    action_execution_result_to_dict,
     action_transition_to_dict,
     confirmation_decision_application_result_to_dict,
     confirmation_evaluation_result_to_dict,
@@ -99,6 +101,8 @@ __all__ = [
     "TransitionResult",
     "ValidationIssue",
     "ValidationResult",
+    "action_execution_issue_to_dict",
+    "action_execution_result_to_dict",
     "action_transition_to_dict",
     "apply_confirmation_decision",
     "apply_confirmation_policy",

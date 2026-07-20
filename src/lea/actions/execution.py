@@ -104,6 +104,14 @@ class ActionExecutionIssue:
                 "Execution issue proposal_id must be a non-empty string."
             )
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this issue."""
+        from lea.actions.serialisation import (
+            action_execution_issue_to_dict,
+        )
+
+        return action_execution_issue_to_dict(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ActionExecutionResult:
@@ -185,6 +193,14 @@ class ActionExecutionResult:
             raise ActionContractError(
                 "A handled execution failure must contain a failed proposal."
             )
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import (
+            action_execution_result_to_dict,
+        )
+
+        return action_execution_result_to_dict(self)
 
 
 def execute_action(

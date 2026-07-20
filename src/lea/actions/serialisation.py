@@ -19,6 +19,10 @@ from lea.actions.enums import (
     RiskLevel,
 )
 from lea.actions.errors import ActionContractError
+from lea.actions.execution import (
+    ActionExecutionIssue,
+    ActionExecutionResult,
+)
 from lea.actions.models import (
     ActionProposal,
     ExecutionError,
@@ -336,4 +340,46 @@ def confirmation_decision_application_result_to_dict(
         "record": record,
         "transition": transition,
         "issues": [confirmation_issue_to_dict(issue) for issue in result.issues],
+    }
+
+
+def action_execution_issue_to_dict(
+    issue: ActionExecutionIssue,
+) -> dict[str, JsonValue]:
+    """Convert an execution-boundary issue to JSON-compatible data."""
+    return {
+        "code": issue.code,
+        "message": issue.message,
+        "proposal_id": issue.proposal_id,
+        "field": issue.field,
+    }
+
+
+def action_execution_result_to_dict(
+    result: ActionExecutionResult,
+) -> dict[str, JsonValue]:
+    """Convert an action-execution result to JSON-compatible data."""
+    execution = (
+        execution_result_to_dict(result.execution)
+        if result.execution is not None
+        else None
+    )
+    start_transition = (
+        action_transition_to_dict(result.start_transition)
+        if result.start_transition is not None
+        else None
+    )
+    completion_transition = (
+        action_transition_to_dict(result.completion_transition)
+        if result.completion_transition is not None
+        else None
+    )
+
+    return {
+        "success": result.success,
+        "proposal": proposal_to_dict(result.proposal),
+        "execution": execution,
+        "start_transition": start_transition,
+        "completion_transition": completion_transition,
+        "issues": [action_execution_issue_to_dict(issue) for issue in result.issues],
     }
