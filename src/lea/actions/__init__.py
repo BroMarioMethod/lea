@@ -1,5 +1,14 @@
 """Public action-contract interfaces."""
 
+from lea.actions.confirmation import (
+    CONFIRMATION_MATRIX,
+    ConfirmationDecision,
+    ConfirmationEvaluation,
+    ConfirmationEvaluationResult,
+    ConfirmationIssue,
+    ConfirmationRequirement,
+    evaluate_confirmation,
+)
 from lea.actions.enums import (
     ActionStatus,
     ConfirmationPolicy,
@@ -39,13 +48,19 @@ from lea.actions.validation import (
 )
 
 __all__ = [
+    "CONFIRMATION_MATRIX",
     "TERMINAL_STATUSES",
     "TRANSITION_TABLE",
     "ActionContractError",
     "ActionProposal",
     "ActionStatus",
     "ActionTransition",
+    "ConfirmationDecision",
+    "ConfirmationEvaluation",
+    "ConfirmationEvaluationResult",
+    "ConfirmationIssue",
     "ConfirmationPolicy",
+    "ConfirmationRequirement",
     "ExecutionError",
     "ExecutionResult",
     "RiskLevel",
@@ -55,18 +70,15 @@ __all__ = [
     "ValidationResult",
     "action_transition_to_dict",
     "can_transition",
+    "evaluate_confirmation",
     "execution_error_to_dict",
     "execution_result_to_dict",
     "generate_proposal_id",
-    "generate_proposal_id",
     "proposal_from_dict",
-    "proposal_from_dict",
-    "proposal_to_dict",
     "proposal_to_dict",
     "transition_issue_to_dict",
     "transition_proposal",
     "transition_result_to_dict",
-    "validate_proposal_data",
     "validate_proposal_data",
     "validation_issue_to_dict",
     "validation_result_to_dict",
