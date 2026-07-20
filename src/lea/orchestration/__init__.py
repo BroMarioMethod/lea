@@ -10,8 +10,10 @@ from lea.orchestration.contracts import (
     SubmissionResult,
     UtcClock,
 )
+from lea.orchestration.service import ActionOrchestrator
 
 __all__ = [
+    "ActionOrchestrator",
     "AuditEventIdSource",
     "AuditSink",
     "ConfirmationOrchestrationResult",
