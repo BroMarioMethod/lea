@@ -7,10 +7,12 @@ import pytest
 
 from lea.actions import (
     CONFIRMATION_MATRIX,
+    DECISION_TARGET_STATUSES,
     ActionContractError,
     ActionProposal,
     ActionStatus,
     ConfirmationDecision,
+    ConfirmationDecisionApplicationResult,
     ConfirmationEvaluation,
     ConfirmationEvaluationResult,
     ConfirmationIssue,
@@ -20,6 +22,7 @@ from lea.actions import (
     ConfirmationRecordResult,
     ConfirmationRequirement,
     RiskLevel,
+    apply_confirmation_decision,
     apply_confirmation_policy,
     evaluate_confirmation,
     record_confirmation,
@@ -713,6 +716,199 @@ def test_failed_policy_application_requires_issues() -> None:
             success=False,
             proposal=proposal,
             evaluation=None,
+            transition=None,
+            issues=(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("decision", "expected_status"),
+    [
+        (
+            ConfirmationDecision.APPROVED,
+            ActionStatus.APPROVED,
+        ),
+        (
+            ConfirmationDecision.REJECTED,
+            ActionStatus.REJECTED,
+        ),
+        (
+            ConfirmationDecision.CANCELLED,
+            ActionStatus.CANCELLED,
+        ),
+    ],
+)
+def test_apply_confirmation_decision_transitions_proposal(
+    decision: ConfirmationDecision,
+    expected_status: ActionStatus,
+) -> None:
+    """Each human decision should produce its corresponding state."""
+    proposal = create_awaiting_confirmation_proposal()
+    original_data = proposal.to_dict()
+
+    result = apply_confirmation_decision(
+        proposal,
+        decision,
+        "user:marius",
+        reason="Reviewed by the user.",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.success is True
+    assert result.proposal.status is expected_status
+    assert result.record is not None
+    assert result.record.decision is decision
+    assert result.record.actor == "user:marius"
+    assert result.transition is not None
+    assert result.transition.from_status is ActionStatus.AWAITING_CONFIRMATION
+    assert result.transition.to_status is expected_status
+    assert result.issues == ()
+
+    assert proposal.status is ActionStatus.AWAITING_CONFIRMATION
+    assert proposal.to_dict() == original_data
+
+
+def test_decision_target_mapping_covers_every_decision() -> None:
+    """Every declared human decision should map to a target state."""
+    assert set(DECISION_TARGET_STATUSES) == set(ConfirmationDecision)
+
+
+def test_decision_application_uses_one_timestamp() -> None:
+    """The human record and transition should share one timestamp."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    result = apply_confirmation_decision(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "user:marius",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.record is not None
+    assert result.transition is not None
+    assert result.record.decided_at == EVALUATED_AT
+    assert result.transition.transitioned_at == EVALUATED_AT
+
+
+def test_decision_application_preserves_reason() -> None:
+    """The human reason should be retained in both audit records."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    result = apply_confirmation_decision(
+        proposal,
+        ConfirmationDecision.REJECTED,
+        "user:marius",
+        reason="The requested change is unsafe.",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.record is not None
+    assert result.record.reason == "The requested change is unsafe."
+    assert result.transition is not None
+    assert result.transition.reason == "The requested change is unsafe."
+
+
+def test_decision_application_rejects_wrong_proposal_state() -> None:
+    """Human decisions should only apply while awaiting confirmation."""
+    proposal = create_validated_proposal(
+        RiskLevel.HIGH,
+        ConfirmationPolicy.ALWAYS,
+    )
+
+    result = apply_confirmation_decision(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "user:marius",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.success is False
+    assert result.proposal is proposal
+    assert result.record is None
+    assert result.transition is None
+    assert result.issues[0].code == "invalid_proposal_status"
+
+
+def test_decision_application_propagates_actor_issue() -> None:
+    """Invalid human actors should produce structured issues."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    result = apply_confirmation_decision(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "   ",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.success is False
+    assert result.proposal is proposal
+    assert result.record is None
+    assert result.transition is None
+    assert result.issues[0].code == "invalid_actor"
+
+
+def test_successful_decision_application_requires_record() -> None:
+    """Successful decision application should contain a record."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    transition_result = transition_proposal(
+        proposal,
+        ActionStatus.APPROVED,
+        transitioned_at=EVALUATED_AT,
+    )
+
+    assert transition_result.transition is not None
+
+    with pytest.raises(
+        ActionContractError,
+        match="must contain a confirmation record",
+    ):
+        ConfirmationDecisionApplicationResult(
+            success=True,
+            proposal=transition_result.proposal,
+            record=None,
+            transition=transition_result.transition,
+            issues=(),
+        )
+
+
+def test_successful_decision_application_requires_transition() -> None:
+    """Successful decision application should contain a transition."""
+    proposal = create_awaiting_confirmation_proposal()
+    record_result = record_confirmation(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "user:marius",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert record_result.record is not None
+
+    with pytest.raises(
+        ActionContractError,
+        match="must contain a transition record",
+    ):
+        ConfirmationDecisionApplicationResult(
+            success=True,
+            proposal=proposal,
+            record=record_result.record,
+            transition=None,
+            issues=(),
+        )
+
+
+def test_failed_decision_application_requires_issues() -> None:
+    """Failed decision application should contain issues."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    with pytest.raises(
+        ActionContractError,
+        match="at least one issue",
+    ):
+        ConfirmationDecisionApplicationResult(
+            success=False,
+            proposal=proposal,
+            record=None,
             transition=None,
             issues=(),
         )

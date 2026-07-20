@@ -2,7 +2,9 @@
 
 from lea.actions.confirmation import (
     CONFIRMATION_MATRIX,
+    DECISION_TARGET_STATUSES,
     ConfirmationDecision,
+    ConfirmationDecisionApplicationResult,
     ConfirmationEvaluation,
     ConfirmationEvaluationResult,
     ConfirmationIssue,
@@ -10,6 +12,7 @@ from lea.actions.confirmation import (
     ConfirmationRecord,
     ConfirmationRecordResult,
     ConfirmationRequirement,
+    apply_confirmation_decision,
     apply_confirmation_policy,
     evaluate_confirmation,
     record_confirmation,
@@ -54,6 +57,7 @@ from lea.actions.validation import (
 
 __all__ = [
     "CONFIRMATION_MATRIX",
+    "DECISION_TARGET_STATUSES",
     "TERMINAL_STATUSES",
     "TRANSITION_TABLE",
     "ActionContractError",
@@ -61,6 +65,7 @@ __all__ = [
     "ActionStatus",
     "ActionTransition",
     "ConfirmationDecision",
+    "ConfirmationDecisionApplicationResult",
     "ConfirmationEvaluation",
     "ConfirmationEvaluationResult",
     "ConfirmationIssue",
@@ -77,6 +82,7 @@ __all__ = [
     "ValidationIssue",
     "ValidationResult",
     "action_transition_to_dict",
+    "apply_confirmation_decision",
     "apply_confirmation_policy",
     "can_transition",
     "evaluate_confirmation",

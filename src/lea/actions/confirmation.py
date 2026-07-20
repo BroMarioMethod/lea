@@ -57,6 +57,16 @@ CONFIRMATION_MATRIX: Mapping[
 }
 
 
+DECISION_TARGET_STATUSES: Mapping[
+    ConfirmationDecision,
+    ActionStatus,
+] = {
+    ConfirmationDecision.APPROVED: ActionStatus.APPROVED,
+    ConfirmationDecision.REJECTED: ActionStatus.REJECTED,
+    ConfirmationDecision.CANCELLED: ActionStatus.CANCELLED,
+}
+
+
 def utc_now() -> datetime:
     """Return the current timezone-aware UTC timestamp."""
     return datetime.now(UTC)
@@ -239,6 +249,58 @@ class ConfirmationPolicyApplicationResult:
         if not self.issues:
             raise ActionContractError(
                 "A failed confirmation-policy application must contain "
+                "at least one issue."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmationDecisionApplicationResult:
+    """Result of applying a human confirmation decision."""
+
+    success: bool
+    proposal: ActionProposal
+    record: ConfirmationRecord | None
+    transition: ActionTransition | None
+    issues: tuple[ConfirmationIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Enforce consistency between decision-application fields."""
+        if self.success:
+            if self.record is None:
+                raise ActionContractError(
+                    "A successful confirmation-decision application must "
+                    "contain a confirmation record."
+                )
+
+            if self.transition is None:
+                raise ActionContractError(
+                    "A successful confirmation-decision application must "
+                    "contain a transition record."
+                )
+
+            if self.issues:
+                raise ActionContractError(
+                    "A successful confirmation-decision application must "
+                    "not contain issues."
+                )
+
+            return
+
+        if self.record is not None:
+            raise ActionContractError(
+                "A failed confirmation-decision application must not "
+                "contain a confirmation record."
+            )
+
+        if self.transition is not None:
+            raise ActionContractError(
+                "A failed confirmation-decision application must not "
+                "contain a transition record."
+            )
+
+        if not self.issues:
+            raise ActionContractError(
+                "A failed confirmation-decision application must contain "
                 "at least one issue."
             )
 
@@ -441,6 +503,81 @@ def apply_confirmation_policy(
         success=True,
         proposal=transition_result.proposal,
         evaluation=evaluation,
+        transition=transition_result.transition,
+        issues=(),
+    )
+
+
+def apply_confirmation_decision(
+    proposal: ActionProposal,
+    decision: ConfirmationDecision,
+    actor: str,
+    *,
+    reason: str | None = None,
+    decided_at: datetime | None = None,
+) -> ConfirmationDecisionApplicationResult:
+    """Record and apply a human decision without executing the action."""
+    record_result = record_confirmation(
+        proposal,
+        decision,
+        actor,
+        reason=reason,
+        decided_at=decided_at,
+    )
+
+    if not record_result.success:
+        return ConfirmationDecisionApplicationResult(
+            success=False,
+            proposal=proposal,
+            record=None,
+            transition=None,
+            issues=record_result.issues,
+        )
+
+    record = record_result.record
+
+    if record is None:
+        raise ActionContractError(
+            "Successful confirmation recording did not contain a confirmation record."
+        )
+
+    target_status = DECISION_TARGET_STATUSES[decision]
+
+    transition_result = transition_proposal(
+        proposal,
+        target_status,
+        reason=record.reason,
+        transitioned_at=record.decided_at,
+    )
+
+    if not transition_result.success:
+        issues = tuple(
+            ConfirmationIssue(
+                code=issue.code,
+                message=issue.message,
+                proposal_id=proposal.proposal_id,
+                field="status",
+            )
+            for issue in transition_result.issues
+        )
+
+        return ConfirmationDecisionApplicationResult(
+            success=False,
+            proposal=proposal,
+            record=None,
+            transition=None,
+            issues=issues,
+        )
+
+    if transition_result.transition is None:
+        raise ActionContractError(
+            "Successful proposal transition did not contain a transition record."
+        )
+
+    return ConfirmationDecisionApplicationResult(
+        success=True,
+        proposal=transition_result.proposal,
+        record=record,
         transition=transition_result.transition,
         issues=(),
     )
