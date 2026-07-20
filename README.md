@@ -46,11 +46,17 @@ The current core action workflow includes:
 - append-only UTF-8 JSONL audit persistence;
 - ordered audit retrieval and exact proposal filtering;
 - structured malformed-record errors with physical line numbers;
-- explicit runtime paths, optional parent creation and optional `fsync`.
+- explicit runtime paths, optional parent creation and optional `fsync`;
+- immutable SHA-256 integrity envelopes;
+- deterministic previous-event hash chaining;
+- read-only integrity verification in physical file order;
+- detection of edited payloads, broken links, inserted records and reordered records;
+- explicit legacy and mixed-format handling;
+- refusal to extend invalid integrity chains.
 
 Approval permits workflow progression only. It does not execute an action.
 
-Domain-specific handlers, plugin discovery, cryptographic audit integrity,
+Domain-specific handlers, plugin discovery, authenticated audit integrity,
 authentication and user interfaces remain under development.
 
 ## Design principles
@@ -78,6 +84,8 @@ The long-term vision includes:
 - calendar coordination;
 - accounting integration;
 - customer relationship management;
+- quotations, invoices, purchase orders and related business documents;
+- accounts receivable and accounts payable workflows;
 - structured personal and organisational knowledge;
 - meeting summaries and reports;
 - progressive automation based on earned confidence;
@@ -197,18 +205,26 @@ Current accepted standards and specifications include:
 - `LEA-SPEC-0004` — Confirmation and Approval Policy Specification
 - `LEA-SPEC-0005` — Action Execution Boundary Specification
 - `LEA-SPEC-0006` — Action Audit Trail Specification
+- `LEA-SPEC-0007` — Audit Integrity and Verification Specification
 
 Behaviour is specified before implementation and updated when automated test
 coverage confirms completion.
 
-Operational guidance for the append-only JSONL audit store is available in:
+Operational guidance for audit storage is available in:
 
 ```text
 docs/05_AUDIT_STORAGE.md
 ```
 
-The current audit store assumes a single writer and does not yet provide
-cryptographic tamper evidence.
+Operational guidance for integrity-enabled audit verification is available in:
+
+```text
+docs/06_AUDIT_INTEGRITY.md
+```
+
+The current audit integrity implementation uses an unauthenticated SHA-256 hash
+chain. It detects many unrecomputed changes but does not prevent or prove
+against complete file replacement or valid tail truncation.
 
 ## Contributing
 
@@ -255,3 +271,4 @@ View the available milestones locally with:
 ```bash
 git tag
 ```
+
