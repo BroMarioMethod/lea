@@ -1,7 +1,7 @@
 ---
 id: LEA-SPEC-0008
 title: Action Orchestration Service Specification
-version: 0.1.1
+version: 0.1.2
 status: Accepted
 review_required: false
 ---
@@ -14,8 +14,8 @@ review_required: false
 |---|---|
 | Status | Accepted |
 | Requires Review | No |
-| Implementation | Not Started |
-| Test Status | Not Tested |
+| Implementation | Complete |
+| Test Status | Passed - 419 tests |
 
 ## 1. Purpose
 
@@ -490,11 +490,10 @@ These are outside the current milestone.
 
 ## 22. Acceptance criteria
 
-Milestone 1.7 is complete when:
+Milestone 1.7 is complete because:
 
-- this specification is accepted;
-- the action orchestrator is implemented;
-- submission, confirmation and execution remain separate explicit operations;
+- `ActionOrchestrator` is implemented;
+- submission, confirmation and execution are separate explicit operations;
 - validation precedes confirmation-policy application and execution;
 - execution is impossible before approval;
 - existing workflow functions and audit factories are reused;
@@ -507,4 +506,4 @@ Milestone 1.7 is complete when:
 - expected dependency failures are safely contained;
 - operational documentation is complete;
 - the README reflects the capability and limitations;
-- all automated tests and repository quality checks pass.
+- all 419 automated tests and repository quality checks pass.

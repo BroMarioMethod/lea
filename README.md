@@ -53,6 +53,16 @@ The current core action workflow includes:
 - detection of edited payloads, broken links, inserted records and reordered records;
 - explicit legacy and mixed-format handling;
 - refusal to extend invalid integrity chains.
+- deterministic action orchestration through an injected application service;
+- separate proposal submission, human confirmation and approved execution operations;
+- deterministic `proposed → validated` submission progression;
+- confirmation-policy application without implicit execution;
+- explicit approval, rejection and cancellation orchestration;
+- approved-only action execution through the registered handler boundary;
+- injected UTC clocks and audit-event identifier sources;
+- deterministic orchestration audit ordering;
+- structured partial audit-persistence reporting;
+- visible audit failure after completed external side effects;
 
 Approval permits workflow progression only. It does not execute an action.
 
@@ -206,6 +216,7 @@ Current accepted standards and specifications include:
 - `LEA-SPEC-0005` — Action Execution Boundary Specification
 - `LEA-SPEC-0006` — Action Audit Trail Specification
 - `LEA-SPEC-0007` — Audit Integrity and Verification Specification
+- `LEA-SPEC-0008` — Action Orchestration Service Specification
 
 Behaviour is specified before implementation and updated when automated test
 coverage confirms completion.
@@ -225,6 +236,15 @@ docs/06_AUDIT_INTEGRITY.md
 The current audit integrity implementation uses an unauthenticated SHA-256 hash
 chain. It detects many unrecomputed changes but does not prevent or prove
 against complete file replacement or valid tail truncation.
+
+Operational guidance for action orchestration is available in:
+
+```text
+docs/07_ACTION_ORCHESTRATION.md
+```
+The orchestration service does not provide transactional atomicity across
+proposal values, audit persistence and external handler side effects. A handler
+may complete an irreversible side effect before a later audit append fails.
 
 ## Contributing
 
