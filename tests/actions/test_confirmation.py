@@ -1,5 +1,6 @@
 """Tests for deterministic confirmation-policy evaluation."""
 
+from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 
 import pytest
@@ -9,13 +10,17 @@ from lea.actions import (
     ActionContractError,
     ActionProposal,
     ActionStatus,
+    ConfirmationDecision,
     ConfirmationEvaluation,
     ConfirmationEvaluationResult,
     ConfirmationIssue,
     ConfirmationPolicy,
+    ConfirmationRecord,
+    ConfirmationRecordResult,
     ConfirmationRequirement,
     RiskLevel,
     evaluate_confirmation,
+    record_confirmation,
 )
 
 PROPOSAL_ID = "4b10f26d-0c54-4f3d-a14c-bce8a743116f"
@@ -281,5 +286,264 @@ def test_failed_result_rejects_evaluation() -> None:
         ConfirmationEvaluationResult(
             success=False,
             evaluation=evaluation,
+            issues=(issue,),
+        )
+
+
+def create_awaiting_confirmation_proposal() -> ActionProposal:
+    """Create a deterministic proposal awaiting human confirmation."""
+    return ActionProposal(
+        proposal_id=PROPOSAL_ID,
+        action="task.create",
+        parameters={"description": "Call John"},
+        source="user",
+        status=ActionStatus.AWAITING_CONFIRMATION,
+        risk_level=RiskLevel.HIGH,
+        confirmation_policy=ConfirmationPolicy.ALWAYS,
+        created_at=datetime(2026, 7, 20, 17, 0, tzinfo=UTC),
+    )
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        ConfirmationDecision.APPROVED,
+        ConfirmationDecision.REJECTED,
+        ConfirmationDecision.CANCELLED,
+    ],
+)
+def test_record_confirmation_accepts_each_human_decision(
+    decision: ConfirmationDecision,
+) -> None:
+    """Every declared human decision should produce a record."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    result = record_confirmation(
+        proposal,
+        decision,
+        "user:marius",
+        reason="Decision reviewed by the user.",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.success is True
+    assert result.record is not None
+    assert result.record.proposal_id == PROPOSAL_ID
+    assert result.record.decision is decision
+    assert result.record.actor == "user:marius"
+    assert result.record.reason == "Decision reviewed by the user."
+    assert result.record.decided_at == EVALUATED_AT
+    assert result.issues == ()
+
+
+def test_confirmation_record_is_immutable() -> None:
+    """Human confirmation records should not be mutable."""
+    record = ConfirmationRecord(
+        proposal_id=PROPOSAL_ID,
+        decision=ConfirmationDecision.APPROVED,
+        actor="user:marius",
+        decided_at=EVALUATED_AT,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        record.actor = "user:other"  # type: ignore[misc]
+
+
+def test_record_confirmation_rejects_wrong_proposal_status() -> None:
+    """Only proposals awaiting confirmation may receive a decision."""
+    proposal = create_validated_proposal(
+        RiskLevel.HIGH,
+        ConfirmationPolicy.ALWAYS,
+    )
+
+    result = record_confirmation(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "user:marius",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.success is False
+    assert result.record is None
+    assert result.issues[0].code == "invalid_proposal_status"
+    assert result.issues[0].field == "status"
+
+
+def test_record_confirmation_rejects_empty_actor() -> None:
+    """The human actor identifier must not be empty."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    result = record_confirmation(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "   ",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.success is False
+    assert result.record is None
+    assert result.issues[0].code == "invalid_actor"
+    assert result.issues[0].field == "actor"
+
+
+def test_record_confirmation_rejects_naive_timestamp() -> None:
+    """Human decision timestamps should be timezone-aware."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    result = record_confirmation(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "user:marius",
+        decided_at=datetime(2026, 7, 20, 18, 0),
+    )
+
+    assert result.success is False
+    assert result.record is None
+    assert result.issues[0].code == "invalid_timestamp"
+    assert result.issues[0].field == "decided_at"
+
+
+def test_record_confirmation_rejects_blank_reason() -> None:
+    """A supplied decision reason should contain meaningful text."""
+    proposal = create_awaiting_confirmation_proposal()
+
+    result = record_confirmation(
+        proposal,
+        ConfirmationDecision.REJECTED,
+        "user:marius",
+        reason="   ",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert result.success is False
+    assert result.record is None
+    assert result.issues[0].code == "invalid_reason"
+    assert result.issues[0].field == "reason"
+
+
+def test_record_confirmation_collects_multiple_issues() -> None:
+    """Independent input problems should be reported together."""
+    proposal = create_validated_proposal(
+        RiskLevel.HIGH,
+        ConfirmationPolicy.ALWAYS,
+    )
+
+    result = record_confirmation(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "   ",
+        reason="   ",
+        decided_at=datetime(2026, 7, 20, 18, 0),
+    )
+
+    assert result.success is False
+    assert result.record is None
+    assert {issue.code for issue in result.issues} == {
+        "invalid_proposal_status",
+        "invalid_actor",
+        "invalid_reason",
+        "invalid_timestamp",
+    }
+
+
+def test_record_confirmation_preserves_original_proposal() -> None:
+    """Recording a human decision should not mutate the proposal."""
+    proposal = create_awaiting_confirmation_proposal()
+    original_data = proposal.to_dict()
+
+    record_confirmation(
+        proposal,
+        ConfirmationDecision.APPROVED,
+        "user:marius",
+        decided_at=EVALUATED_AT,
+    )
+
+    assert proposal.to_dict() == original_data
+    assert proposal.status is ActionStatus.AWAITING_CONFIRMATION
+
+
+def test_confirmation_record_rejects_naive_timestamp_directly() -> None:
+    """Direct record construction should enforce timestamp invariants."""
+    with pytest.raises(ActionContractError, match="timezone-aware"):
+        ConfirmationRecord(
+            proposal_id=PROPOSAL_ID,
+            decision=ConfirmationDecision.APPROVED,
+            actor="user:marius",
+            decided_at=datetime(2026, 7, 20, 18, 0),
+        )
+
+
+def test_successful_record_result_requires_record() -> None:
+    """Successful record results should contain a record."""
+    with pytest.raises(
+        ActionContractError,
+        match="must contain a confirmation record",
+    ):
+        ConfirmationRecordResult(
+            success=True,
+            record=None,
+            issues=(),
+        )
+
+
+def test_successful_record_result_rejects_issues() -> None:
+    """Successful record results should not contain issues."""
+    record = ConfirmationRecord(
+        proposal_id=PROPOSAL_ID,
+        decision=ConfirmationDecision.APPROVED,
+        actor="user:marius",
+        decided_at=EVALUATED_AT,
+    )
+    issue = ConfirmationIssue(
+        code="example",
+        message="Example issue.",
+        proposal_id=PROPOSAL_ID,
+    )
+
+    with pytest.raises(
+        ActionContractError,
+        match="must not contain issues",
+    ):
+        ConfirmationRecordResult(
+            success=True,
+            record=record,
+            issues=(issue,),
+        )
+
+
+def test_failed_record_result_requires_issues() -> None:
+    """Failed record results should contain at least one issue."""
+    with pytest.raises(
+        ActionContractError,
+        match="at least one issue",
+    ):
+        ConfirmationRecordResult(
+            success=False,
+            record=None,
+            issues=(),
+        )
+
+
+def test_failed_record_result_rejects_record() -> None:
+    """Failed record results should not contain a record."""
+    record = ConfirmationRecord(
+        proposal_id=PROPOSAL_ID,
+        decision=ConfirmationDecision.REJECTED,
+        actor="user:marius",
+        decided_at=EVALUATED_AT,
+    )
+    issue = ConfirmationIssue(
+        code="example",
+        message="Example issue.",
+        proposal_id=PROPOSAL_ID,
+    )
+
+    with pytest.raises(
+        ActionContractError,
+        match="must not contain a confirmation record",
+    ):
+        ConfirmationRecordResult(
+            success=False,
+            record=record,
             issues=(issue,),
         )

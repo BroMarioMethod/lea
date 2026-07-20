@@ -6,8 +6,11 @@ from lea.actions.confirmation import (
     ConfirmationEvaluation,
     ConfirmationEvaluationResult,
     ConfirmationIssue,
+    ConfirmationRecord,
+    ConfirmationRecordResult,
     ConfirmationRequirement,
     evaluate_confirmation,
+    record_confirmation,
 )
 from lea.actions.enums import (
     ActionStatus,
@@ -60,6 +63,8 @@ __all__ = [
     "ConfirmationEvaluationResult",
     "ConfirmationIssue",
     "ConfirmationPolicy",
+    "ConfirmationRecord",
+    "ConfirmationRecordResult",
     "ConfirmationRequirement",
     "ExecutionError",
     "ExecutionResult",
@@ -76,6 +81,7 @@ __all__ = [
     "generate_proposal_id",
     "proposal_from_dict",
     "proposal_to_dict",
+    "record_confirmation",
     "transition_issue_to_dict",
     "transition_proposal",
     "transition_result_to_dict",

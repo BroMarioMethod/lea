@@ -86,6 +86,33 @@ class ConfirmationEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+class ConfirmationRecord:
+    """Immutable record of a human confirmation decision."""
+
+    proposal_id: str
+    decision: ConfirmationDecision
+    actor: str
+    decided_at: datetime
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate confirmation-record invariants."""
+        if not self.proposal_id.strip():
+            raise ActionContractError("proposal_id must be a non-empty string.")
+
+        if not self.actor.strip():
+            raise ActionContractError("actor must be a non-empty string.")
+
+        if self.decided_at.tzinfo is None or self.decided_at.utcoffset() is None:
+            raise ActionContractError("decided_at must be timezone-aware.")
+
+        if self.reason is not None and not self.reason.strip():
+            raise ActionContractError(
+                "reason must be a non-empty string when provided."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ConfirmationIssue:
     """Immutable description of a confirmation-policy problem."""
 
@@ -130,6 +157,42 @@ class ConfirmationEvaluationResult:
             raise ActionContractError(
                 "A failed confirmation evaluation result must contain "
                 "at least one issue."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmationRecordResult:
+    """Immutable result of recording a human confirmation decision."""
+
+    success: bool
+    record: ConfirmationRecord | None
+    issues: tuple[ConfirmationIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Enforce consistency between result fields."""
+        if self.success:
+            if self.record is None:
+                raise ActionContractError(
+                    "A successful confirmation record result must "
+                    "contain a confirmation record."
+                )
+
+            if self.issues:
+                raise ActionContractError(
+                    "A successful confirmation record result must not contain issues."
+                )
+
+            return
+
+        if self.record is not None:
+            raise ActionContractError(
+                "A failed confirmation record result must not contain "
+                "a confirmation record."
+            )
+
+        if not self.issues:
+            raise ActionContractError(
+                "A failed confirmation record result must contain at least one issue."
             )
 
 
@@ -178,6 +241,86 @@ def evaluate_confirmation(
     return ConfirmationEvaluationResult(
         success=True,
         evaluation=evaluation,
+        issues=(),
+    )
+
+
+def record_confirmation(
+    proposal: ActionProposal,
+    decision: ConfirmationDecision,
+    actor: str,
+    *,
+    reason: str | None = None,
+    decided_at: datetime | None = None,
+) -> ConfirmationRecordResult:
+    """Record a human decision for a proposal awaiting confirmation."""
+    issues: list[ConfirmationIssue] = []
+
+    if proposal.status is not ActionStatus.AWAITING_CONFIRMATION:
+        issues.append(
+            ConfirmationIssue(
+                code="invalid_proposal_status",
+                message=(
+                    "A human confirmation decision may only be recorded "
+                    "for proposals awaiting confirmation."
+                ),
+                proposal_id=proposal.proposal_id,
+                field="status",
+            )
+        )
+
+    if not actor.strip():
+        issues.append(
+            ConfirmationIssue(
+                code="invalid_actor",
+                message="The confirmation actor must be a non-empty string.",
+                proposal_id=proposal.proposal_id,
+                field="actor",
+            )
+        )
+
+    if reason is not None and not reason.strip():
+        issues.append(
+            ConfirmationIssue(
+                code="invalid_reason",
+                message=(
+                    "The confirmation reason must be a non-empty string when provided."
+                ),
+                proposal_id=proposal.proposal_id,
+                field="reason",
+            )
+        )
+
+    timestamp = decided_at if decided_at is not None else utc_now()
+
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        issues.append(
+            ConfirmationIssue(
+                code="invalid_timestamp",
+                message=("The confirmation decision timestamp must be timezone-aware."),
+                proposal_id=proposal.proposal_id,
+                field="decided_at",
+            )
+        )
+
+    if issues:
+        return ConfirmationRecordResult(
+            success=False,
+            record=None,
+            issues=tuple(issues),
+        )
+
+    record = ConfirmationRecord(
+        proposal_id=proposal.proposal_id,
+        decision=decision,
+        actor=actor,
+        decided_at=timestamp,
+        reason=reason,
+    )
+
+    return ConfirmationRecordResult(
+        success=True,
+        record=record,
         issues=(),
     )
 
