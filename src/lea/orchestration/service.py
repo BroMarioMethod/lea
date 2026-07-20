@@ -8,15 +8,19 @@ from lea.actions import (
     ActionHandlerRegistry,
     ActionProposal,
     ActionStatus,
+    ConfirmationDecision,
+    ConfirmationDecisionApplicationResult,
     ConfirmationPolicyApplicationResult,
     TransitionResult,
     ValidationResult,
+    apply_confirmation_decision,
     apply_confirmation_policy,
     transition_proposal,
     validate_proposal_data,
 )
 from lea.audit import (
     AuditEvent,
+    audit_confirmation_decision_application,
     audit_confirmation_policy_application,
     audit_proposal_created,
     audit_transition_result,
@@ -25,6 +29,7 @@ from lea.audit import (
 from lea.orchestration.contracts import (
     AuditEventIdSource,
     AuditSink,
+    ConfirmationOrchestrationResult,
     OrchestrationIssue,
     OrchestrationOutcome,
     SubmissionResult,
@@ -169,6 +174,85 @@ class ActionOrchestrator:
             validation=validation,
             confirmation_policy=confirmation_policy,
             persisted_events=tuple(persisted_events),
+        )
+
+    def confirm(
+        self,
+        proposal: ActionProposal,
+        decision: ConfirmationDecision,
+        actor: str,
+        *,
+        reason: str | None = None,
+    ) -> ConfirmationOrchestrationResult:
+        """Apply one explicit human confirmation decision."""
+        try:
+            decision_application = apply_confirmation_decision(
+                proposal,
+                decision,
+                actor,
+                reason=reason,
+                decided_at=self._next_utc_timestamp(),
+            )
+        except Exception:
+            return _invalid_confirmation(
+                proposal=proposal,
+                code="confirmation_decision_failed",
+                message=("The confirmation decision could not be applied."),
+            )
+
+        if not decision_application.success:
+            return ConfirmationOrchestrationResult(
+                outcome=OrchestrationOutcome.INVALID_OPERATION,
+                proposal=decision_application.proposal,
+                decision_application=decision_application,
+                persisted_events=(),
+                issue=OrchestrationIssue(
+                    code="confirmation_decision_rejected",
+                    message=(
+                        "The confirmation decision was rejected by the "
+                        "deterministic workflow."
+                    ),
+                    operation="confirm",
+                    proposal_id=proposal.proposal_id,
+                ),
+            )
+
+        try:
+            event = audit_confirmation_decision_application(
+                decision_application,
+                event_id=self._next_event_id(),
+            )
+        except Exception:
+            return _invalid_confirmation(
+                proposal=decision_application.proposal,
+                code="confirmation_audit_event_failed",
+                message=("The confirmation-decision audit event could not be created."),
+                decision_application=decision_application,
+            )
+
+        try:
+            self._audit_sink.append(event)
+        except Exception:
+            return ConfirmationOrchestrationResult(
+                outcome=OrchestrationOutcome.AUDIT_FAILED,
+                proposal=decision_application.proposal,
+                decision_application=decision_application,
+                persisted_events=(),
+                issue=OrchestrationIssue(
+                    code="audit_append_failed",
+                    message=(
+                        "The confirmation-decision audit event could not be persisted."
+                    ),
+                    operation="confirm",
+                    proposal_id=proposal.proposal_id,
+                ),
+            )
+
+        return ConfirmationOrchestrationResult(
+            outcome=_confirmation_outcome(decision_application.proposal.status),
+            proposal=decision_application.proposal,
+            decision_application=decision_application,
+            persisted_events=(event,),
         )
 
     def _validate_proposal(
@@ -406,6 +490,44 @@ def _submission_outcome(
         return OrchestrationOutcome.APPROVED
 
     raise ValueError("Confirmation policy produced an unsupported proposal status.")
+
+
+def _confirmation_outcome(
+    status: ActionStatus,
+) -> OrchestrationOutcome:
+    """Map a confirmed proposal status to its orchestration outcome."""
+    if status is ActionStatus.APPROVED:
+        return OrchestrationOutcome.APPROVED
+
+    if status is ActionStatus.REJECTED:
+        return OrchestrationOutcome.REJECTED
+
+    if status is ActionStatus.CANCELLED:
+        return OrchestrationOutcome.CANCELLED
+
+    raise ValueError("Confirmation decision produced an unsupported proposal status.")
+
+
+def _invalid_confirmation(
+    *,
+    proposal: ActionProposal,
+    code: str,
+    message: str,
+    decision_application: (ConfirmationDecisionApplicationResult | None) = None,
+) -> ConfirmationOrchestrationResult:
+    """Return a structured confirmation dependency failure."""
+    return ConfirmationOrchestrationResult(
+        outcome=OrchestrationOutcome.INVALID_OPERATION,
+        proposal=proposal,
+        decision_application=decision_application,
+        persisted_events=(),
+        issue=OrchestrationIssue(
+            code=code,
+            message=message,
+            operation="confirm",
+            proposal_id=proposal.proposal_id,
+        ),
+    )
 
 
 def _invalid_submission(
