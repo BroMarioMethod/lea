@@ -34,12 +34,18 @@ The current core action workflow includes:
 - immutable approval, rejection and cancellation records;
 - deterministic application of confirmation decisions;
 - UTC-aware audit timestamps;
+- explicit deterministic action-handler registration;
+- exact action-name dispatch without fuzzy matching or plugin discovery;
+- an approved-only action-execution boundary;
+- immutable `approved → executing → succeeded` workflow progression;
+- structured failed execution with `executing → failed`;
+- safe containment of handler exceptions and invalid output;
 - deterministic JSON-compatible serialisation.
 
 Approval permits workflow progression only. It does not execute an action.
 
-Action execution, plugins, persistent audit storage, authentication and user
-interfaces remain under development.
+Domain-specific handlers, plugin discovery, persistent audit storage,
+authentication and user interfaces remain under development.
 
 ## Design principles
 
@@ -183,6 +189,7 @@ Current accepted standards and specifications include:
 - `LEA-SPEC-0002` — Action Proposal Contract Specification
 - `LEA-SPEC-0003` — Action State Transition Specification
 - `LEA-SPEC-0004` — Confirmation and Approval Policy Specification
+- `LEA-SPEC-0005` — Action Execution Boundary Specification
 
 Behaviour is specified before implementation and updated when automated test
 coverage confirms completion.

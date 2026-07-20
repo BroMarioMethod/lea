@@ -1,7 +1,7 @@
 ---
 title: Action Execution Boundary Specification
 document_id: LEA-SPEC-0005
-version: 0.1.1
+version: 0.1.2
 status: Accepted
 authors:
   - Marius du Preez
@@ -20,8 +20,8 @@ review_required: false
 |---|---|
 | Status | Accepted |
 | Requires Review | No |
-| Implementation | Not Started |
-| Test Status | Not Tested |
+| Implementation | Complete |
+| Test Status | Automated Tests Passing |
 
 ---
 
