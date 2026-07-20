@@ -88,6 +88,12 @@ class ActionTransition:
         ):
             raise ActionContractError("transitioned_at must be timezone-aware.")
 
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this transition."""
+        from lea.actions.serialisation import action_transition_to_dict
+
+        return action_transition_to_dict(self)
+
 
 @dataclass(frozen=True, slots=True)
 class TransitionIssue:
@@ -97,6 +103,12 @@ class TransitionIssue:
     message: str
     from_status: ActionStatus
     to_status: ActionStatus
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this issue."""
+        from lea.actions.serialisation import transition_issue_to_dict
+
+        return transition_issue_to_dict(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +144,12 @@ class TransitionResult:
             raise ActionContractError(
                 "A failed transition result must contain at least one issue."
             )
+
+    def to_dict(self) -> Mapping[str, object]:
+        """Return a JSON-compatible representation of this result."""
+        from lea.actions.serialisation import transition_result_to_dict
+
+        return transition_result_to_dict(self)
 
 
 def transition_proposal(

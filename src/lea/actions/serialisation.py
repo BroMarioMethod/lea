@@ -15,6 +15,11 @@ from lea.actions.models import (
     ExecutionError,
     ExecutionResult,
 )
+from lea.actions.transitions import (
+    ActionTransition,
+    TransitionIssue,
+    TransitionResult,
+)
 from lea.actions.validation import (
     SCHEMA_VERSION,
     ValidationIssue,
@@ -157,4 +162,47 @@ def execution_result_to_dict(
         "error": error,
         "started_at": result.started_at.isoformat(),
         "completed_at": result.completed_at.isoformat(),
+    }
+
+
+def action_transition_to_dict(
+    transition: ActionTransition,
+) -> dict[str, JsonValue]:
+    """Convert an action transition to JSON-compatible data."""
+    return {
+        "proposal_id": transition.proposal_id,
+        "from_status": transition.from_status.value,
+        "to_status": transition.to_status.value,
+        "transitioned_at": transition.transitioned_at.isoformat(),
+        "reason": transition.reason,
+    }
+
+
+def transition_issue_to_dict(
+    issue: TransitionIssue,
+) -> dict[str, JsonValue]:
+    """Convert a transition issue to JSON-compatible data."""
+    return {
+        "code": issue.code,
+        "message": issue.message,
+        "from_status": issue.from_status.value,
+        "to_status": issue.to_status.value,
+    }
+
+
+def transition_result_to_dict(
+    result: TransitionResult,
+) -> dict[str, JsonValue]:
+    """Convert a transition result to JSON-compatible data."""
+    transition = (
+        action_transition_to_dict(result.transition)
+        if result.transition is not None
+        else None
+    )
+
+    return {
+        "success": result.success,
+        "proposal": proposal_to_dict(result.proposal),
+        "transition": transition,
+        "issues": [transition_issue_to_dict(issue) for issue in result.issues],
     }
