@@ -191,12 +191,21 @@ See:
 LICENSE
 ```
 
-## Current milestone
+## Development milestones
 
-The latest completed milestone is:
+Completed milestones are recorded as annotated Git tags using the following
+naming convention:
 
 ```text
-milestone-0.3.1 — Continuous integration verified on GitHub
+milestone-X.Y
+milestone-X.Y.Z
 ```
 
-The current development milestone is focused on project governance and contributor documentation.
+Milestone tags identify stable points in the project history. Current
+development work is represented by active branches and pull requests.
+
+View the available milestones locally with:
+
+```bash
+git tag
+```
