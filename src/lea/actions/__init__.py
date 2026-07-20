@@ -24,8 +24,11 @@ from lea.actions.enums import (
 )
 from lea.actions.errors import ActionContractError
 from lea.actions.execution import (
+    ActionExecutionIssue,
+    ActionExecutionResult,
     ActionHandler,
     ActionHandlerRegistry,
+    execute_action,
 )
 from lea.actions.models import (
     ActionProposal,
@@ -72,6 +75,8 @@ __all__ = [
     "TERMINAL_STATUSES",
     "TRANSITION_TABLE",
     "ActionContractError",
+    "ActionExecutionIssue",
+    "ActionExecutionResult",
     "ActionHandler",
     "ActionHandlerRegistry",
     "ActionProposal",
@@ -106,6 +111,7 @@ __all__ = [
     "confirmation_record_result_to_dict",
     "confirmation_record_to_dict",
     "evaluate_confirmation",
+    "execute_action",
     "execution_error_to_dict",
     "execution_result_to_dict",
     "generate_proposal_id",
