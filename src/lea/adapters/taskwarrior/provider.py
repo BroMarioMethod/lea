@@ -1,5 +1,6 @@
 """Taskwarrior CLI task provider."""
 
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Protocol
@@ -115,9 +116,9 @@ class TaskwarriorCliProvider:
                 message=("Taskwarrior creation succeeded without a command result."),
             )
 
-        task_uuid = command.stdout.strip()
+        task_uuid = _extract_created_uuid(command.stdout)
 
-        if not _is_canonical_uuid(task_uuid):
+        if task_uuid is None:
             return _create_failure(
                 code="taskwarrior_create_uuid_invalid",
                 message=("Taskwarrior did not return one canonical task UUID."),
@@ -457,6 +458,29 @@ def _build_modify_arguments(
 def _format_taskwarrior_timestamp(value: datetime) -> str:
     """Serialise one validated aware datetime in Taskwarrior UTC form."""
     return value.astimezone(UTC).strftime(_TASKWARRIOR_TIMESTAMP_FORMAT)
+
+
+def _extract_created_uuid(output: str) -> str | None:
+    """Extract one canonical UUID from Taskwarrior creation output."""
+    stripped = output.strip()
+
+    if _is_canonical_uuid(stripped):
+        return stripped
+
+    match = re.fullmatch(
+        r"Created task ([0-9a-f-]{36})\.",
+        stripped,
+    )
+
+    if match is None:
+        return None
+
+    task_uuid = match.group(1)
+
+    if not _is_canonical_uuid(task_uuid):
+        return None
+
+    return task_uuid
 
 
 def _is_canonical_uuid(value: str) -> bool:

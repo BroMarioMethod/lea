@@ -49,7 +49,7 @@ def inspect_taskwarrior(
 
     runner = TaskwarriorRunner(config)
     result = runner.run(
-        ("--version",),
+        ("_version",),
         operation="inspect",
     )
 

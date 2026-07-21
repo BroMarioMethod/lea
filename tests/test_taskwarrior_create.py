@@ -346,3 +346,27 @@ def test_create_rejects_readback_uuid_mismatch(
 
     assert result.success is False
     assert result.issues[0].code == "taskwarrior_create_readback_mismatch"
+
+
+def test_create_accepts_taskwarrior_3_4_uuid_output(
+    tmp_path: Path,
+) -> None:
+    """Taskwarrior 3.4.x creation output should expose its UUID."""
+    runner = QueueRunner(
+        [
+            successful_run(f"Created task {TASK_UUID}.\n"),
+            successful_run(exported_task()),
+        ]
+    )
+    provider = TaskwarriorCliProvider(
+        make_config(tmp_path),
+        runner=runner,
+    )
+
+    result = provider.create_task(
+        TaskCreateRequest(description="Test"),
+    )
+
+    assert result.success is True
+    assert result.task is not None
+    assert result.task.uuid == TASK_UUID
