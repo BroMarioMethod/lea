@@ -13,9 +13,11 @@ from lea.proposals.documents import (
     parse_proposal_document,
     render_proposal_document,
 )
+from lea.proposals.repository import MarkdownProposalRepository
 
 __all__ = [
     "DOCUMENT_SCHEMA_VERSION",
+    "MarkdownProposalRepository",
     "ProposalDocumentResult",
     "ProposalListResult",
     "ProposalReadResult",
