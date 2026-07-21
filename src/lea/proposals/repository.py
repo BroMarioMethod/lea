@@ -8,6 +8,7 @@ from uuid import UUID
 
 from lea.actions import ActionProposal
 from lea.proposals.contracts import (
+    ProposalListResult,
     ProposalReadResult,
     ProposalRepositoryIssue,
     ProposalWriteResult,
@@ -213,6 +214,106 @@ class MarkdownProposalRepository:
             issues=(),
         )
 
+    def list_all(self) -> ProposalListResult:
+        """Read every canonical proposal in deterministic order."""
+        root_issue = self._inspect_root_for_listing()
+
+        if root_issue is not None:
+            return ProposalListResult(
+                success=False,
+                proposals=(),
+                issues=(root_issue,),
+            )
+
+        proposals: list[ActionProposal] = []
+
+        try:
+            document_paths = tuple(
+                sorted(
+                    self._root.glob("*.md"),
+                    key=lambda path: path.name,
+                )
+            )
+        except OSError:
+            return _list_failure(
+                code="proposal_read_failed",
+                message=("The proposal repository directory could not be listed."),
+                path=self._root,
+            )
+
+        for path in document_paths:
+            proposal_id = path.stem
+
+            try:
+                _validate_proposal_id(proposal_id)
+            except (TypeError, ValueError):
+                return _list_failure(
+                    code="proposal_invalid_filename",
+                    message=(
+                        "A proposal document does not use a canonical "
+                        "proposal identifier filename."
+                    ),
+                    path=path,
+                )
+
+            result = self.read(proposal_id)
+
+            if not result.success:
+                return ProposalListResult(
+                    success=False,
+                    proposals=(),
+                    issues=result.issues,
+                )
+
+            proposal = result.proposal
+
+            if proposal is None:
+                return _list_failure(
+                    code="proposal_read_failed",
+                    message=(
+                        "Proposal reading succeeded without returning a proposal."
+                    ),
+                    path=path,
+                    proposal_id=proposal_id,
+                )
+
+            proposals.append(proposal)
+
+        proposals.sort(
+            key=lambda proposal: (
+                proposal.created_at,
+                proposal.proposal_id,
+            )
+        )
+
+        return ProposalListResult(
+            success=True,
+            proposals=tuple(proposals),
+            issues=(),
+        )
+
+    def _inspect_root_for_listing(
+        self,
+    ) -> ProposalRepositoryIssue | None:
+        """Check the repository root without creating anything."""
+        if not self._root.exists():
+            return ProposalRepositoryIssue(
+                code="proposal_directory_missing",
+                message=(
+                    "The configured proposal repository directory does not exist."
+                ),
+                path=self._root,
+            )
+
+        if not self._root.is_dir():
+            return ProposalRepositoryIssue(
+                code="proposal_directory_not_directory",
+                message=("The configured proposal repository path is not a directory."),
+                path=self._root,
+            )
+
+        return None
+
     def _prepare_root(
         self,
         *,
@@ -382,6 +483,28 @@ def _read_failure(
         success=False,
         proposal=None,
         path=path,
+        issues=(
+            ProposalRepositoryIssue(
+                code=code,
+                message=message,
+                proposal_id=proposal_id,
+                path=path,
+            ),
+        ),
+    )
+
+
+def _list_failure(
+    *,
+    code: str,
+    message: str,
+    path: Path,
+    proposal_id: str | None = None,
+) -> ProposalListResult:
+    """Construct one deterministic failed listing result."""
+    return ProposalListResult(
+        success=False,
+        proposals=(),
         issues=(
             ProposalRepositoryIssue(
                 code=code,
