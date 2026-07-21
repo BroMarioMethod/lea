@@ -24,6 +24,12 @@ from lea.installers.taskwarrior.records import (
     installation_record_matches,
     read_taskwarrior_installation_record,
 )
+from lea.installers.taskwarrior.runtime_layout import (
+    TaskwarriorRuntimeLayout,
+    TaskwarriorRuntimeLayoutResult,
+    provision_taskwarrior_runtime_layout,
+    render_taskwarrior_taskrc,
+)
 from lea.installers.taskwarrior.smoke_test import (
     TaskwarriorSmokeTestResult,
     validate_staged_taskwarrior_binary,
@@ -50,6 +56,8 @@ __all__ = [
     "TaskwarriorInstallerConfig",
     "TaskwarriorInstallerIssue",
     "TaskwarriorInstallerValidationResult",
+    "TaskwarriorRuntimeLayout",
+    "TaskwarriorRuntimeLayoutResult",
     "TaskwarriorSmokeTestResult",
     "TaskwarriorStagedBinary",
     "TaskwarriorStagingResult",
@@ -60,9 +68,11 @@ __all__ = [
     "is_supported_taskwarrior_version",
     "is_valid_sha256",
     "normalise_taskwarrior_platform",
+    "provision_taskwarrior_runtime_layout",
     "read_taskwarrior_installation_record",
     "remove_taskwarrior_staging",
     "render_taskwarrior_installation_record",
+    "render_taskwarrior_taskrc",
     "run_taskwarrior_installer_preflight",
     "stage_taskwarrior_binary",
     "validate_external_executable_path",
