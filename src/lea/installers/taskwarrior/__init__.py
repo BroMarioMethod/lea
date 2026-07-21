@@ -2,7 +2,6 @@
 
 from lea.installers.taskwarrior.activation import (
     TaskwarriorActivationResult,
-    TaskwarriorInstallationRecord,
     activate_staged_taskwarrior,
     render_taskwarrior_installation_record,
     write_taskwarrior_installation_record,
@@ -19,6 +18,11 @@ from lea.installers.taskwarrior.preflight import (
     check_directory_parent_writable,
     run_taskwarrior_installer_preflight,
     verify_expected_sha256,
+)
+from lea.installers.taskwarrior.records import (
+    TaskwarriorInstallationRecord,
+    installation_record_matches,
+    read_taskwarrior_installation_record,
 )
 from lea.installers.taskwarrior.smoke_test import (
     TaskwarriorSmokeTestResult,
@@ -52,9 +56,11 @@ __all__ = [
     "activate_staged_taskwarrior",
     "calculate_sha256",
     "check_directory_parent_writable",
+    "installation_record_matches",
     "is_supported_taskwarrior_version",
     "is_valid_sha256",
     "normalise_taskwarrior_platform",
+    "read_taskwarrior_installation_record",
     "remove_taskwarrior_staging",
     "render_taskwarrior_installation_record",
     "run_taskwarrior_installer_preflight",

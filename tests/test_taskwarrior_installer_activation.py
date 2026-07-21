@@ -122,6 +122,26 @@ def test_activation_is_idempotent_for_matching_binary(
     final_executable.write_bytes(b"taskwarrior-binary")
     staged = make_staged_binary(tmp_path)
 
+    first_record = TaskwarriorInstallationRecord(
+        schema_version=1,
+        component="taskwarrior",
+        version=config.version,
+        mode=config.mode.value,
+        platform=config.platform,
+        executable=final_executable,
+        sha256=staged.sha256,
+        taskrc=config.configuration_dir / "taskrc",
+        home=config.state_root / "home",
+        data=config.state_root / "data",
+        smoke_test="passed",
+        installed_at=INSTALLED_AT,
+    )
+    config.installation_record.parent.mkdir(parents=True)
+    config.installation_record.write_text(
+        render_taskwarrior_installation_record(first_record),
+        encoding="utf-8",
+    )
+
     result = activate_staged_taskwarrior(
         staged,
         config,
@@ -130,7 +150,7 @@ def test_activation_is_idempotent_for_matching_binary(
 
     assert result.success is True
     assert result.already_installed is True
-    assert result.record is not None
+    assert result.record == first_record
     assert staged.staging_root.exists()
 
 

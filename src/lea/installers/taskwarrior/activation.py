@@ -16,67 +16,14 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallFailureCode,
 )
 from lea.installers.taskwarrior.preflight import calculate_sha256
+from lea.installers.taskwarrior.records import (
+    TaskwarriorInstallationRecord,
+    installation_record_matches,
+    read_taskwarrior_installation_record,
+)
 from lea.installers.taskwarrior.staging import TaskwarriorStagedBinary
 
 _Clock = Callable[[], datetime]
-
-
-@dataclass(frozen=True, slots=True)
-class TaskwarriorInstallationRecord:
-    """Immutable record of one activated Taskwarrior installation."""
-
-    schema_version: int
-    component: str
-    version: str
-    mode: str
-    platform: str
-    executable: Path
-    sha256: str
-    taskrc: Path
-    home: Path
-    data: Path
-    smoke_test: str
-    installed_at: datetime
-
-    def __post_init__(self) -> None:
-        """Validate installation-record fields."""
-        if self.schema_version != 1:
-            raise ValueError("schema_version must be 1.")
-
-        if self.component != "taskwarrior":
-            raise ValueError("component must be taskwarrior.")
-
-        for field_name, value in (
-            ("version", self.version),
-            ("mode", self.mode),
-            ("platform", self.platform),
-            ("smoke_test", self.smoke_test),
-        ):
-            if not value.strip():
-                raise ValueError(f"{field_name} must be non-empty.")
-
-        for field_name, path in (
-            ("executable", self.executable),
-            ("taskrc", self.taskrc),
-            ("home", self.home),
-            ("data", self.data),
-        ):
-            if not path.is_absolute():
-                raise ValueError(f"{field_name} must be absolute.")
-
-        if len(self.sha256) != 64 or any(
-            character not in "0123456789abcdef" for character in self.sha256
-        ):
-            raise ValueError("sha256 must be lower-case hexadecimal SHA-256 text.")
-
-        if self.smoke_test != "passed":
-            raise ValueError("smoke_test must be passed.")
-
-        if self.installed_at.tzinfo is None or self.installed_at.utcoffset() is None:
-            raise ValueError("installed_at must be timezone-aware.")
-
-        if self.installed_at.utcoffset() != UTC.utcoffset(self.installed_at):
-            raise ValueError("installed_at must be canonical UTC.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +104,6 @@ def activate_staged_taskwarrior(
         final_executable=final_executable,
         expected_sha256=staged.sha256,
         config=config,
-        clock=clock,
     )
 
     if existing_result is not None:
@@ -307,7 +253,6 @@ def _inspect_existing_installation(
     final_executable: Path,
     expected_sha256: str,
     config: TaskwarriorInstallerConfig,
-    clock: _Clock,
 ) -> TaskwarriorActivationResult | None:
     """Return an idempotent result or mismatch failure when present."""
     final_root = final_executable.parent.parent
@@ -347,12 +292,33 @@ def _inspect_existing_installation(
             path=final_executable,
         )
 
-    record = _make_record(
-        config=config,
+    record, record_issues = read_taskwarrior_installation_record(
+        config.installation_record
+    )
+
+    if record_issues or record is None:
+        return TaskwarriorActivationResult(
+            success=False,
+            already_installed=False,
+            record=None,
+            issues=record_issues,
+        )
+
+    if not installation_record_matches(
+        record,
+        version=config.version,
+        platform=config.platform,
         executable=final_executable,
         sha256=existing_sha256,
-        installed_at=clock(),
-    )
+    ):
+        return _failure(
+            code=TaskwarriorInstallFailureCode.RECORD_FAILED,
+            message=(
+                "The existing Taskwarrior installation record does not "
+                "match the installed executable."
+            ),
+            path=config.installation_record,
+        )
 
     return TaskwarriorActivationResult(
         success=True,
