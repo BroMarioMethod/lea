@@ -138,15 +138,147 @@ def test_rejects_absolute_archive_path(
     assert result.issues[0].code is TaskwarriorInstallFailureCode.ARCHIVE_UNSAFE
 
 
-def test_rejects_symbolic_link_member(
+def test_materialises_safe_symbolic_link_to_regular_member(
     tmp_path: Path,
 ) -> None:
-    """Symbolic links must not enter the extracted source tree."""
+    """A safe internal symbolic link should become a regular file."""
+    archive = tmp_path / "task.tar.gz"
+    target_payload = b"development guidance\n"
+    link = tarfile.TarInfo("task/CONTRIBUTING.md")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "doc/devel/development.md"
+    checksum = _write_tar(
+        archive,
+        (
+            _regular_member(
+                "task/doc/devel/development.md",
+                target_payload,
+            ),
+            (link, None),
+        ),
+    )
+
+    result = extract_taskwarrior_source_archive(
+        archive,
+        expected_sha256=checksum,
+        build_directory=tmp_path / "build",
+    )
+
+    assert result.issues == ()
+    assert result.extracted is not None
+
+    materialised = result.extracted.source_root / "CONTRIBUTING.md"
+    assert materialised.is_file()
+    assert not materialised.is_symlink()
+    assert materialised.read_bytes() == target_payload
+
+
+def test_materialises_safe_sibling_symbolic_link(
+    tmp_path: Path,
+) -> None:
+    """A safe sibling target should resolve relative to the link."""
+    archive = tmp_path / "task.tar.gz"
+    link = tarfile.TarInfo("task/doc/rc/holidays.alias.rc")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "holidays.target.rc"
+    checksum = _write_tar(
+        archive,
+        (
+            _regular_member(
+                "task/doc/rc/holidays.target.rc",
+                b"holiday data\n",
+            ),
+            (link, None),
+        ),
+    )
+
+    result = extract_taskwarrior_source_archive(
+        archive,
+        expected_sha256=checksum,
+        build_directory=tmp_path / "build",
+    )
+
+    assert result.issues == ()
+    assert result.extracted is not None
+    assert (
+        result.extracted.source_root / "doc" / "rc" / "holidays.alias.rc"
+    ).read_bytes() == b"holiday data\n"
+
+
+def test_rejects_symbolic_link_traversal(
+    tmp_path: Path,
+) -> None:
+    """A symbolic link must not resolve outside the archive root."""
     archive = tmp_path / "task.tar.gz"
     link = tarfile.TarInfo("task/link")
     link.type = tarfile.SYMTYPE
     link.linkname = "../../outside"
     checksum = _write_tar(archive, ((link, None),))
+
+    result = extract_taskwarrior_source_archive(
+        archive,
+        expected_sha256=checksum,
+        build_directory=tmp_path / "build",
+    )
+
+    assert result.extracted is None
+    assert result.issues[0].code is TaskwarriorInstallFailureCode.ARCHIVE_UNSAFE
+
+
+def test_rejects_absolute_symbolic_link_target(
+    tmp_path: Path,
+) -> None:
+    """Absolute symbolic-link targets must remain forbidden."""
+    archive = tmp_path / "task.tar.gz"
+    link = tarfile.TarInfo("task/link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "/etc/passwd"
+    checksum = _write_tar(archive, ((link, None),))
+
+    result = extract_taskwarrior_source_archive(
+        archive,
+        expected_sha256=checksum,
+        build_directory=tmp_path / "build",
+    )
+
+    assert result.extracted is None
+    assert result.issues[0].code is TaskwarriorInstallFailureCode.ARCHIVE_UNSAFE
+
+
+def test_rejects_symbolic_link_to_missing_member(
+    tmp_path: Path,
+) -> None:
+    """A symbolic link target must be a verified archive member."""
+    archive = tmp_path / "task.tar.gz"
+    link = tarfile.TarInfo("task/link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "missing.txt"
+    checksum = _write_tar(archive, ((link, None),))
+
+    result = extract_taskwarrior_source_archive(
+        archive,
+        expected_sha256=checksum,
+        build_directory=tmp_path / "build",
+    )
+
+    assert result.extracted is None
+    assert result.issues[0].code is TaskwarriorInstallFailureCode.ARCHIVE_UNSAFE
+
+
+def test_rejects_symbolic_link_to_directory(
+    tmp_path: Path,
+) -> None:
+    """A symbolic link must not materialise a directory target."""
+    archive = tmp_path / "task.tar.gz"
+    directory = tarfile.TarInfo("task/docs")
+    directory.type = tarfile.DIRTYPE
+    link = tarfile.TarInfo("task/link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "docs"
+    checksum = _write_tar(
+        archive,
+        ((directory, None), (link, None)),
+    )
 
     result = extract_taskwarrior_source_archive(
         archive,

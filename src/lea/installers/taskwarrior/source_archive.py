@@ -201,7 +201,7 @@ def _extract_tar_safely(
     source_archive: Path,
     extraction_root: Path,
 ) -> Path:
-    """Extract regular TAR members without following archive links."""
+    """Extract verified TAR members without creating filesystem links."""
     top_level_names: set[str] = set()
     extracted_any = False
 
@@ -211,15 +211,34 @@ def _extract_tar_safely(
         if not members:
             raise ValueError("the archive is empty")
 
+        regular_members: dict[PurePosixPath, tarfile.TarInfo] = {}
+        symbolic_members: list[tuple[tarfile.TarInfo, PurePosixPath]] = []
+
         for member in members:
             relative = _safe_member_path(member)
+            top_level_names.add(relative.parts[0])
+
+            if member.islnk():
+                raise ValueError(f"archive hard links are forbidden: {member.name}")
+
+            if member.issym():
+                symbolic_members.append((member, relative))
+                continue
+
+            if not member.isdir() and not member.isfile():
+                raise ValueError(f"unsupported archive member type: {member.name}")
+
+            if relative in regular_members:
+                raise ValueError(f"duplicate archive destination: {member.name}")
+
+            regular_members[relative] = member
+
+        for relative, member in regular_members.items():
             destination = extraction_root.joinpath(*relative.parts)
             _assert_within_root(
                 destination=destination,
                 extraction_root=extraction_root,
             )
-
-            top_level_names.add(relative.parts[0])
 
             if member.isdir():
                 destination.mkdir(
@@ -231,9 +250,6 @@ def _extract_tar_safely(
                 extracted_any = True
                 continue
 
-            if not member.isfile():
-                raise ValueError(f"unsupported archive member type: {member.name}")
-
             destination.parent.mkdir(
                 mode=0o750,
                 parents=True,
@@ -243,17 +259,51 @@ def _extract_tar_safely(
             if destination.exists() or destination.is_symlink():
                 raise ValueError(f"duplicate archive destination: {member.name}")
 
-            stream = archive.extractfile(member)
+            _copy_member_payload(
+                archive=archive,
+                member=member,
+                destination=destination,
+            )
+            extracted_any = True
 
-            if stream is None:
+        for member, relative in symbolic_members:
+            target_relative = _safe_symbolic_target(
+                member=member,
+                member_path=relative,
+            )
+            target_member = regular_members.get(target_relative)
+
+            if target_member is None:
                 raise ValueError(
-                    f"archive member has no readable payload: {member.name}"
+                    "archive symbolic link target is not a verified "
+                    f"member: {member.name} -> {member.linkname}"
                 )
 
-            with stream, destination.open("xb") as output:
-                shutil.copyfileobj(stream, output)
+            if not target_member.isfile():
+                raise ValueError(
+                    "archive symbolic link target is not a regular file: "
+                    f"{member.name} -> {member.linkname}"
+                )
 
-            destination.chmod(0o750 if member.mode & 0o111 else 0o640)
+            destination = extraction_root.joinpath(*relative.parts)
+            _assert_within_root(
+                destination=destination,
+                extraction_root=extraction_root,
+            )
+
+            if destination.exists() or destination.is_symlink():
+                raise ValueError(f"duplicate archive destination: {member.name}")
+
+            destination.parent.mkdir(
+                mode=0o750,
+                parents=True,
+                exist_ok=True,
+            )
+            _copy_member_payload(
+                archive=archive,
+                member=target_member,
+                destination=destination,
+            )
             extracted_any = True
 
     if not extracted_any:
@@ -266,6 +316,66 @@ def _extract_tar_safely(
             return candidate
 
     return extraction_root
+
+
+def _copy_member_payload(
+    *,
+    archive: tarfile.TarFile,
+    member: tarfile.TarInfo,
+    destination: Path,
+) -> None:
+    """Materialise one verified regular archive member."""
+    stream = archive.extractfile(member)
+
+    if stream is None:
+        raise ValueError(f"archive member has no readable payload: {member.name}")
+
+    with stream, destination.open("xb") as output:
+        shutil.copyfileobj(stream, output)
+
+    destination.chmod(0o750 if member.mode & 0o111 else 0o640)
+
+
+def _safe_symbolic_target(
+    *,
+    member: tarfile.TarInfo,
+    member_path: PurePosixPath,
+) -> PurePosixPath:
+    """Resolve one relative symbolic-link target within the archive."""
+    if not member.linkname or "\x00" in member.linkname:
+        raise ValueError(f"archive symbolic link has an invalid target: {member.name}")
+
+    target = PurePosixPath(member.linkname)
+
+    if target.is_absolute():
+        raise ValueError(
+            "absolute archive symbolic-link target is forbidden: "
+            f"{member.name} -> {member.linkname}"
+        )
+
+    combined = member_path.parent / target
+    normalised_parts: list[str] = []
+
+    for part in combined.parts:
+        if part in ("", "."):
+            continue
+
+        if part == "..":
+            if not normalised_parts:
+                raise ValueError(
+                    "archive symbolic-link traversal is forbidden: "
+                    f"{member.name} -> {member.linkname}"
+                )
+
+            normalised_parts.pop()
+            continue
+
+        normalised_parts.append(part)
+
+    if not normalised_parts:
+        raise ValueError(f"archive symbolic link has an empty target: {member.name}")
+
+    return PurePosixPath(*normalised_parts)
 
 
 def _safe_member_path(
@@ -287,9 +397,6 @@ def _safe_member_path(
 
     if any(part == ".." for part in parts):
         raise ValueError(f"archive traversal is forbidden: {member.name}")
-
-    if member.issym() or member.islnk():
-        raise ValueError(f"archive links are forbidden: {member.name}")
 
     if member.ischr() or member.isblk() or member.isfifo():
         raise ValueError(f"archive special files are forbidden: {member.name}")
