@@ -17,6 +17,11 @@ from lea.runtime.contracts import (
     SecretPaths,
 )
 from lea.runtime.health import check_runtime_health
+from lea.runtime.layouts import (
+    development_runtime_paths,
+    isolated_test_runtime_paths,
+    system_runtime_paths,
+)
 from lea.runtime.loader import load_runtime_config
 from lea.runtime.time import localise_utc_timestamp
 
@@ -36,6 +41,9 @@ __all__ = [
     "SecretPaths",
     "bootstrap_runtime",
     "check_runtime_health",
+    "development_runtime_paths",
+    "isolated_test_runtime_paths",
     "load_runtime_config",
     "localise_utc_timestamp",
+    "system_runtime_paths",
 ]
