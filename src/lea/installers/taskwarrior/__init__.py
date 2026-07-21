@@ -6,6 +6,11 @@ from lea.installers.taskwarrior.activation import (
     render_taskwarrior_installation_record,
     write_taskwarrior_installation_record,
 )
+from lea.installers.taskwarrior.build_execution import (
+    TaskwarriorBuildStepResult,
+    TaskwarriorSourceBuildExecutionResult,
+    execute_taskwarrior_source_build,
+)
 from lea.installers.taskwarrior.build_plan import (
     TaskwarriorBuildDependencyResult,
     TaskwarriorBuildTools,
@@ -74,6 +79,7 @@ from lea.installers.taskwarrior.validation import (
 __all__ = [
     "TaskwarriorActivationResult",
     "TaskwarriorBuildDependencyResult",
+    "TaskwarriorBuildStepResult",
     "TaskwarriorBuildTools",
     "TaskwarriorBundledInstallResult",
     "TaskwarriorExternalInstallResult",
@@ -87,6 +93,7 @@ __all__ = [
     "TaskwarriorRuntimeLayout",
     "TaskwarriorRuntimeLayoutResult",
     "TaskwarriorSmokeTestResult",
+    "TaskwarriorSourceBuildExecutionResult",
     "TaskwarriorSourceBuildPlan",
     "TaskwarriorSourceExtractionResult",
     "TaskwarriorStagedBinary",
@@ -96,6 +103,7 @@ __all__ = [
     "check_directory_parent_writable",
     "create_taskwarrior_source_build_plan",
     "default_taskwarrior_build_tools",
+    "execute_taskwarrior_source_build",
     "extract_taskwarrior_source_archive",
     "install_bundled_taskwarrior",
     "install_external_taskwarrior",
