@@ -10,6 +10,7 @@ from lea.runtime.contracts import (
     SecretPaths,
 )
 from lea.runtime.loader import load_runtime_config
+from lea.runtime.time import localise_utc_timestamp
 
 __all__ = [
     "RUNTIME_SCHEMA_VERSION",
@@ -20,4 +21,5 @@ __all__ = [
     "RuntimeProfile",
     "SecretPaths",
     "load_runtime_config",
+    "localise_utc_timestamp",
 ]
