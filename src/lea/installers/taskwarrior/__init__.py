@@ -13,6 +13,10 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallFailureCode,
     TaskwarriorInstallMode,
 )
+from lea.installers.taskwarrior.installer import (
+    TaskwarriorBundledInstallResult,
+    install_bundled_taskwarrior,
+)
 from lea.installers.taskwarrior.preflight import (
     calculate_sha256,
     check_directory_parent_writable,
@@ -50,6 +54,7 @@ from lea.installers.taskwarrior.validation import (
 
 __all__ = [
     "TaskwarriorActivationResult",
+    "TaskwarriorBundledInstallResult",
     "TaskwarriorInstallFailureCode",
     "TaskwarriorInstallMode",
     "TaskwarriorInstallationRecord",
@@ -64,6 +69,7 @@ __all__ = [
     "activate_staged_taskwarrior",
     "calculate_sha256",
     "check_directory_parent_writable",
+    "install_bundled_taskwarrior",
     "installation_record_matches",
     "is_supported_taskwarrior_version",
     "is_valid_sha256",
