@@ -15,6 +15,16 @@ class RuntimeProfile(StrEnum):
     TEST = "test"
 
 
+class RuntimePathStatus(StrEnum):
+    """Result status for one runtime bootstrap path."""
+
+    WOULD_CREATE = "would_create"
+    CREATED = "created"
+    ALREADY_EXISTS = "already_exists"
+    CONFLICT = "conflict"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimePaths:
     """Canonical filesystem paths used by one LEA runtime."""
@@ -179,6 +189,54 @@ class ConfigurationResult:
         if not self.issues:
             raise ValueError(
                 "A failed configuration result must contain at least one issue."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimePathResult:
+    """Immutable bootstrap result for one runtime directory."""
+
+    path: Path
+    status: RuntimePathStatus
+    message: str
+
+    def __post_init__(self) -> None:
+        """Validate runtime-path result fields."""
+        _validate_absolute_path(
+            self.path,
+            field_name="path",
+        )
+
+        if not self.message.strip():
+            raise ValueError("Runtime path result message must be non-empty.")
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeBootstrapResult:
+    """Immutable result of bootstrapping runtime directories."""
+
+    success: bool
+    dry_run: bool
+    paths: tuple[RuntimePathResult, ...]
+
+    def __post_init__(self) -> None:
+        """Validate bootstrap-result consistency."""
+        failure_statuses = {
+            RuntimePathStatus.CONFLICT,
+            RuntimePathStatus.FAILED,
+        }
+        has_failure = any(result.status in failure_statuses for result in self.paths)
+
+        if self.success and has_failure:
+            raise ValueError(
+                "A successful bootstrap result must not contain "
+                "conflicting or failed paths."
+            )
+
+        if not self.success and not has_failure:
+            raise ValueError(
+                "A failed bootstrap result must contain at least one "
+                "conflicting or failed path."
             )
 
 
