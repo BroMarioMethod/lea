@@ -397,6 +397,57 @@ class RuntimeSetupResult:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class RuntimeSetupVerificationResult:
+    """Immutable result of runtime setup and health verification."""
+
+    verified: bool
+    dry_run: bool
+    setup: RuntimeSetupResult
+    health: RuntimeHealthResult | None
+
+    def __post_init__(self) -> None:
+        """Validate setup-verification result consistency."""
+        if self.setup.dry_run != self.dry_run:
+            raise ValueError(
+                "The setup result dry-run value must match the verification result."
+            )
+
+        if not self.setup.success:
+            if self.health is not None:
+                raise ValueError(
+                    "Runtime health must not be checked after setup fails."
+                )
+
+            if self.verified:
+                raise ValueError("A failed runtime setup must not be verified.")
+
+            return
+
+        if self.dry_run:
+            if self.health is not None:
+                raise ValueError(
+                    "Dry-run setup must not produce a runtime health result."
+                )
+
+            if self.verified:
+                raise ValueError(
+                    "Dry-run setup must not claim that the runtime was verified."
+                )
+
+            return
+
+        if self.health is None:
+            raise ValueError(
+                "Successful real setup must include a runtime health result."
+            )
+
+        if self.verified != self.health.healthy:
+            raise ValueError(
+                "Runtime verification status must match the health result."
+            )
+
+
 def _validate_absolute_path(
     path: Path,
     *,
