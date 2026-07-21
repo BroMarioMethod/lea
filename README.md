@@ -163,6 +163,7 @@ Detailed guidance:
 
 ```text
 docs/08_RUNTIME_CONFIGURATION.md
+docs/09_PROPOSAL_REPOSITORY.md
 ```
 
 ## Quality checks
@@ -210,6 +211,7 @@ Current accepted or completed standards and specifications include:
 - `LEA-SPEC-0007` — Audit Integrity and Verification Specification
 - `LEA-SPEC-0008` — Action Orchestration Service Specification
 - `LEA-SPEC-0009` — Runtime Layout and Configuration Specification
+- `LEA-SPEC-0010` — Persistent Proposal Repository Specification
 
 Operational guides:
 

@@ -3,7 +3,7 @@ license: AGPL-3.0-only
 id: LEA-SPEC-0010
 title: Persistent Proposal Repository Specification
 version: 0.1.1
-status: Accepted
+status: Complete
 review_required: false
 ---
 
@@ -13,10 +13,10 @@ review_required: false
 
 | Item | Value |
 |---|---|
-| Status | Accepted |
+| Status | Complete |
 | Requires Review | No |
-| Implementation | Not Started |
-| Test Status | Not Tested |
+| Implementation | Complete |
+| Test Status | 803 tests passing |
 
 ## 1. Purpose
 
@@ -565,3 +565,23 @@ Milestone 2.1 shall not provide:
 - state-history projection;
 - domain-tool integration;
 - user-facing proposal browser.
+
+## 23. Implementation record
+
+Milestone 2.1 was completed with:
+
+- immutable repository contracts;
+- deterministic Markdown rendering and strict parsing;
+- lossless handling of absent, literal-placeholder, multiline, and Markdown-like reasons;
+- canonical UUID path derivation;
+- atomic exclusive creation without overwrite;
+- exact retrieval and identity agreement;
+- deterministic complete listing;
+- read-only whole-repository verification;
+- runtime integration through `RuntimePaths.proposal_dir`;
+- backup, restore, corruption-detection, and reconstruction tests;
+- operator documentation in `docs/09_PROPOSAL_REPOSITORY.md`.
+
+The complete repository quality gate passes with 803 tests.
+
+The implemented repository remains intentionally immutable and single-writer. Audit reconciliation, resumable operations, automatic backup, and domain-tool integration remain future work.
