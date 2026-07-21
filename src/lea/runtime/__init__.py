@@ -10,6 +10,8 @@ from lea.runtime.contracts import (
     RuntimeHealthIssue,
     RuntimeHealthResult,
     RuntimeHealthStatus,
+    RuntimeInitialisationResult,
+    RuntimeInitialisationStatus,
     RuntimePathResult,
     RuntimePaths,
     RuntimePathStatus,
@@ -17,6 +19,7 @@ from lea.runtime.contracts import (
     SecretPaths,
 )
 from lea.runtime.health import check_runtime_health
+from lea.runtime.initialisation import initialise_runtime_config
 from lea.runtime.layouts import (
     development_runtime_paths,
     isolated_test_runtime_paths,
@@ -43,6 +46,8 @@ __all__ = [
     "RuntimeHealthIssue",
     "RuntimeHealthResult",
     "RuntimeHealthStatus",
+    "RuntimeInitialisationResult",
+    "RuntimeInitialisationStatus",
     "RuntimePathResult",
     "RuntimePathStatus",
     "RuntimePaths",
@@ -52,6 +57,7 @@ __all__ = [
     "check_runtime_health",
     "development_runtime_config",
     "development_runtime_paths",
+    "initialise_runtime_config",
     "isolated_test_runtime_config",
     "isolated_test_runtime_paths",
     "load_runtime_config",

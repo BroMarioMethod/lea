@@ -33,6 +33,16 @@ class RuntimeHealthStatus(StrEnum):
     FAILED = "failed"
 
 
+class RuntimeInitialisationStatus(StrEnum):
+    """Status of runtime configuration initialisation."""
+
+    WOULD_CREATE = "would_create"
+    CREATED = "created"
+    ALREADY_EXISTS = "already_exists"
+    CONFLICT = "conflict"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimePaths:
     """Canonical filesystem paths used by one LEA runtime."""
@@ -297,6 +307,54 @@ class RuntimeHealthResult:
         if not self.healthy and not has_failure:
             raise ValueError(
                 "An unhealthy runtime result must contain at least one failed check."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeInitialisationResult:
+    """Immutable result of runtime configuration initialisation."""
+
+    success: bool
+    dry_run: bool
+    status: RuntimeInitialisationStatus
+    destination: Path
+    message: str
+
+    def __post_init__(self) -> None:
+        """Validate initialisation-result consistency."""
+        _validate_absolute_path(
+            self.destination,
+            field_name="destination",
+        )
+
+        if not self.message.strip():
+            raise ValueError("Runtime initialisation message must be non-empty.")
+
+        successful_statuses = {
+            RuntimeInitialisationStatus.WOULD_CREATE,
+            RuntimeInitialisationStatus.CREATED,
+        }
+
+        if self.success and self.status not in successful_statuses:
+            raise ValueError(
+                "A successful initialisation result must use a successful status."
+            )
+
+        if not self.success and self.status in successful_statuses:
+            raise ValueError(
+                "A failed initialisation result must use a failure status."
+            )
+
+        if self.dry_run and self.status is RuntimeInitialisationStatus.CREATED:
+            raise ValueError(
+                "A dry-run initialisation result must not report a "
+                "created configuration."
+            )
+
+        if not self.dry_run and self.status is RuntimeInitialisationStatus.WOULD_CREATE:
+            raise ValueError(
+                "A non-dry-run initialisation result must not report "
+                "that it would create a configuration."
             )
 
 
