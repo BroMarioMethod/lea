@@ -1,6 +1,8 @@
 """Tests for the public LEA entry point."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from io import StringIO
+from typing import TextIO
 
 import pytest
 
@@ -11,6 +13,7 @@ from lea.main import (
     EXIT_CONFIGURATION_ERROR,
     EXIT_INTERNAL_ERROR,
     EXIT_SUCCESS,
+    dispatch,
     execute,
 )
 
@@ -33,6 +36,41 @@ def application_failure_runner(config: AppConfig) -> None:
 def unexpected_failure_runner(config: AppConfig) -> None:
     """Raise an unexpected internal exception."""
     raise RuntimeError("Unexpected failure.")
+
+
+def unexpected_application_runner(config: AppConfig) -> None:
+    """Fail when application execution was not expected."""
+    raise AssertionError("The application runner should not have been called.")
+
+
+def successful_runtime_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Record one successful runtime CLI invocation."""
+    assert tuple(arguments) == (
+        "inspect",
+        "--config",
+        "/etc/lea/lea.toml",
+    )
+    stdout.write("Runtime command completed.\n")
+    assert stderr.write("") == 0
+    return EXIT_SUCCESS
+
+
+def failing_runtime_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Return one runtime command failure."""
+    assert tuple(arguments) == ("health",)
+    assert stdout.write("") == 0
+    stderr.write("Runtime command failed.\n")
+    return EXIT_APPLICATION_ERROR
 
 
 @pytest.fixture
@@ -80,3 +118,102 @@ def test_execute_returns_internal_error(
 ) -> None:
     """Unexpected failures should return software-error status."""
     assert execute(test_environment, unexpected_failure_runner) == EXIT_INTERNAL_ERROR
+
+
+def test_dispatch_without_arguments_runs_application(
+    test_environment: Mapping[str, str],
+) -> None:
+    """No command arguments should preserve application startup."""
+    exit_code = dispatch(
+        [],
+        test_environment,
+        application_runner=successful_runner,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+
+
+def test_dispatch_runtime_command_uses_runtime_cli(
+    test_environment: Mapping[str, str],
+) -> None:
+    """Runtime arguments should be routed without the prefix."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "runtime",
+            "inspect",
+            "--config",
+            "/etc/lea/lea.toml",
+        ],
+        test_environment,
+        application_runner=unexpected_application_runner,
+        runtime_cli_runner=successful_runtime_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Runtime command completed.\n"
+    assert stderr.getvalue() == ""
+
+
+def test_dispatch_preserves_runtime_exit_code(
+    test_environment: Mapping[str, str],
+) -> None:
+    """Runtime command failures should preserve their exit status."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "runtime",
+            "health",
+        ],
+        test_environment,
+        application_runner=unexpected_application_runner,
+        runtime_cli_runner=failing_runtime_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_APPLICATION_ERROR
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == "Runtime command failed.\n"
+
+
+def test_dispatch_runtime_does_not_require_application_config() -> None:
+    """Runtime commands should not load legacy application settings."""
+    exit_code = dispatch(
+        [
+            "runtime",
+            "inspect",
+            "--config",
+            "/etc/lea/lea.toml",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        runtime_cli_runner=successful_runtime_runner,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+
+
+def test_non_runtime_arguments_preserve_existing_application_path(
+    test_environment: Mapping[str, str],
+) -> None:
+    """Unknown top-level arguments should preserve prior behaviour."""
+    exit_code = dispatch(
+        ["unexpected"],
+        test_environment,
+        application_runner=successful_runner,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert exit_code == EXIT_SUCCESS
