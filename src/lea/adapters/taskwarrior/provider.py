@@ -21,6 +21,7 @@ from lea.tasks import (
     TaskMutationResult,
     TaskProviderInspectionResult,
     TaskProviderIssue,
+    TaskStatus,
 )
 
 _PROVIDER = "taskwarrior"
@@ -160,17 +161,52 @@ class TaskwarriorCliProvider:
         self,
         task_uuid: str,
     ) -> TaskMutationResult:
-        """Reject completion until the completion slice is implemented."""
-        return TaskMutationResult(
-            success=False,
-            task=None,
-            issues=(
-                _not_implemented_issue(
-                    operation="complete",
-                    task_uuid=task_uuid,
-                ),
-            ),
+        """Complete one exact task and read back canonical provider state."""
+        if not _is_canonical_uuid(task_uuid):
+            return _mutation_failure(
+                code="taskwarrior_task_uuid_invalid",
+                message="The task UUID is not canonical.",
+                operation="complete",
+                task_uuid=None,
+            )
+
+        run_result = self._runner.run(
+            (task_uuid, "done"),
+            operation="complete",
         )
+
+        if not run_result.success:
+            return TaskMutationResult(
+                success=False,
+                task=None,
+                issues=run_result.issues,
+            )
+
+        if run_result.command is None:
+            return _mutation_failure(
+                code="taskwarrior_complete_failed",
+                message=("Taskwarrior completion succeeded without a command result."),
+                operation="complete",
+                task_uuid=task_uuid,
+            )
+
+        result = self._read_mutated_task(
+            task_uuid,
+            operation="complete",
+        )
+
+        if not result.success or result.task is None:
+            return result
+
+        if result.task.status is not TaskStatus.COMPLETED:
+            return _mutation_failure(
+                code="taskwarrior_complete_readback_status_invalid",
+                message=("Taskwarrior read-back did not return a completed task."),
+                operation="complete",
+                task_uuid=task_uuid,
+            )
+
+        return result
 
     def delete_task(
         self,
@@ -438,7 +474,7 @@ def _mutation_failure(
     code: str,
     message: str,
     operation: str,
-    task_uuid: str,
+    task_uuid: str | None,
 ) -> TaskMutationResult:
     """Construct one deterministic failed task mutation."""
     return TaskMutationResult(

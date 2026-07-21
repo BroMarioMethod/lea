@@ -245,21 +245,18 @@ def test_list_preserves_parser_failure(
     assert result.issues[0].code == "taskwarrior_export_invalid_json"
 
 
-def test_complete_and_delete_are_read_only(
+def test_delete_is_read_only(
     tmp_path: Path,
 ) -> None:
-    """Unimplemented mutations should not invoke Taskwarrior."""
+    """Deletion should remain disabled without invoking Taskwarrior."""
     runner = RecordingRunner(successful_run("[]"))
     provider = TaskwarriorCliProvider(
         make_config(tmp_path),
         runner=runner,  # type: ignore[arg-type]
     )
 
-    complete = provider.complete_task(TASK_UUID)
     delete = provider.delete_task(TASK_UUID)
 
-    assert complete.success is False
     assert delete.success is False
-    assert complete.issues[0].operation == "complete"
     assert delete.issues[0].operation == "delete"
     assert runner.calls == []
