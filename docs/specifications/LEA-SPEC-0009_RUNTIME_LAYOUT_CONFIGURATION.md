@@ -1,8 +1,8 @@
 ---
 id: LEA-SPEC-0009
 title: Runtime Layout and Configuration Specification
-version: 0.1.1
-status: Accepted
+version: 0.2.0
+status: Complete
 review_required: false
 ---
 
@@ -12,123 +12,98 @@ review_required: false
 
 | Item | Value |
 |---|---|
-| Status | Accepted |
+| Status | Complete |
 | Requires Review | No |
-| Implementation | Not Started |
-| Test Status | Not Tested |
+| Implementation | Complete |
+| Test Status | 663 repository tests passing |
 
 ## 1. Purpose
 
-This specification defines LEA's runtime filesystem layout and deterministic configuration loading.
+This specification defines LEA's runtime filesystem layout, deterministic configuration loading, safe setup, health checking, inspection, reporting and administration commands.
 
 The runtime layout separates source-controlled project files from deployed state, personal data, secrets, logs and generated indexes.
 
-Milestone 2.0 provides the foundation required before persistent proposal storage, Taskwarrior integration, messaging adapters and test-user deployment.
-
 ## 2. Scope
 
-Milestone 2.0 shall provide:
+Milestone 2.0 provides:
 
-- canonical runtime path contracts;
-- a deterministic TOML configuration schema;
-- explicit development and system deployment profiles;
-- configuration loading from an explicitly supplied path;
-- deterministic validation of configuration values;
-- runtime directory bootstrap;
-- runtime health checks;
-- UTC storage with local-time presentation support;
-- explicit secret-path references without secret values in configuration;
-- no hidden fallback to repository-relative runtime state;
-- no automatic network access;
-- no external tool execution.
+- immutable runtime path and configuration contracts;
+- strict UTF-8 TOML loading from an explicit absolute path;
+- system, development and test profiles;
+- deterministic TOML templates and serialisation;
+- safe configuration initialisation without accidental overwrite;
+- runtime-directory bootstrap with dry-run support;
+- read-only runtime health checks;
+- coordinated setup and post-setup verification;
+- read-only configuration inspection;
+- deterministic human-readable reports;
+- `lea runtime` command handling and top-level dispatch;
+- timezone-aware UTC storage with IANA local-time presentation;
+- secret-file path references without secret values;
+- no automatic network access or external tool execution.
 
 ## 3. Non-goals
 
-Milestone 2.0 shall not provide:
-
-- persistent proposal storage;
-- Taskwarrior integration;
-- Telegram or LAN messaging;
-- AI model loading;
-- plugin discovery;
-- automatic service installation;
-- operating-system user creation;
-- package installation;
-- secret generation or encryption;
-- backup execution;
-- migration of existing personal data;
-- multi-user runtime isolation;
-- container deployment.
+Milestone 2.0 does not provide persistent proposal storage, Taskwarrior integration, messaging adapters, AI model loading, plugin discovery, service installation, operating-system user creation, package installation, secret generation or encryption, backup execution, personal-data migration, multi-user isolation or container deployment.
 
 ## 4. Design principles
 
-The runtime configuration system shall be:
+The runtime system is deterministic, explicit, immutable after loading, independent of the current working directory, strict about unknown and missing fields, testable without root privileges and free from embedded secrets.
 
-- deterministic;
-- explicit;
-- immutable after successful loading;
-- independent of the current working directory;
-- safe against accidental repository data pollution;
-- testable without root privileges;
-- suitable for DietPi and other Debian-family Linux systems;
-- readable by humans;
-- strict about unknown and missing fields;
-- free from embedded secrets.
+## 5. Canonical profiles
 
-## 5. Deployment profiles
-
-### 5.1 System profile
-
-Recommended system deployment paths:
+### 5.1 System
 
 ```text
-/etc/lea/                 Configuration
-/var/lib/lea/             Persistent application state
-/var/log/lea/             Application logs
-/run/lea/                 Ephemeral runtime state
-```
-
-Suggested subdirectories:
-
-```text
-/etc/lea/
-    lea.toml
-    secrets/
-
+/etc/lea/lea.toml
 /var/lib/lea/
-    audit/
-    proposals/
-    knowledge/
-    indexes/
-    adapters/
-    backups/
-
 /var/log/lea/
-    lea.log
-
 /run/lea/
-    lea.pid
-    sockets/
 ```
 
-### 5.2 Development profile
-
-Development and tests shall support explicitly supplied non-root paths such as:
+Persistent state:
 
 ```text
-<workspace>/.runtime/etc/
-<workspace>/.runtime/state/
-<workspace>/.runtime/log/
-<workspace>/.runtime/run/
+/var/lib/lea/audit/
+/var/lib/lea/proposals/
+/var/lib/lea/knowledge/
+/var/lib/lea/indexes/
+/var/lib/lea/adapters/
+/var/lib/lea/backups/
 ```
 
-Development runtime paths shall remain excluded from Git. Production code shall not assume that the repository root is the runtime root.
+Configured data files:
 
-## 6. Configuration file
+```text
+/var/lib/lea/audit/actions-integrity.jsonl
+/var/log/lea/lea.log
+```
 
-The initial configuration format shall be TOML. The canonical configuration file shall be explicitly supplied to the loader.
+### 5.2 Development
 
-Example:
+For an explicitly supplied workspace root:
+
+```text
+<workspace>/.lea/config/lea.toml
+<workspace>/.lea/state/
+<workspace>/.lea/log/
+<workspace>/.lea/run/
+```
+
+The `.lea/` directory must remain excluded from Git.
+
+### 5.3 Test
+
+For an explicitly supplied isolated root:
+
+```text
+<test-root>/config/lea.toml
+<test-root>/state/
+<test-root>/log/
+<test-root>/run/
+```
+
+## 6. TOML configuration
 
 ```toml
 schema_version = 1
@@ -154,225 +129,118 @@ log_file = "/var/log/lea/lea.log"
 telegram_token_file = "/etc/lea/secrets/telegram-bot-token"
 ```
 
-Unknown fields shall fail closed.
+Unknown and missing fields fail closed.
 
-## 7. Public contracts
+## 7. Path and relationship rules
 
-### 7.1 RuntimeProfile
+Runtime paths:
 
-A stable `StrEnum` shall identify `system`, `development` and `test` profiles.
+- are absolute;
+- reject empty values and embedded null bytes;
+- do not depend on the current working directory;
+- preserve symbolic links during parsing;
+- need not exist during pure loading.
 
-### 7.2 RuntimePaths
+The implementation requires the audit file to be inside `audit_dir`, the log file to be inside `log_dir`, and persistent directories not to be nested under `run_dir`.
 
-An immutable `RuntimePaths` contract shall contain canonical absolute paths for:
+## 8. Loading and validation
 
-- configuration file;
-- state directory;
-- log directory;
-- run directory;
-- audit directory;
-- proposal directory;
-- knowledge directory;
-- index directory;
-- adapter directory;
-- backup directory;
-- audit file;
-- log file.
+The loader reads one explicit UTF-8 TOML file, validates schema version, required and unknown fields, profile values, paths, path relationships and IANA timezone identifiers, then returns an immutable `ConfigurationResult`.
 
-### 7.3 SecretPaths
+It does not search fallback locations, read environment variables implicitly, create directories, read secret contents or mutate global state.
 
-An immutable `SecretPaths` contract shall contain paths to secret files and shall not contain secret values.
+## 9. Templates, serialisation and initialisation
 
-### 7.4 RuntimeConfig
+Canonical templates are available for all profiles.
 
-An immutable `RuntimeConfig` contract shall contain schema version, runtime profile, display timezone, `RuntimePaths` and `SecretPaths`.
+Serialisation is deterministic, uses UTF-8 and LF line endings, ends with one newline, emits secret paths only and omits an unused secrets table.
 
-### 7.5 Configuration result
+Configuration initialisation requires an existing parent directory and refuses to overwrite an existing destination.
 
-Configuration loading shall return either a valid immutable configuration or a structured failure with stable code, message, field or path where available, and source configuration path where available.
+## 10. Time handling
 
-## 8. Path rules
+Persistent timestamps remain timezone-aware UTC. `display_timezone` affects presentation only.
 
-Configured runtime paths shall:
+The presentation utility preserves the represented instant and rejects naive or non-UTC input.
 
-- be absolute;
-- be normalised without relying on the current working directory;
-- reject embedded null bytes;
-- reject empty values;
-- preserve symbolic links rather than resolving them silently during parsing;
-- not require the target path to exist during pure configuration parsing;
-- be checked for existence and permissions by a separate health-check step.
+## 11. Bootstrap
 
-## 9. Directory relationships
+Bootstrap explicitly creates missing runtime directories, preserves existing directories, rejects non-directory conflicts, supports dry-run mode and reports every inspected path.
 
-At minimum:
+It does not create configuration, audit, log or secret files and performs no network access.
 
-- the audit file shall be inside the configured audit directory;
-- the log file shall be inside the configured log directory;
-- persistent directories shall not be nested under the run directory;
-- system-profile runtime state shall not be stored inside the source repository;
-- development-profile paths may be placed inside an explicitly designated ignored runtime directory.
+## 12. Health checks
 
-Validation shall compare normalised path components and avoid unsafe string-prefix comparisons.
+Read-only health checks report configuration readability, directory existence and type, required access, output-file parent availability, optional secret-file presence, timezone availability and path-separation violations.
 
-## 10. Configuration loading
+Health checking never repairs, creates or deletes anything.
 
-The loader shall:
+## 13. Setup, verification and inspection
 
-1. receive an explicit configuration path;
-2. read UTF-8 TOML;
-3. reject malformed TOML;
-4. require the supported schema version;
-5. reject missing required fields;
-6. reject unknown fields;
-7. validate enum values;
-8. validate timezone identifiers;
-9. construct immutable path contracts;
-10. return a structured result.
+`setup_runtime` initialises configuration first and runs bootstrap only after successful initialisation.
 
-The loader shall not search multiple default locations, read environment variables implicitly, create directories, read secret contents, connect to external services or mutate global state.
+`setup_and_verify_runtime` runs a health check only after successful live setup. Dry-run setup never claims verification.
 
-## 11. Time handling
+`inspect_runtime` loads one explicit configuration and optionally includes a read-only health check.
 
-Persistent timestamps shall remain timezone-aware UTC values. The configuration shall include an IANA display timezone such as `Africa/Gaborone`.
+## 14. Runtime command line
 
-A presentation utility shall convert UTC timestamps to the configured display timezone while preserving the represented instant and rejecting naive input.
+Existing application startup remains:
 
-## 12. Runtime bootstrap
+```bash
+lea
+```
 
-A deterministic bootstrap operation shall create configured directories only when explicitly requested.
+Runtime administration is available through:
 
-It shall:
+```bash
+lea runtime inspect
+lea runtime health
+lea runtime initialise
+lea runtime bootstrap
+lea runtime setup
+lea runtime verify
+```
 
-- create missing directories only;
-- preserve existing directories and files;
-- refuse paths that conflict with existing non-directory entries;
-- report every created and pre-existing path;
-- support dry-run mode;
-- avoid creating secret files;
-- avoid overwriting configuration;
-- perform no network access.
+The equivalent package route is:
 
-Bootstrap shall not run implicitly during configuration loading.
+```bash
+python -m lea runtime --help
+```
 
-## 13. Health checks
+Mutation-capable commands support `--dry-run`.
 
-A read-only runtime health check shall report:
+Exit statuses:
 
-- configuration-file readability;
-- directory existence and type;
-- read and write permission where required;
-- audit-file and log-file parent availability;
-- secret-file presence without exposing content;
-- display-timezone validity;
-- runtime-path separation violations.
+```text
+0   Success
+1   Runtime or application failure
+2   Configuration or command-usage failure
+70  Unexpected failure in the existing application path
+```
 
-Health checks shall not repair, create or delete anything.
+## 15. Secret handling
 
-## 14. Secret handling
+Configuration and reports contain secret-file paths only. Secret contents are not read by Milestone 2.0 and must not be committed, logged or embedded in TOML.
 
-Secret values shall not appear in Git-tracked configuration, logs, diagnostic bundles, exception messages, Markdown knowledge or audit payloads unless a later accepted specification explicitly requires it.
+## 16. Security considerations
 
-Configuration may reference secret-file paths. Reading secret values is outside Milestone 2.0.
+The implementation avoids shell command construction, implicit environment expansion, silent repair, permissive fallback and accidental configuration overwrite. Filesystem ownership and least-privilege permissions remain operator responsibilities.
 
-## 15. Failure behaviour
+## 17. Testing
 
-Stable issue codes shall distinguish at least:
+Coverage includes contracts, layouts, strict loading, serialisation round trips, timezone conversion, initialisation, bootstrap, health checks, setup, verification, inspection, reporting, CLI parsing, dispatch, exit codes and no unintended filesystem mutation.
 
-- configuration_not_found;
-- configuration_not_readable;
-- malformed_toml;
-- unsupported_schema_version;
-- missing_field;
-- unknown_field;
-- invalid_profile;
-- invalid_path;
-- invalid_path_relationship;
-- invalid_timezone;
-- runtime_path_missing;
-- runtime_path_not_directory;
-- runtime_path_not_readable;
-- runtime_path_not_writable;
-- secret_file_missing.
+At completion, all 663 repository tests pass.
 
-## 16. Immutability
+## 18. Documentation
 
-Public configuration and result contracts shall use frozen dataclasses with slots. Exposed mappings and sequences shall be deeply immutable or represented by immutable tuples and dedicated contracts.
+Operator guidance is provided in:
 
-## 17. Security considerations
+```text
+docs/08_RUNTIME_CONFIGURATION.md
+```
 
-The implementation shall:
+## 19. Known limitations
 
-- reject relative production runtime paths;
-- avoid shell command construction;
-- avoid implicit environment-variable expansion;
-- avoid logging secret contents;
-- separate parsing, bootstrap and health-check operations;
-- avoid silent repair;
-- avoid permissive fallbacks after configuration errors.
-
-Directory permission guidance shall follow least privilege.
-
-## 18. Testing requirements
-
-Automated tests shall cover at least:
-
-- valid system, development and test configuration;
-- malformed TOML;
-- missing configuration file;
-- unsupported schema version;
-- unknown top-level and nested fields;
-- missing required fields;
-- invalid profile;
-- relative and empty paths;
-- invalid audit-file and log-file relationships;
-- repository/runtime separation;
-- valid and invalid IANA timezones;
-- UTC-to-local conversion;
-- naive timestamp rejection;
-- immutable contracts;
-- bootstrap creation, idempotence and dry run;
-- conflicting non-directory paths;
-- complete and incomplete health checks;
-- missing secret file;
-- no secret-content reads;
-- no filesystem mutation during health checks;
-- no current-working-directory dependency;
-- no implicit environment-variable loading.
-
-The full repository quality gate shall pass before completion.
-
-## 19. Documentation requirements
-
-Completion documentation shall include:
-
-- system and development layouts;
-- example TOML configuration;
-- runtime bootstrap and health-check instructions;
-- file and directory permission guidance;
-- secret-file guidance;
-- timezone behaviour;
-- backup boundaries;
-- known limitations.
-
-## 20. Known limitations
-
-Milestone 2.0 shall not provide encrypted secret storage, secret rotation, backup scheduling, service management, multi-user isolation, automatic migration, remote configuration, hot reload, container layouts, or Windows/macOS deployment standards.
-
-## 21. Acceptance criteria
-
-Milestone 2.0 is complete when:
-
-- this specification is accepted;
-- immutable runtime configuration contracts are implemented;
-- explicit TOML loading is implemented;
-- unknown and missing fields fail closed;
-- runtime paths are validated independently of the current working directory;
-- system and development profiles are supported;
-- UTC-to-local presentation is implemented;
-- deterministic bootstrap is implemented;
-- read-only health checking is implemented;
-- secret paths are referenced without reading or storing secret values;
-- example configuration and operational documentation are complete;
-- all automated tests and repository quality checks pass.
-
+Milestone 2.0 does not provide encrypted secret storage, secret rotation, backup execution or scheduling, service management, multi-user isolation, automatic migration, remote configuration, hot reload, container layouts, Windows or macOS deployment standards, configuration-parent creation or permission repair.
