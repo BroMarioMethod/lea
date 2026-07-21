@@ -65,19 +65,48 @@ def validate_staged_taskwarrior_binary(
     if not isinstance(staged, TaskwarriorStagedBinary):
         raise TypeError("staged must be a TaskwarriorStagedBinary value.")
 
+    return validate_taskwarrior_executable(
+        staged.executable,
+        temporary_parent=staged.staging_root,
+        timeout_seconds=timeout_seconds,
+        provider_factory=provider_factory,
+    )
+
+
+def validate_taskwarrior_executable(
+    executable: Path,
+    *,
+    temporary_parent: Path,
+    timeout_seconds: float = 10.0,
+    provider_factory: _PROVIDER_FACTORY = TaskwarriorCliProvider,
+) -> TaskwarriorSmokeTestResult:
+    """Validate one exact executable in disposable isolated storage."""
+    if not isinstance(executable, Path):
+        raise TypeError("executable must be a pathlib.Path value.")
+
+    if not isinstance(temporary_parent, Path):
+        raise TypeError("temporary_parent must be a pathlib.Path value.")
+
+    if not executable.is_absolute():
+        raise ValueError("executable must be absolute.")
+
+    if not temporary_parent.is_absolute():
+        raise ValueError("temporary_parent must be absolute.")
+
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be greater than zero.")
 
+    temporary_parent.mkdir(parents=True, exist_ok=True)
     temporary_root = Path(
         tempfile.mkdtemp(
             prefix=".taskwarrior-smoke-",
-            dir=staged.staging_root,
+            dir=temporary_parent,
         )
     )
 
     try:
         config = _create_isolated_config(
-            executable=staged.executable,
+            executable=executable,
             temporary_root=temporary_root,
             timeout_seconds=timeout_seconds,
         )
