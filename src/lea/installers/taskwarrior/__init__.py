@@ -13,6 +13,10 @@ from lea.installers.taskwarrior.preflight import (
     run_taskwarrior_installer_preflight,
     verify_expected_sha256,
 )
+from lea.installers.taskwarrior.smoke_test import (
+    TaskwarriorSmokeTestResult,
+    validate_staged_taskwarrior_binary,
+)
 from lea.installers.taskwarrior.staging import (
     TaskwarriorStagedBinary,
     TaskwarriorStagingResult,
@@ -33,6 +37,7 @@ __all__ = [
     "TaskwarriorInstallerConfig",
     "TaskwarriorInstallerIssue",
     "TaskwarriorInstallerValidationResult",
+    "TaskwarriorSmokeTestResult",
     "TaskwarriorStagedBinary",
     "TaskwarriorStagingResult",
     "calculate_sha256",
@@ -44,6 +49,7 @@ __all__ = [
     "run_taskwarrior_installer_preflight",
     "stage_taskwarrior_binary",
     "validate_external_executable_path",
+    "validate_staged_taskwarrior_binary",
     "validate_taskwarrior_installer_config",
     "verify_expected_sha256",
 ]
