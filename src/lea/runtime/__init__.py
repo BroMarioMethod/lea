@@ -30,6 +30,7 @@ from lea.runtime.layouts import (
     system_runtime_paths,
 )
 from lea.runtime.loader import load_runtime_config
+from lea.runtime.proposal_repository import runtime_proposal_repository
 from lea.runtime.reporting import (
     format_bootstrap_result,
     format_configuration_result,
@@ -91,6 +92,7 @@ __all__ = [
     "load_runtime_config",
     "localise_utc_timestamp",
     "render_runtime_config",
+    "runtime_proposal_repository",
     "setup_and_verify_runtime",
     "setup_runtime",
     "system_runtime_config",
