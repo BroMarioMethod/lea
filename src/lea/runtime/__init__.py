@@ -16,6 +16,7 @@ from lea.runtime.contracts import (
     RuntimePaths,
     RuntimePathStatus,
     RuntimeProfile,
+    RuntimeSetupResult,
     SecretPaths,
 )
 from lea.runtime.health import check_runtime_health
@@ -30,6 +31,7 @@ from lea.runtime.serialisation import (
     render_runtime_config,
     write_runtime_config,
 )
+from lea.runtime.setup import setup_runtime
 from lea.runtime.templates import (
     development_runtime_config,
     isolated_test_runtime_config,
@@ -52,6 +54,7 @@ __all__ = [
     "RuntimePathStatus",
     "RuntimePaths",
     "RuntimeProfile",
+    "RuntimeSetupResult",
     "SecretPaths",
     "bootstrap_runtime",
     "check_runtime_health",
@@ -63,6 +66,7 @@ __all__ = [
     "load_runtime_config",
     "localise_utc_timestamp",
     "render_runtime_config",
+    "setup_runtime",
     "system_runtime_config",
     "system_runtime_paths",
     "write_runtime_config",

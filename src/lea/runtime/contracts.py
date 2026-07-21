@@ -358,6 +358,45 @@ class RuntimeInitialisationResult:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class RuntimeSetupResult:
+    """Immutable result of coordinated runtime setup."""
+
+    success: bool
+    dry_run: bool
+    initialisation: RuntimeInitialisationResult
+    bootstrap: RuntimeBootstrapResult | None
+
+    def __post_init__(self) -> None:
+        """Validate combined setup-result consistency."""
+        if self.initialisation.dry_run != self.dry_run:
+            raise ValueError(
+                "The initialisation result dry-run value must match the setup result."
+            )
+
+        if self.bootstrap is not None and self.bootstrap.dry_run != self.dry_run:
+            raise ValueError(
+                "The bootstrap result dry-run value must match the setup result."
+            )
+
+        expected_success = (
+            self.initialisation.success
+            and self.bootstrap is not None
+            and self.bootstrap.success
+        )
+
+        if self.success != expected_success:
+            raise ValueError(
+                "Runtime setup success must match its underlying operation results."
+            )
+
+        if not self.initialisation.success and self.bootstrap is not None:
+            raise ValueError(
+                "Runtime bootstrap must not run after configuration "
+                "initialisation fails."
+            )
+
+
 def _validate_absolute_path(
     path: Path,
     *,
