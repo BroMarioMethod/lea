@@ -6,7 +6,7 @@ status: Accepted
 authors:
   - Marius du Preez
   - OpenAI ChatGPT
-license: GPL-3.0-only
+license: AGPL-3.0-only
 created: 2026-07-18
 last_updated: 2026-07-20
 review_required: false

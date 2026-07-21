@@ -6,7 +6,7 @@ status: Accepted
 authors:
   - Marius du Preez
   - OpenAI ChatGPT
-license: GPL-3.0
+license: AGPL-3.0-only
 created: 2026-07-18
 last_updated: 2026-07-18
 review_required: false
@@ -460,4 +460,4 @@ A future Deployment Layout Standard SHALL define predictable Linux locations for
 
 - RFC 2119 — Key words for use in RFCs to Indicate Requirement Levels
 - RFC 8174 — Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words
-- GNU General Public License, version 3
+- GNU Affero General Public License, version 3 only

@@ -2,7 +2,7 @@
 name = "lea"
 version = "0.1.0"
 description = "A local-first, specification-driven personal operating system for knowledge work."
-license = "GPL-3.0-only"
+license = "AGPL-3.0-only"
 readme = "README.md"
 authors = [
     { name = "Marius du Preez" },

@@ -129,7 +129,7 @@ test: cover repository path conflicts
 refactor: separate workflow validation
 ci: add automated quality checks
 build: establish Python development foundation
-legal: add GPL-3.0-only licence
+legal: add AGPL-3.0-only licence
 ```
 
 Common commit types include:
@@ -310,7 +310,7 @@ When a security concern could expose user data or system access, do not publish 
 
 ## Licensing
 
-By contributing to LEA, contributors agree that their contributions will be distributed under the GNU General Public License version 3 only.
+By contributing to LEA, contributors agree that their contributions will be distributed under the GNU Affero General Public License version 3 only.
 
 See:
 
