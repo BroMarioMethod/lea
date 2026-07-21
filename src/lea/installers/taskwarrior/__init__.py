@@ -43,6 +43,12 @@ from lea.installers.taskwarrior.smoke_test import (
     validate_staged_taskwarrior_binary,
     validate_taskwarrior_executable,
 )
+from lea.installers.taskwarrior.source_archive import (
+    TaskwarriorExtractedSource,
+    TaskwarriorSourceExtractionResult,
+    extract_taskwarrior_source_archive,
+    remove_taskwarrior_extracted_source,
+)
 from lea.installers.taskwarrior.staging import (
     TaskwarriorStagedBinary,
     TaskwarriorStagingResult,
@@ -61,6 +67,7 @@ __all__ = [
     "TaskwarriorActivationResult",
     "TaskwarriorBundledInstallResult",
     "TaskwarriorExternalInstallResult",
+    "TaskwarriorExtractedSource",
     "TaskwarriorInstallFailureCode",
     "TaskwarriorInstallMode",
     "TaskwarriorInstallationRecord",
@@ -70,11 +77,13 @@ __all__ = [
     "TaskwarriorRuntimeLayout",
     "TaskwarriorRuntimeLayoutResult",
     "TaskwarriorSmokeTestResult",
+    "TaskwarriorSourceExtractionResult",
     "TaskwarriorStagedBinary",
     "TaskwarriorStagingResult",
     "activate_staged_taskwarrior",
     "calculate_sha256",
     "check_directory_parent_writable",
+    "extract_taskwarrior_source_archive",
     "install_bundled_taskwarrior",
     "install_external_taskwarrior",
     "installation_record_matches",
@@ -83,6 +92,7 @@ __all__ = [
     "normalise_taskwarrior_platform",
     "provision_taskwarrior_runtime_layout",
     "read_taskwarrior_installation_record",
+    "remove_taskwarrior_extracted_source",
     "remove_taskwarrior_staging",
     "render_taskwarrior_installation_record",
     "render_taskwarrior_taskrc",
