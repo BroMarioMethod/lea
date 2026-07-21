@@ -1,3 +1,4 @@
+license: AGPL-3.0-only
 ---
 id: LEA-SPEC-0008
 title: Action Orchestration Service Specification

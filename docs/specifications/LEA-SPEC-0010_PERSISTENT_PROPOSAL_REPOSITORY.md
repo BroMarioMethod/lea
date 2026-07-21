@@ -1,3 +1,4 @@
+license: AGPL-3.0-only
 ---
 id: LEA-SPEC-0010
 title: Persistent Proposal Repository Specification
