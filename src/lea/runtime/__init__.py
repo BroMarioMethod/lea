@@ -30,6 +30,16 @@ from lea.runtime.layouts import (
     system_runtime_paths,
 )
 from lea.runtime.loader import load_runtime_config
+from lea.runtime.reporting import (
+    format_bootstrap_result,
+    format_configuration_result,
+    format_health_result,
+    format_initialisation_result,
+    format_inspection_result,
+    format_runtime_config,
+    format_setup_result,
+    format_setup_verification_result,
+)
 from lea.runtime.serialisation import (
     render_runtime_config,
     write_runtime_config,
@@ -66,6 +76,14 @@ __all__ = [
     "check_runtime_health",
     "development_runtime_config",
     "development_runtime_paths",
+    "format_bootstrap_result",
+    "format_configuration_result",
+    "format_health_result",
+    "format_initialisation_result",
+    "format_inspection_result",
+    "format_runtime_config",
+    "format_setup_result",
+    "format_setup_verification_result",
     "initialise_runtime_config",
     "inspect_runtime",
     "isolated_test_runtime_config",
