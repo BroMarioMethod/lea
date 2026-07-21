@@ -25,6 +25,14 @@ class RuntimePathStatus(StrEnum):
     FAILED = "failed"
 
 
+class RuntimeHealthStatus(StrEnum):
+    """Status of one runtime health check."""
+
+    PASSED = "passed"
+    WARNING = "warning"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimePaths:
     """Canonical filesystem paths used by one LEA runtime."""
@@ -237,6 +245,58 @@ class RuntimeBootstrapResult:
             raise ValueError(
                 "A failed bootstrap result must contain at least one "
                 "conflicting or failed path."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeHealthIssue:
+    """Immutable result of one runtime health check."""
+
+    code: str
+    message: str
+    status: RuntimeHealthStatus
+    path: Path | None = None
+    field: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate runtime-health issue fields."""
+        if not self.code.strip():
+            raise ValueError("Runtime health issue code must be non-empty.")
+
+        if not self.message.strip():
+            raise ValueError("Runtime health issue message must be non-empty.")
+
+        if self.path is not None:
+            _validate_absolute_path(
+                self.path,
+                field_name="path",
+            )
+
+        if self.field is not None and not self.field.strip():
+            raise ValueError(
+                "Runtime health issue field must be non-empty when provided."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeHealthResult:
+    """Immutable result of checking one configured runtime."""
+
+    healthy: bool
+    issues: tuple[RuntimeHealthIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Validate health-result consistency."""
+        has_failure = any(
+            issue.status is RuntimeHealthStatus.FAILED for issue in self.issues
+        )
+
+        if self.healthy and has_failure:
+            raise ValueError("A healthy runtime result must not contain failed checks.")
+
+        if not self.healthy and not has_failure:
+            raise ValueError(
+                "An unhealthy runtime result must contain at least one failed check."
             )
 
 
