@@ -10,68 +10,41 @@ LEA is designed to help entrepreneurs and knowledge workers spend less time on a
 
 LEA is in early development.
 
-The current repository foundation includes:
+The repository foundation includes:
 
-- a deterministic repository bootstrap process;
 - an installable Python package;
 - dependency management with `uv`;
-- formatting and linting with Ruff;
-- strict type checking with mypy;
-- automated testing with pytest;
+- Ruff formatting and linting;
+- strict mypy type checking;
+- pytest automation;
 - a shared local quality-check script;
 - GitHub Actions continuous integration.
 
-The current core action workflow includes:
+The action workflow includes immutable proposals, validation, risk and confirmation policy, deterministic state transitions, explicit approval decisions, approved-only execution, append-only audit persistence, integrity hash chaining and deterministic orchestration.
 
-- immutable action proposals;
-- deterministic proposal validation;
-- structured validation issues;
-- explicit risk levels and confirmation policies;
-- deterministic proposal-state transitions;
-- terminal-state and invalid-transition protection;
-- confirmation-policy evaluation;
-- mandatory human confirmation for high- and critical-risk proposals;
-- immutable approval, rejection and cancellation records;
-- deterministic application of confirmation decisions;
-- UTC-aware audit timestamps;
-- explicit deterministic action-handler registration;
-- exact action-name dispatch without fuzzy matching or plugin discovery;
-- an approved-only action-execution boundary;
-- immutable `approved → executing → succeeded` workflow progression;
-- structured failed execution with `executing → failed`;
-- safe containment of handler exceptions and invalid output;
-- deterministic JSON-compatible serialisation;
-- immutable audit-event records with canonical event types;
-- deterministic audit-event factories for existing workflow records;
-- append-only UTF-8 JSONL audit persistence;
-- ordered audit retrieval and exact proposal filtering;
-- structured malformed-record errors with physical line numbers;
-- explicit runtime paths, optional parent creation and optional `fsync`;
-- immutable SHA-256 integrity envelopes;
-- deterministic previous-event hash chaining;
-- read-only integrity verification in physical file order;
-- detection of edited payloads, broken links, inserted records and reordered records;
-- explicit legacy and mixed-format handling;
-- refusal to extend invalid integrity chains.
-- deterministic action orchestration through an injected application service;
-- separate proposal submission, human confirmation and approved execution operations;
-- deterministic `proposed → validated` submission progression;
-- confirmation-policy application without implicit execution;
-- explicit approval, rejection and cancellation orchestration;
-- approved-only action execution through the registered handler boundary;
-- injected UTC clocks and audit-event identifier sources;
-- deterministic orchestration audit ordering;
-- structured partial audit-persistence reporting;
-- visible audit failure after completed external side effects;
+The runtime foundation includes:
+
+- immutable system, development and test layouts;
+- strict UTF-8 TOML loading from explicit absolute paths;
+- rejection of unknown and missing fields;
+- deterministic templates and serialisation;
+- safe configuration initialisation without overwrite;
+- runtime-directory bootstrap with dry-run support;
+- read-only health checks;
+- UTC-to-IANA-timezone presentation;
+- coordinated setup and verification;
+- read-only inspection;
+- deterministic reports;
+- `lea runtime` administration commands;
+- preserved dispatch through both `lea` and `python -m lea`.
 
 Approval permits workflow progression only. It does not execute an action.
 
-Domain-specific handlers, plugin discovery, authenticated audit integrity,
-authentication and user interfaces remain under development.
+Domain-specific handlers, plugin discovery, authenticated audit integrity, authentication and user interfaces remain under development.
 
 ## Design principles
 
-LEA is being developed around the following principles:
+LEA is developed around these principles:
 
 - **Local-first** — core functionality should operate without Internet access where practical.
 - **Specification-driven** — behaviour is defined before implementation.
@@ -79,8 +52,8 @@ LEA is being developed around the following principles:
 - **Auditable** — important decisions and state changes should be traceable.
 - **Replaceable components** — models, tools and communication adapters should be independently replaceable.
 - **Single canonical source** — persistent information should have one authoritative source.
-- **Configuration as data** — configuration should be represented declaratively where practical.
-- **Repository and runtime separation** — source-controlled project files remain separate from deployed state.
+- **Configuration as data** — configuration should be declarative where practical.
+- **Repository and runtime separation** — source-controlled files remain separate from deployed state.
 - **UK English** — documentation, comments and user-facing text use UK English.
 - **Metric and SI units** — metric and SI units are used where measurements are required.
 
@@ -94,18 +67,16 @@ The long-term vision includes:
 - calendar coordination;
 - accounting integration;
 - customer relationship management;
-- quotations, invoices, purchase orders and related business documents;
-- accounts receivable and accounts payable workflows;
+- quotations, invoices and purchase orders;
+- accounts receivable and payable workflows;
 - structured personal and organisational knowledge;
 - meeting summaries and reports;
 - progressive automation based on earned confidence;
 - multiple communication adapters.
 
-These capabilities are planned and should not yet be considered production-ready.
+These capabilities are planned and are not yet production-ready.
 
 ## Repository layout
-
-Key repository locations include:
 
 ```text
 config/          Version-controlled configuration
@@ -137,59 +108,80 @@ The current development environment requires:
 
 The initial target platform is a Raspberry Pi 4B running 64-bit DietPi.
 
-Development and continuous-integration checks also run on other compatible Linux environments.
-
 ## Development setup
-
-Clone the repository and enter it:
 
 ```bash
 git clone https://github.com/BroMarioMethod/lea.git
 cd lea
-```
-
-Create and synchronise the development environment:
-
-```bash
 uv sync --locked
 ```
 
-Run LEA’s current command-line entry point:
+Run the existing application entry point:
 
 ```bash
 uv run lea
 ```
 
-At present, this command only confirms that the package is installed correctly.
+Inspect runtime commands:
+
+```bash
+uv run lea runtime --help
+```
+
+The package route is equivalent:
+
+```bash
+uv run python -m lea runtime --help
+```
+
+## Runtime administration
+
+Available commands:
+
+```text
+inspect
+health
+initialise
+bootstrap
+setup
+verify
+```
+
+Example dry run:
+
+```bash
+mkdir -p /tmp/lea-test/config
+
+uv run lea runtime verify \
+    --profile test \
+    --root /tmp/lea-test \
+    --display-timezone Africa/Gaborone \
+    --dry-run
+```
+
+Detailed guidance:
+
+```text
+docs/08_RUNTIME_CONFIGURATION.md
+```
 
 ## Quality checks
 
-Run the complete local quality gate:
+Run:
 
 ```bash
 scripts/check.sh
 ```
 
-This performs:
-
-```text
-Ruff formatting verification
-Ruff linting
-mypy strict type checking
-pytest automated tests
-```
-
-The same script is executed by GitHub Actions.
+This performs Ruff formatting verification, Ruff linting, strict mypy checking and pytest tests. GitHub Actions runs the same script.
 
 ## Repository bootstrap
-
-The repository structure can be created or repaired with:
 
 ```bash
 scripts/bootstrap_repository.sh /path/to/repository
 ```
 
-The bootstrap process reads:
+The process reads:
 
 ```text
 config/repository_layout.toml
@@ -205,7 +197,7 @@ Engineering standards and behavioural specifications are stored under:
 docs/specifications/
 ```
 
-Current accepted standards and specifications include:
+Current accepted or completed standards and specifications include:
 
 - `LEA-STD-0001` — Repository Layout Standard
 - `LEA-STD-0002` — Repository Bootstrap Standard
@@ -217,44 +209,24 @@ Current accepted standards and specifications include:
 - `LEA-SPEC-0006` — Action Audit Trail Specification
 - `LEA-SPEC-0007` — Audit Integrity and Verification Specification
 - `LEA-SPEC-0008` — Action Orchestration Service Specification
+- `LEA-SPEC-0009` — Runtime Layout and Configuration Specification
 
-Behaviour is specified before implementation and updated when automated test
-coverage confirms completion.
-
-Operational guidance for audit storage is available in:
+Operational guides:
 
 ```text
 docs/05_AUDIT_STORAGE.md
-```
-
-Operational guidance for integrity-enabled audit verification is available in:
-
-```text
 docs/06_AUDIT_INTEGRITY.md
-```
-
-The current audit integrity implementation uses an unauthenticated SHA-256 hash
-chain. It detects many unrecomputed changes but does not prevent or prove
-against complete file replacement or valid tail truncation.
-
-Operational guidance for action orchestration is available in:
-
-```text
 docs/07_ACTION_ORCHESTRATION.md
+docs/08_RUNTIME_CONFIGURATION.md
 ```
-The orchestration service does not provide transactional atomicity across
-proposal values, audit persistence and external handler side effects. A handler
-may complete an irreversible side effect before a later audit append fails.
+
+The audit integrity implementation uses an unauthenticated SHA-256 hash chain. It detects many unrecomputed changes but does not protect against complete file replacement or valid tail truncation.
+
+The orchestration service does not provide transactional atomicity across proposal values, audit persistence and external side effects. A handler may complete an irreversible side effect before a later audit append fails.
 
 ## Contributing
 
-Contribution guidelines are being developed in:
-
-```text
-CONTRIBUTING.md
-```
-
-Until that document is populated, contributors should:
+Until `CONTRIBUTING.md` is populated:
 
 - create a focused branch for each change;
 - keep commits atomic;
@@ -275,18 +247,14 @@ LICENSE
 
 ## Development milestones
 
-Completed milestones are recorded as annotated Git tags using the following
-naming convention:
+Completed milestones are recorded as annotated Git tags:
 
 ```text
 milestone-X.Y
 milestone-X.Y.Z
 ```
 
-Milestone tags identify stable points in the project history. Current
-development work is represented by active branches and pull requests.
-
-View the available milestones locally with:
+View them with:
 
 ```bash
 git tag
