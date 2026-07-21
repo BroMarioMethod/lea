@@ -8,10 +8,14 @@ from uuid import UUID
 
 from lea.actions import ActionProposal
 from lea.proposals.contracts import (
+    ProposalReadResult,
     ProposalRepositoryIssue,
     ProposalWriteResult,
 )
-from lea.proposals.documents import render_proposal_document
+from lea.proposals.documents import (
+    parse_proposal_document,
+    render_proposal_document,
+)
 
 
 class MarkdownProposalRepository:
@@ -114,6 +118,95 @@ class MarkdownProposalRepository:
                     temporary_path.unlink(missing_ok=True)
 
         return ProposalWriteResult(
+            success=True,
+            proposal=proposal,
+            path=destination,
+            issues=(),
+        )
+
+    def read(
+        self,
+        proposal_id: str,
+    ) -> ProposalReadResult:
+        """Read one exact canonical proposal document."""
+        destination = self.path_for(proposal_id)
+
+        if not destination.exists():
+            return _read_failure(
+                code="proposal_not_found",
+                message="The proposal document was not found.",
+                proposal_id=proposal_id,
+                path=destination,
+            )
+
+        if not destination.is_file():
+            return _read_failure(
+                code="proposal_read_failed",
+                message=("The canonical proposal path is not a regular file."),
+                proposal_id=proposal_id,
+                path=destination,
+            )
+
+        try:
+            document = destination.read_text(
+                encoding="utf-8",
+            )
+        except (OSError, UnicodeError):
+            return _read_failure(
+                code="proposal_read_failed",
+                message="The proposal document could not be read.",
+                proposal_id=proposal_id,
+                path=destination,
+            )
+
+        parsed = parse_proposal_document(document)
+
+        if not parsed.success:
+            issues = tuple(
+                ProposalRepositoryIssue(
+                    code=issue.code,
+                    message=issue.message,
+                    proposal_id=(
+                        issue.proposal_id
+                        if issue.proposal_id is not None
+                        else proposal_id
+                    ),
+                    path=destination,
+                    line_number=issue.line_number,
+                    field=issue.field,
+                )
+                for issue in parsed.issues
+            )
+
+            return ProposalReadResult(
+                success=False,
+                proposal=None,
+                path=destination,
+                issues=issues,
+            )
+
+        proposal = parsed.proposal
+
+        if proposal is None:
+            return _read_failure(
+                code="proposal_read_failed",
+                message=("Proposal parsing succeeded without returning a proposal."),
+                proposal_id=proposal_id,
+                path=destination,
+            )
+
+        if proposal.proposal_id != proposal_id:
+            return _read_failure(
+                code="proposal_identity_mismatch",
+                message=(
+                    "The proposal identifier inside the document does not "
+                    "match its filename."
+                ),
+                proposal_id=proposal_id,
+                path=destination,
+            )
+
+        return ProposalReadResult(
             success=True,
             proposal=proposal,
             path=destination,
@@ -263,6 +356,29 @@ def _failure(
 ) -> ProposalWriteResult:
     """Construct one deterministic failed write result."""
     return ProposalWriteResult(
+        success=False,
+        proposal=None,
+        path=path,
+        issues=(
+            ProposalRepositoryIssue(
+                code=code,
+                message=message,
+                proposal_id=proposal_id,
+                path=path,
+            ),
+        ),
+    )
+
+
+def _read_failure(
+    *,
+    code: str,
+    message: str,
+    proposal_id: str,
+    path: Path,
+) -> ProposalReadResult:
+    """Construct one deterministic failed read result."""
+    return ProposalReadResult(
         success=False,
         proposal=None,
         path=path,
