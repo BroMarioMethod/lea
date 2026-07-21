@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from lea.tasks import TaskProviderIssue
+
 
 @dataclass(frozen=True, slots=True)
 class TaskwarriorConfig:
@@ -55,6 +57,40 @@ class TaskwarriorCommandResult:
 
         if self.duration_seconds < 0:
             raise ValueError("duration_seconds must not be negative.")
+
+
+@dataclass(frozen=True, slots=True)
+class TaskwarriorRunResult:
+    """Immutable result of invoking Taskwarrior."""
+
+    success: bool
+    command: TaskwarriorCommandResult | None
+    issues: tuple[TaskProviderIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Validate invocation-result consistency."""
+        if self.success:
+            if self.command is None:
+                raise ValueError(
+                    "A successful Taskwarrior run must contain a command result."
+                )
+
+            if self.issues:
+                raise ValueError(
+                    "A successful Taskwarrior run must not contain issues."
+                )
+
+            return
+
+        if self.command is not None:
+            raise ValueError(
+                "A failed Taskwarrior run must not contain a command result."
+            )
+
+        if not self.issues:
+            raise ValueError(
+                "A failed Taskwarrior run must contain at least one issue."
+            )
 
 
 def _validate_absolute_path(
