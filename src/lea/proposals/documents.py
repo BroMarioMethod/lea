@@ -36,6 +36,8 @@ _PARAMETERS_HEADING = "## Parameters"
 _JSON_OPENING = "```json"
 _FENCE_CLOSING = "```"
 _NO_REASON = "Not provided."
+_REASON_METADATA_PREFIX = "<!-- lea-reason-json: "
+_REASON_METADATA_SUFFIX = " -->"
 
 
 def render_proposal_document(
@@ -47,14 +49,14 @@ def render_proposal_document(
     parameters = data["parameters"]
     assert isinstance(parameters, Mapping)
 
-    reason = proposal.reason if proposal.reason is not None else _NO_REASON
-
     parameter_json = json.dumps(
         parameters,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
     )
+
+    reason_lines = _render_reason_lines(proposal.reason)
 
     lines = [
         "---",
@@ -72,7 +74,7 @@ def render_proposal_document(
         "",
         _REASON_HEADING,
         "",
-        reason,
+        *reason_lines,
         "",
         _PARAMETERS_HEADING,
         "",
@@ -94,7 +96,7 @@ def parse_proposal_document(
     if not document.endswith("\n"):
         return _failure(
             code="proposal_malformed_document",
-            message=("The proposal document must end with a newline."),
+            message="The proposal document must end with a newline.",
         )
 
     lines = document.splitlines()
@@ -126,7 +128,7 @@ def parse_proposal_document(
         "confirmation_policy": front_matter["confirmation_policy"],
         "source": front_matter["source"],
         "created_at": front_matter["created_at"],
-        "reason": None if reason == _NO_REASON else reason,
+        "reason": reason,
     }
 
     try:
@@ -142,7 +144,7 @@ def parse_proposal_document(
     if document != canonical:
         return _failure(
             code="proposal_non_canonical_document",
-            message=("The proposal document is valid but is not in canonical form."),
+            message="The proposal document is valid but is not in canonical form.",
             proposal_id=proposal.proposal_id,
         )
 
@@ -160,7 +162,7 @@ def _parse_front_matter(
     if not lines or lines[0] != "---":
         return _failure(
             code="proposal_malformed_document",
-            message=("The proposal document must begin with front matter."),
+            message="The proposal document must begin with front matter.",
             line_number=1,
         )
 
@@ -183,7 +185,7 @@ def _parse_front_matter(
         if ": " not in line:
             return _failure(
                 code="proposal_malformed_document",
-                message=("Front-matter fields must use 'name: value'."),
+                message="Front-matter fields must use 'name: value'.",
                 line_number=offset,
             )
 
@@ -200,7 +202,7 @@ def _parse_front_matter(
         if field not in _FRONT_MATTER_FIELD_SET:
             return _failure(
                 code="proposal_unknown_field",
-                message=(f"Unknown front-matter field '{field}' is not permitted."),
+                message=f"Unknown front-matter field '{field}' is not permitted.",
                 line_number=offset,
                 field=field,
             )
@@ -215,14 +217,14 @@ def _parse_front_matter(
     if missing:
         return _failure(
             code="proposal_missing_field",
-            message=(f"Required front-matter field '{missing[0]}' is missing."),
+            message=f"Required front-matter field '{missing[0]}' is missing.",
             field=missing[0],
         )
 
     if tuple(values) != _FRONT_MATTER_FIELDS:
         return _failure(
             code="proposal_non_canonical_document",
-            message=("Proposal front-matter fields are not in canonical order."),
+            message="Proposal front-matter fields are not in canonical order.",
         )
 
     schema_version = values["schema_version"]
@@ -230,7 +232,7 @@ def _parse_front_matter(
     if schema_version != DOCUMENT_SCHEMA_VERSION:
         return _failure(
             code="proposal_unsupported_schema_version",
-            message=("The proposal document schema version is unsupported."),
+            message="The proposal document schema version is unsupported.",
             field="schema_version",
         )
 
@@ -263,7 +265,7 @@ def _parse_body(
     lines: list[str],
     *,
     start_index: int,
-) -> tuple[str, Mapping[str, object]] | ProposalDocumentResult:
+) -> tuple[str | None, Mapping[str, object]] | ProposalDocumentResult:
     """Parse the strict canonical Markdown body."""
     expected_prefix = [
         "",
@@ -285,51 +287,32 @@ def _parse_body(
             line_number=start_index + 1,
         )
 
-    reason_index = start_index + len(expected_prefix)
+    reason_start = start_index + len(expected_prefix)
+    suffix_length = 6
 
-    if reason_index >= len(lines):
+    if len(lines) < reason_start + 1 + suffix_length:
         return _failure(
             code="proposal_malformed_document",
-            message="The proposal reason is missing.",
+            message="The proposal parameters section is malformed.",
         )
 
-    reason = lines[reason_index]
-
-    if not reason:
-        return _failure(
-            code="proposal_malformed_document",
-            message="The proposal reason must not be blank.",
-            line_number=reason_index + 1,
-            field="reason",
-        )
-
-    expected_suffix_start = reason_index + 1
-    expected_suffix = [
+    suffix_start = len(lines) - suffix_length
+    expected_suffix_prefix = [
         "",
         _PARAMETERS_HEADING,
         "",
         _JSON_OPENING,
     ]
 
-    actual_suffix = lines[
-        expected_suffix_start : expected_suffix_start + len(expected_suffix)
-    ]
-
-    if actual_suffix != expected_suffix:
+    if lines[suffix_start : suffix_start + 4] != expected_suffix_prefix:
         return _failure(
             code="proposal_malformed_document",
-            message=("The proposal parameters section is malformed."),
-            line_number=expected_suffix_start + 1,
+            message="The proposal parameters section is malformed.",
+            line_number=suffix_start + 1,
         )
 
-    json_index = expected_suffix_start + len(expected_suffix)
-    closing_index = json_index + 1
-
-    if closing_index >= len(lines):
-        return _failure(
-            code="proposal_malformed_document",
-            message="The parameters JSON fence is not closed.",
-        )
+    json_index = suffix_start + 4
+    closing_index = suffix_start + 5
 
     if lines[closing_index] != _FENCE_CLOSING:
         return _failure(
@@ -338,19 +321,22 @@ def _parse_body(
             line_number=closing_index + 1,
         )
 
-    if closing_index != len(lines) - 1:
-        return _failure(
-            code="proposal_malformed_document",
-            message=("Unexpected content follows the parameters section."),
-            line_number=closing_index + 2,
-        )
+    reason_lines = lines[reason_start:suffix_start]
+
+    reason_result = _parse_reason_lines(
+        reason_lines,
+        line_number=reason_start + 1,
+    )
+
+    if isinstance(reason_result, ProposalDocumentResult):
+        return reason_result
 
     try:
         parameters = json.loads(lines[json_index])
     except json.JSONDecodeError:
         return _failure(
             code="proposal_invalid_parameters",
-            message=("The parameters section does not contain valid JSON."),
+            message="The parameters section does not contain valid JSON.",
             line_number=json_index + 1,
             field="parameters",
         )
@@ -358,12 +344,115 @@ def _parse_body(
     if not isinstance(parameters, Mapping):
         return _failure(
             code="proposal_invalid_parameters",
-            message=("The parameters JSON value must be an object."),
+            message="The parameters JSON value must be an object.",
             line_number=json_index + 1,
             field="parameters",
         )
 
-    return reason, cast(Mapping[str, object], parameters)
+    return reason_result, cast(Mapping[str, object], parameters)
+
+
+def _parse_reason_lines(
+    lines: list[str],
+    *,
+    line_number: int,
+) -> str | None | ProposalDocumentResult:
+    """Parse canonical reason text, including lossless edge cases."""
+    if not lines:
+        return _failure(
+            code="proposal_malformed_document",
+            message="The proposal reason is missing.",
+            line_number=line_number,
+            field="reason",
+        )
+
+    first_line = lines[0]
+
+    if first_line.startswith(_REASON_METADATA_PREFIX):
+        if not first_line.endswith(_REASON_METADATA_SUFFIX):
+            return _failure(
+                code="proposal_malformed_document",
+                message="The proposal reason metadata is malformed.",
+                line_number=line_number,
+                field="reason",
+            )
+
+        encoded = first_line[
+            len(_REASON_METADATA_PREFIX) : -len(_REASON_METADATA_SUFFIX)
+        ]
+
+        try:
+            reason = json.loads(encoded)
+        except json.JSONDecodeError:
+            return _failure(
+                code="proposal_malformed_document",
+                message="The proposal reason metadata is malformed.",
+                line_number=line_number,
+                field="reason",
+            )
+
+        if not isinstance(reason, str):
+            return _failure(
+                code="proposal_malformed_document",
+                message="The proposal reason metadata must contain a string.",
+                line_number=line_number,
+                field="reason",
+            )
+
+        return reason
+
+    if len(lines) != 1:
+        return _failure(
+            code="proposal_non_canonical_document",
+            message=(
+                "Multiline proposal reasons must include canonical reason metadata."
+            ),
+            line_number=line_number,
+            field="reason",
+        )
+
+    reason = first_line
+
+    if not reason:
+        return _failure(
+            code="proposal_malformed_document",
+            message="The proposal reason must not be blank.",
+            line_number=line_number,
+            field="reason",
+        )
+
+    if reason == _NO_REASON:
+        return None
+
+    return reason
+
+
+def _render_reason_lines(
+    reason: str | None,
+) -> list[str]:
+    """Render reason text while preserving legacy simple documents."""
+    if reason is None:
+        return [_NO_REASON]
+
+    needs_metadata = (
+        "\n" in reason
+        or reason == _NO_REASON
+        or reason.startswith(_REASON_METADATA_PREFIX)
+    )
+
+    if not needs_metadata:
+        return [reason]
+
+    encoded = json.dumps(
+        reason,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+    return [
+        f"{_REASON_METADATA_PREFIX}{encoded}{_REASON_METADATA_SUFFIX}",
+        reason,
+    ]
 
 
 def _render_front_matter_string(
