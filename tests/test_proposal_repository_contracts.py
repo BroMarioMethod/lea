@@ -8,6 +8,7 @@ import pytest
 
 from lea.actions import ActionContractError, ActionProposal
 from lea.proposals import (
+    ProposalDocumentResult,
     ProposalListResult,
     ProposalReadResult,
     ProposalRepositoryIssue,
@@ -262,3 +263,41 @@ def test_verification_result_is_immutable() -> None:
     result = ProposalVerificationResult(valid=True, checked_documents=1, issues=())
     with pytest.raises(FrozenInstanceError):
         result.valid = False  # type: ignore[misc]
+
+
+def test_successful_document_result_requires_proposal() -> None:
+    """Successful parsing must expose the reconstructed proposal."""
+    with pytest.raises(
+        ValueError,
+        match="must contain a proposal",
+    ):
+        ProposalDocumentResult(
+            success=True,
+            proposal=None,
+            issues=(),
+        )
+
+
+def test_failed_document_result_requires_issue() -> None:
+    """Failed parsing must expose structured issues."""
+    with pytest.raises(
+        ValueError,
+        match="must contain at least one issue",
+    ):
+        ProposalDocumentResult(
+            success=False,
+            proposal=None,
+            issues=(),
+        )
+
+
+def test_document_result_is_immutable() -> None:
+    """Document results must be immutable."""
+    result = ProposalDocumentResult(
+        success=True,
+        proposal=create_proposal(),
+        issues=(),
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        result.success = False  # type: ignore[misc]

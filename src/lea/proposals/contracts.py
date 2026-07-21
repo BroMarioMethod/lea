@@ -46,6 +46,40 @@ class ProposalRepositoryIssue:
 
 
 @dataclass(frozen=True, slots=True)
+class ProposalDocumentResult:
+    """Immutable result of parsing one proposal document."""
+
+    success: bool
+    proposal: ActionProposal | None
+    issues: tuple[ProposalRepositoryIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Validate proposal-document result consistency."""
+        if self.success:
+            if self.proposal is None:
+                raise ValueError(
+                    "A successful proposal document result must contain a proposal."
+                )
+
+            if self.issues:
+                raise ValueError(
+                    "A successful proposal document result must not contain issues."
+                )
+
+            return
+
+        if self.proposal is not None:
+            raise ValueError(
+                "A failed proposal document result must not contain a proposal."
+            )
+
+        if not self.issues:
+            raise ValueError(
+                "A failed proposal document result must contain at least one issue."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ProposalWriteResult:
     """Immutable result of creating one proposal document."""
 
