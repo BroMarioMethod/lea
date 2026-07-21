@@ -6,6 +6,14 @@ from lea.installers.taskwarrior.activation import (
     render_taskwarrior_installation_record,
     write_taskwarrior_installation_record,
 )
+from lea.installers.taskwarrior.build_plan import (
+    TaskwarriorBuildDependencyResult,
+    TaskwarriorBuildTools,
+    TaskwarriorSourceBuildPlan,
+    create_taskwarrior_source_build_plan,
+    default_taskwarrior_build_tools,
+    validate_taskwarrior_build_dependencies,
+)
 from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallerConfig,
     TaskwarriorInstallerIssue,
@@ -65,6 +73,8 @@ from lea.installers.taskwarrior.validation import (
 
 __all__ = [
     "TaskwarriorActivationResult",
+    "TaskwarriorBuildDependencyResult",
+    "TaskwarriorBuildTools",
     "TaskwarriorBundledInstallResult",
     "TaskwarriorExternalInstallResult",
     "TaskwarriorExtractedSource",
@@ -77,12 +87,15 @@ __all__ = [
     "TaskwarriorRuntimeLayout",
     "TaskwarriorRuntimeLayoutResult",
     "TaskwarriorSmokeTestResult",
+    "TaskwarriorSourceBuildPlan",
     "TaskwarriorSourceExtractionResult",
     "TaskwarriorStagedBinary",
     "TaskwarriorStagingResult",
     "activate_staged_taskwarrior",
     "calculate_sha256",
     "check_directory_parent_writable",
+    "create_taskwarrior_source_build_plan",
+    "default_taskwarrior_build_tools",
     "extract_taskwarrior_source_archive",
     "install_bundled_taskwarrior",
     "install_external_taskwarrior",
@@ -100,6 +113,7 @@ __all__ = [
     "stage_taskwarrior_binary",
     "validate_external_executable_path",
     "validate_staged_taskwarrior_binary",
+    "validate_taskwarrior_build_dependencies",
     "validate_taskwarrior_executable",
     "validate_taskwarrior_installer_config",
     "verify_expected_sha256",
