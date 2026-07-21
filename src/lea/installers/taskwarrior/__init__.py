@@ -62,6 +62,10 @@ from lea.installers.taskwarrior.source_archive import (
     extract_taskwarrior_source_archive,
     remove_taskwarrior_extracted_source,
 )
+from lea.installers.taskwarrior.source_installer import (
+    TaskwarriorSourceInstallResult,
+    install_source_taskwarrior,
+)
 from lea.installers.taskwarrior.staging import (
     TaskwarriorStagedBinary,
     TaskwarriorStagingResult,
@@ -96,6 +100,7 @@ __all__ = [
     "TaskwarriorSourceBuildExecutionResult",
     "TaskwarriorSourceBuildPlan",
     "TaskwarriorSourceExtractionResult",
+    "TaskwarriorSourceInstallResult",
     "TaskwarriorStagedBinary",
     "TaskwarriorStagingResult",
     "activate_staged_taskwarrior",
@@ -107,6 +112,7 @@ __all__ = [
     "extract_taskwarrior_source_archive",
     "install_bundled_taskwarrior",
     "install_external_taskwarrior",
+    "install_source_taskwarrior",
     "installation_record_matches",
     "is_supported_taskwarrior_version",
     "is_valid_sha256",
