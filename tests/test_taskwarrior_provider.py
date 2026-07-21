@@ -243,20 +243,3 @@ def test_list_preserves_parser_failure(
 
     assert result.success is False
     assert result.issues[0].code == "taskwarrior_export_invalid_json"
-
-
-def test_delete_is_read_only(
-    tmp_path: Path,
-) -> None:
-    """Deletion should remain disabled without invoking Taskwarrior."""
-    runner = RecordingRunner(successful_run("[]"))
-    provider = TaskwarriorCliProvider(
-        make_config(tmp_path),
-        runner=runner,  # type: ignore[arg-type]
-    )
-
-    delete = provider.delete_task(TASK_UUID)
-
-    assert delete.success is False
-    assert delete.issues[0].operation == "delete"
-    assert runner.calls == []

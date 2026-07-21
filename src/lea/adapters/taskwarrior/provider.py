@@ -212,17 +212,52 @@ class TaskwarriorCliProvider:
         self,
         task_uuid: str,
     ) -> TaskMutationResult:
-        """Reject deletion until the deletion slice is implemented."""
-        return TaskMutationResult(
-            success=False,
-            task=None,
-            issues=(
-                _not_implemented_issue(
-                    operation="delete",
-                    task_uuid=task_uuid,
-                ),
-            ),
+        """Delete one exact task and read back canonical provider state."""
+        if not _is_canonical_uuid(task_uuid):
+            return _mutation_failure(
+                code="taskwarrior_task_uuid_invalid",
+                message="The task UUID is not canonical.",
+                operation="delete",
+                task_uuid=None,
+            )
+
+        run_result = self._runner.run(
+            (task_uuid, "delete"),
+            operation="delete",
         )
+
+        if not run_result.success:
+            return TaskMutationResult(
+                success=False,
+                task=None,
+                issues=run_result.issues,
+            )
+
+        if run_result.command is None:
+            return _mutation_failure(
+                code="taskwarrior_delete_failed",
+                message=("Taskwarrior deletion succeeded without a command result."),
+                operation="delete",
+                task_uuid=task_uuid,
+            )
+
+        result = self._read_mutated_task(
+            task_uuid,
+            operation="delete",
+        )
+
+        if not result.success or result.task is None:
+            return result
+
+        if result.task.status is not TaskStatus.DELETED:
+            return _mutation_failure(
+                code="taskwarrior_delete_readback_status_invalid",
+                message=("Taskwarrior read-back did not return a deleted task."),
+                operation="delete",
+                task_uuid=task_uuid,
+            )
+
+        return result
 
     def _read_created_task(
         self,
@@ -430,21 +465,6 @@ def _is_canonical_uuid(value: str) -> bool:
         return str(UUID(value)) == value
     except ValueError:
         return False
-
-
-def _not_implemented_issue(
-    *,
-    operation: str,
-    task_uuid: str | None = None,
-) -> TaskProviderIssue:
-    """Construct one deterministic unimplemented-operation issue."""
-    return TaskProviderIssue(
-        code="taskwarrior_operation_not_implemented",
-        message=("This Taskwarrior provider operation is not implemented yet."),
-        provider=_PROVIDER,
-        operation=operation,
-        task_uuid=task_uuid,
-    )
 
 
 def _create_failure(
