@@ -193,3 +193,20 @@ def test_preflight_succeeds_for_valid_bundle(
     )
 
     assert run_taskwarrior_installer_preflight(config) == ()
+
+
+def test_parent_writable_check_accepts_existing_file(
+    tmp_path: Path,
+) -> None:
+    """An existing destination file should use its writable parent."""
+    destination = tmp_path / "install" / "taskwarrior.json"
+    destination.parent.mkdir()
+    destination.write_text("{}\n", encoding="utf-8")
+
+    assert (
+        check_directory_parent_writable(
+            destination,
+            field_name="installation_record",
+        )
+        == ()
+    )

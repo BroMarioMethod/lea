@@ -109,6 +109,9 @@ def check_directory_parent_writable(
 
     existing = path
 
+    if existing.exists() and not existing.is_dir():
+        existing = existing.parent
+
     while not existing.exists() and existing != existing.parent:
         existing = existing.parent
 
