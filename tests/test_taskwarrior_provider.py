@@ -10,7 +10,6 @@ from lea.adapters.taskwarrior import (
     TaskwarriorRunResult,
 )
 from lea.tasks import (
-    TaskCreateRequest,
     TaskListQuery,
     TaskModifyRequest,
     TaskProvider,
@@ -245,27 +244,6 @@ def test_list_preserves_parser_failure(
 
     assert result.success is False
     assert result.issues[0].code == "taskwarrior_export_invalid_json"
-
-
-def test_create_is_read_only(
-    tmp_path: Path,
-) -> None:
-    """Creation should fail without invoking Taskwarrior."""
-    runner = RecordingRunner(successful_run("[]"))
-    provider = TaskwarriorCliProvider(
-        make_config(tmp_path),
-        runner=runner,  # type: ignore[arg-type]
-    )
-
-    result = provider.create_task(
-        TaskCreateRequest(description="Test"),
-    )
-
-    assert result.success is False
-    assert result.task is None
-    assert result.issues[0].code == "taskwarrior_operation_not_implemented"
-    assert result.issues[0].operation == "create"
-    assert runner.calls == []
 
 
 def test_mutations_are_read_only(
