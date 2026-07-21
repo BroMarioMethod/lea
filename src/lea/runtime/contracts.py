@@ -448,6 +448,39 @@ class RuntimeSetupVerificationResult:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class RuntimeInspectionResult:
+    """Immutable result of runtime configuration inspection."""
+
+    success: bool
+    configuration: ConfigurationResult
+    health: RuntimeHealthResult | None
+
+    def __post_init__(self) -> None:
+        """Validate inspection-result consistency."""
+        if not self.configuration.success:
+            if self.health is not None:
+                raise ValueError(
+                    "Runtime health must not be checked when "
+                    "configuration loading fails."
+                )
+
+            if self.success:
+                raise ValueError(
+                    "Runtime inspection must fail when configuration loading fails."
+                )
+
+            return
+
+        expected_success = self.health is None or self.health.healthy
+
+        if self.success != expected_success:
+            raise ValueError(
+                "Runtime inspection success must match its "
+                "configuration and health results."
+            )
+
+
 def _validate_absolute_path(
     path: Path,
     *,
