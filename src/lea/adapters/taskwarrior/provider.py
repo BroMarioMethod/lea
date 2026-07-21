@@ -1,7 +1,7 @@
 """Taskwarrior CLI task provider."""
 
 from collections.abc import Sequence
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -122,6 +122,77 @@ class TaskwarriorCliProvider:
                 message=("Taskwarrior did not return one canonical task UUID."),
             )
 
+        return self._read_created_task(task_uuid)
+
+    def modify_task(
+        self,
+        request: TaskModifyRequest,
+    ) -> TaskMutationResult:
+        """Modify one exact task and read back canonical provider state."""
+        run_result = self._runner.run(
+            _build_modify_arguments(request),
+            operation="modify",
+        )
+
+        if not run_result.success:
+            return TaskMutationResult(
+                success=False,
+                task=None,
+                issues=run_result.issues,
+            )
+
+        if run_result.command is None:
+            return _mutation_failure(
+                code="taskwarrior_modify_failed",
+                message=(
+                    "Taskwarrior modification succeeded without a command result."
+                ),
+                operation="modify",
+                task_uuid=request.task_uuid,
+            )
+
+        return self._read_mutated_task(
+            request.task_uuid,
+            operation="modify",
+        )
+
+    def complete_task(
+        self,
+        task_uuid: str,
+    ) -> TaskMutationResult:
+        """Reject completion until the completion slice is implemented."""
+        return TaskMutationResult(
+            success=False,
+            task=None,
+            issues=(
+                _not_implemented_issue(
+                    operation="complete",
+                    task_uuid=task_uuid,
+                ),
+            ),
+        )
+
+    def delete_task(
+        self,
+        task_uuid: str,
+    ) -> TaskMutationResult:
+        """Reject deletion until the deletion slice is implemented."""
+        return TaskMutationResult(
+            success=False,
+            task=None,
+            issues=(
+                _not_implemented_issue(
+                    operation="delete",
+                    task_uuid=task_uuid,
+                ),
+            ),
+        )
+
+    def _read_created_task(
+        self,
+        task_uuid: str,
+    ) -> TaskCreateResult:
+        """Read back one newly created task."""
         read_result = self._runner.run(
             (task_uuid, "export"),
             operation="create_readback",
@@ -174,52 +245,66 @@ class TaskwarriorCliProvider:
             issues=(),
         )
 
-    def modify_task(
-        self,
-        request: TaskModifyRequest,
-    ) -> TaskMutationResult:
-        """Reject modification until the mutation slice is implemented."""
-        return TaskMutationResult(
-            success=False,
-            task=None,
-            issues=(
-                _not_implemented_issue(
-                    operation="modify",
-                    task_uuid=request.task_uuid,
-                ),
-            ),
-        )
-
-    def complete_task(
+    def _read_mutated_task(
         self,
         task_uuid: str,
+        *,
+        operation: str,
     ) -> TaskMutationResult:
-        """Reject completion until the mutation slice is implemented."""
-        return TaskMutationResult(
-            success=False,
-            task=None,
-            issues=(
-                _not_implemented_issue(
-                    operation="complete",
-                    task_uuid=task_uuid,
-                ),
-            ),
+        """Read back one exact mutated task."""
+        read_result = self._runner.run(
+            (task_uuid, "export"),
+            operation=f"{operation}_readback",
         )
 
-    def delete_task(
-        self,
-        task_uuid: str,
-    ) -> TaskMutationResult:
-        """Reject deletion until the mutation slice is implemented."""
+        if not read_result.success:
+            return TaskMutationResult(
+                success=False,
+                task=None,
+                issues=read_result.issues,
+            )
+
+        read_command = read_result.command
+
+        if read_command is None:
+            return _mutation_failure(
+                code="taskwarrior_mutation_readback_failed",
+                message=("Taskwarrior read-back succeeded without a command result."),
+                operation=operation,
+                task_uuid=task_uuid,
+            )
+
+        parsed = parse_taskwarrior_export(read_command.stdout)
+
+        if not parsed.success:
+            return TaskMutationResult(
+                success=False,
+                task=None,
+                issues=parsed.issues,
+            )
+
+        if len(parsed.tasks) != 1:
+            return _mutation_failure(
+                code="taskwarrior_mutation_readback_invalid",
+                message=("Taskwarrior read-back did not return exactly one task."),
+                operation=operation,
+                task_uuid=task_uuid,
+            )
+
+        task = parsed.tasks[0]
+
+        if task.uuid != task_uuid:
+            return _mutation_failure(
+                code="taskwarrior_mutation_readback_mismatch",
+                message=("Taskwarrior read-back returned a different task UUID."),
+                operation=operation,
+                task_uuid=task_uuid,
+            )
+
         return TaskMutationResult(
-            success=False,
-            task=None,
-            issues=(
-                _not_implemented_issue(
-                    operation="delete",
-                    task_uuid=task_uuid,
-                ),
-            ),
+            success=True,
+            task=task,
+            issues=(),
         )
 
 
@@ -259,14 +344,48 @@ def _build_create_arguments(
         arguments.append(f"project:{request.project}")
 
     if request.due is not None:
-        due = request.due.astimezone(UTC).strftime(_TASKWARRIOR_TIMESTAMP_FORMAT)
-        arguments.append(f"due:{due}")
+        arguments.append(f"due:{_format_taskwarrior_timestamp(request.due)}")
 
     if request.priority is not None:
         arguments.append(f"priority:{request.priority}")
 
     arguments.extend(f"+{tag}" for tag in request.tags)
     return tuple(arguments)
+
+
+def _build_modify_arguments(
+    request: TaskModifyRequest,
+) -> tuple[str, ...]:
+    """Build deterministic exact Taskwarrior modification arguments."""
+    arguments = [
+        request.task_uuid,
+        "modify",
+    ]
+
+    if request.description is not None:
+        arguments.append(f"description:{request.description}")
+
+    if request.project is not None:
+        arguments.append(f"project:{request.project}")
+
+    if request.due is not None:
+        arguments.append(f"due:{_format_taskwarrior_timestamp(request.due)}")
+    elif request.clear_due:
+        arguments.append("due:")
+
+    if request.priority is not None:
+        arguments.append(f"priority:{request.priority}")
+    elif request.clear_priority:
+        arguments.append("priority:")
+
+    arguments.extend(f"+{tag}" for tag in request.add_tags)
+    arguments.extend(f"-{tag}" for tag in request.remove_tags)
+    return tuple(arguments)
+
+
+def _format_taskwarrior_timestamp(value: datetime) -> str:
+    """Serialise one validated aware datetime in Taskwarrior UTC form."""
+    return value.astimezone(UTC).strftime(_TASKWARRIOR_TIMESTAMP_FORMAT)
 
 
 def _is_canonical_uuid(value: str) -> bool:
@@ -308,6 +427,29 @@ def _create_failure(
                 message=message,
                 provider=_PROVIDER,
                 operation="create",
+                task_uuid=task_uuid,
+            ),
+        ),
+    )
+
+
+def _mutation_failure(
+    *,
+    code: str,
+    message: str,
+    operation: str,
+    task_uuid: str,
+) -> TaskMutationResult:
+    """Construct one deterministic failed task mutation."""
+    return TaskMutationResult(
+        success=False,
+        task=None,
+        issues=(
+            TaskProviderIssue(
+                code=code,
+                message=message,
+                provider=_PROVIDER,
+                operation=operation,
                 task_uuid=task_uuid,
             ),
         ),

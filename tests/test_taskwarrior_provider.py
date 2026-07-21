@@ -11,7 +11,6 @@ from lea.adapters.taskwarrior import (
 )
 from lea.tasks import (
     TaskListQuery,
-    TaskModifyRequest,
     TaskProvider,
     TaskProviderIssue,
     TaskStatus,
@@ -246,29 +245,21 @@ def test_list_preserves_parser_failure(
     assert result.issues[0].code == "taskwarrior_export_invalid_json"
 
 
-def test_mutations_are_read_only(
+def test_complete_and_delete_are_read_only(
     tmp_path: Path,
 ) -> None:
-    """All task mutations should fail without subprocess calls."""
+    """Unimplemented mutations should not invoke Taskwarrior."""
     runner = RecordingRunner(successful_run("[]"))
     provider = TaskwarriorCliProvider(
         make_config(tmp_path),
         runner=runner,  # type: ignore[arg-type]
     )
 
-    modify = provider.modify_task(
-        TaskModifyRequest(
-            task_uuid=TASK_UUID,
-            description="Changed",
-        )
-    )
     complete = provider.complete_task(TASK_UUID)
     delete = provider.delete_task(TASK_UUID)
 
-    assert modify.success is False
     assert complete.success is False
     assert delete.success is False
-    assert modify.issues[0].operation == "modify"
     assert complete.issues[0].operation == "complete"
     assert delete.issues[0].operation == "delete"
     assert runner.calls == []
