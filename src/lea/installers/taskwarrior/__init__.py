@@ -1,5 +1,12 @@
 """Public Taskwarrior installer interfaces."""
 
+from lea.installers.taskwarrior.activation import (
+    TaskwarriorActivationResult,
+    TaskwarriorInstallationRecord,
+    activate_staged_taskwarrior,
+    render_taskwarrior_installation_record,
+    write_taskwarrior_installation_record,
+)
 from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallerConfig,
     TaskwarriorInstallerIssue,
@@ -32,24 +39,29 @@ from lea.installers.taskwarrior.validation import (
 )
 
 __all__ = [
+    "TaskwarriorActivationResult",
     "TaskwarriorInstallFailureCode",
     "TaskwarriorInstallMode",
+    "TaskwarriorInstallationRecord",
     "TaskwarriorInstallerConfig",
     "TaskwarriorInstallerIssue",
     "TaskwarriorInstallerValidationResult",
     "TaskwarriorSmokeTestResult",
     "TaskwarriorStagedBinary",
     "TaskwarriorStagingResult",
+    "activate_staged_taskwarrior",
     "calculate_sha256",
     "check_directory_parent_writable",
     "is_supported_taskwarrior_version",
     "is_valid_sha256",
     "normalise_taskwarrior_platform",
     "remove_taskwarrior_staging",
+    "render_taskwarrior_installation_record",
     "run_taskwarrior_installer_preflight",
     "stage_taskwarrior_binary",
     "validate_external_executable_path",
     "validate_staged_taskwarrior_binary",
     "validate_taskwarrior_installer_config",
     "verify_expected_sha256",
+    "write_taskwarrior_installation_record",
 ]
