@@ -11,6 +11,7 @@ from lea.proposals.contracts import (
     ProposalListResult,
     ProposalReadResult,
     ProposalRepositoryIssue,
+    ProposalVerificationResult,
     ProposalWriteResult,
 )
 from lea.proposals.documents import (
@@ -290,6 +291,144 @@ class MarkdownProposalRepository:
             success=True,
             proposals=tuple(proposals),
             issues=(),
+        )
+
+    def verify(self) -> ProposalVerificationResult:
+        """Verify every repository entry without modifying anything."""
+        if not self._root.exists():
+            return ProposalVerificationResult(
+                valid=False,
+                checked_documents=0,
+                issues=(
+                    ProposalRepositoryIssue(
+                        code="proposal_directory_missing",
+                        message=(
+                            "The configured proposal repository directory "
+                            "does not exist."
+                        ),
+                        path=self._root,
+                    ),
+                ),
+            )
+
+        if not self._root.is_dir():
+            return ProposalVerificationResult(
+                valid=False,
+                checked_documents=0,
+                issues=(
+                    ProposalRepositoryIssue(
+                        code="proposal_directory_not_directory",
+                        message=(
+                            "The configured proposal repository path is not "
+                            "a directory."
+                        ),
+                        path=self._root,
+                    ),
+                ),
+            )
+
+        try:
+            entries = tuple(
+                sorted(
+                    self._root.iterdir(),
+                    key=lambda path: path.name,
+                )
+            )
+        except OSError:
+            return ProposalVerificationResult(
+                valid=False,
+                checked_documents=0,
+                issues=(
+                    ProposalRepositoryIssue(
+                        code="proposal_directory_read_failed",
+                        message=(
+                            "The proposal repository directory could not be inspected."
+                        ),
+                        path=self._root,
+                    ),
+                ),
+            )
+
+        checked_documents = 0
+        issues: list[ProposalRepositoryIssue] = []
+
+        for path in entries:
+            if path.is_symlink():
+                issues.append(
+                    ProposalRepositoryIssue(
+                        code="proposal_symbolic_link",
+                        message=(
+                            "Symbolic links are not permitted in the proposal "
+                            "repository."
+                        ),
+                        path=path,
+                    )
+                )
+                continue
+
+            if path.name.startswith(".") and path.name.endswith(".tmp"):
+                issues.append(
+                    ProposalRepositoryIssue(
+                        code="proposal_temporary_file",
+                        message=("A leftover temporary proposal file was found."),
+                        path=path,
+                    )
+                )
+                continue
+
+            if path.is_dir():
+                issues.append(
+                    ProposalRepositoryIssue(
+                        code="proposal_unexpected_entry",
+                        message=(
+                            "An unexpected directory was found in the "
+                            "proposal repository."
+                        ),
+                        path=path,
+                    )
+                )
+                continue
+
+            if path.suffix != ".md":
+                issues.append(
+                    ProposalRepositoryIssue(
+                        code="proposal_unexpected_file",
+                        message=(
+                            "An unexpected non-Markdown file was found in "
+                            "the proposal repository."
+                        ),
+                        path=path,
+                    )
+                )
+                continue
+
+            proposal_id = path.stem
+
+            try:
+                _validate_proposal_id(proposal_id)
+            except (TypeError, ValueError):
+                issues.append(
+                    ProposalRepositoryIssue(
+                        code="proposal_invalid_filename",
+                        message=(
+                            "A proposal document does not use a canonical "
+                            "proposal identifier filename."
+                        ),
+                        path=path,
+                    )
+                )
+                continue
+
+            checked_documents += 1
+            result = self.read(proposal_id)
+
+            if not result.success:
+                issues.extend(result.issues)
+
+        return ProposalVerificationResult(
+            valid=not issues,
+            checked_documents=checked_documents,
+            issues=tuple(issues),
         )
 
     def _inspect_root_for_listing(
