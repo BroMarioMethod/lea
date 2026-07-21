@@ -9,6 +9,7 @@ from lea.runtime.contracts import (
     RuntimeProfile,
     SecretPaths,
 )
+from lea.runtime.loader import load_runtime_config
 
 __all__ = [
     "RUNTIME_SCHEMA_VERSION",
@@ -18,4 +19,5 @@ __all__ = [
     "RuntimePaths",
     "RuntimeProfile",
     "SecretPaths",
+    "load_runtime_config",
 ]
