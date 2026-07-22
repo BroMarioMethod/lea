@@ -1,0 +1,78 @@
+"""Tests for Local CLI root dispatch."""
+
+import json
+from io import StringIO
+
+from lea.cli import LocalCliExitCode, execute_local_cli
+
+
+def test_root_help_returns_success() -> None:
+    """Help should be written to stdout and return zero."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        ["--help"],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.SUCCESS
+    assert stdout.getvalue().startswith("usage: lea ")
+    assert "status" in stdout.getvalue()
+    assert "task" in stdout.getvalue()
+    assert "proposal" in stdout.getvalue()
+    assert stderr.getvalue() == ""
+
+
+def test_missing_command_returns_usage_error() -> None:
+    """A Local CLI invocation requires one command."""
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        [],
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.USAGE_ERROR
+    assert "usage: lea " in stderr.getvalue()
+
+
+def test_recognised_command_returns_structured_placeholder() -> None:
+    """Accepted grammar should fail clearly until implemented."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        ["task", "list"],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.APPLICATION_ERROR
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == (
+        "The 'lea task list' command is recognised but is not implemented yet.\n"
+    )
+
+
+def test_json_placeholder_is_one_stdout_document() -> None:
+    """JSON mode should remain machine-readable for placeholder failures."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        ["--json", "proposal", "show", "proposal-1"],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    payload = json.loads(stdout.getvalue())
+
+    assert exit_code == LocalCliExitCode.APPLICATION_ERROR
+    assert payload["success"] is False
+    assert payload["exit_code"] == 1
+    assert payload["data"] == {"command": "lea proposal show"}
+    assert payload["issues"][0]["code"] == "cli_command_not_implemented"
+    assert stderr.getvalue() == ""

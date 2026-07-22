@@ -1,4 +1,4 @@
-"""Public Local CLI contracts and rendering interfaces."""
+"""Public Local CLI contracts and execution interfaces."""
 
 from lea.cli.contracts import (
     CliIssue,
@@ -9,10 +9,9 @@ from lea.cli.contracts import (
     RuntimeCliExitCode,
     normalise_runtime_cli_exit_code,
 )
-from lea.cli.rendering import (
-    HumanResultRenderer,
-    write_cli_result,
-)
+from lea.cli.dispatch import execute_local_cli
+from lea.cli.parser import create_local_cli_parser
+from lea.cli.rendering import HumanResultRenderer, write_cli_result
 from lea.cli.serialisation import (
     cli_issue_to_dict,
     cli_result_to_dict,
@@ -29,6 +28,8 @@ __all__ = [
     "RuntimeCliExitCode",
     "cli_issue_to_dict",
     "cli_result_to_dict",
+    "create_local_cli_parser",
+    "execute_local_cli",
     "normalise_runtime_cli_exit_code",
     "render_cli_result_json",
     "write_cli_result",

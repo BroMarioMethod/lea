@@ -73,6 +73,19 @@ def failing_runtime_runner(
     return EXIT_APPLICATION_ERROR
 
 
+def successful_local_cli_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Record one successful Local CLI invocation."""
+    assert tuple(arguments) == ("status",)
+    stdout.write("Local CLI completed.\n")
+    assert stderr.write("") == 0
+    return EXIT_SUCCESS
+
+
 @pytest.fixture
 def test_environment() -> Mapping[str, str]:
     """Return valid test configuration."""
@@ -202,6 +215,68 @@ def test_dispatch_runtime_does_not_require_application_config() -> None:
     )
 
     assert exit_code == EXIT_SUCCESS
+
+
+def test_dispatch_local_cli_command_uses_local_boundary() -> None:
+    """Recognised Local CLI commands should avoid legacy application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        ["status"],
+        {},
+        application_runner=unexpected_application_runner,
+        local_cli_runner=successful_local_cli_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Local CLI completed.\n"
+    assert stderr.getvalue() == ""
+
+
+@pytest.mark.parametrize(
+    "expected_arguments",
+    [
+        ["--help"],
+        ["-h"],
+        ["--json", "status"],
+        ["--no-colour", "task", "list"],
+        ["task", "list"],
+        ["proposal", "list"],
+    ],
+)
+def test_dispatch_recognises_local_cli_argument_paths(
+    expected_arguments: list[str],
+) -> None:
+    """Local CLI roots and global options should route consistently."""
+    called = False
+
+    def local_runner(
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        nonlocal called
+        called = True
+        assert tuple(arguments) == tuple(expected_arguments)
+        assert stdout.write("") == 0
+        assert stderr.write("") == 0
+        return EXIT_SUCCESS
+
+    exit_code = dispatch(
+        expected_arguments,
+        {},
+        application_runner=unexpected_application_runner,
+        local_cli_runner=local_runner,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert called is True
 
 
 def test_non_runtime_arguments_preserve_existing_application_path(
