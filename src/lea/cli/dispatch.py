@@ -19,7 +19,9 @@ from lea.cli.parser import create_local_cli_parser
 from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
     execute_proposal_list,
+    execute_proposal_show,
     render_proposal_list_result,
+    render_proposal_show_result,
 )
 from lea.cli.rendering import write_cli_result
 from lea.cli.status import (
@@ -111,6 +113,21 @@ def execute_local_cli(
             stderr=stderr,
             json_output=bool(namespace.json),
             human_renderer=render_proposal_list_result,
+        )
+
+    if namespace.command == "proposal" and namespace.proposal_command == "show":
+        result = execute_proposal_show(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            proposal_id=namespace.proposal_id,
+            dependencies=proposal_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_proposal_show_result,
         )
 
     if namespace.command == "task" and namespace.task_command == "list":

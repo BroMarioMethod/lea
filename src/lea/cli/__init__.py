@@ -14,7 +14,9 @@ from lea.cli.parser import create_local_cli_parser
 from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
     execute_proposal_list,
+    execute_proposal_show,
     render_proposal_list_result,
+    render_proposal_show_result,
 )
 from lea.cli.rendering import HumanResultRenderer, write_cli_result
 from lea.cli.serialisation import (
@@ -59,6 +61,7 @@ __all__ = [
     "create_local_cli_parser",
     "execute_local_cli",
     "execute_proposal_list",
+    "execute_proposal_show",
     "execute_status",
     "execute_task_complete",
     "execute_task_create",
@@ -68,6 +71,7 @@ __all__ = [
     "normalise_runtime_cli_exit_code",
     "render_cli_result_json",
     "render_proposal_list_result",
+    "render_proposal_show_result",
     "render_status_result",
     "render_task_complete_result",
     "render_task_create_result",
