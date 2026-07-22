@@ -66,6 +66,11 @@ from lea.installers.taskwarrior.source_installer import (
     TaskwarriorSourceInstallResult,
     install_source_taskwarrior,
 )
+from lea.installers.taskwarrior.source_network import (
+    TaskwarriorSourceNetworkConfig,
+    TaskwarriorSourceNetworkResult,
+    validate_taskwarrior_source_network,
+)
 from lea.installers.taskwarrior.staging import (
     TaskwarriorStagedBinary,
     TaskwarriorStagingResult,
@@ -101,6 +106,8 @@ __all__ = [
     "TaskwarriorSourceBuildPlan",
     "TaskwarriorSourceExtractionResult",
     "TaskwarriorSourceInstallResult",
+    "TaskwarriorSourceNetworkConfig",
+    "TaskwarriorSourceNetworkResult",
     "TaskwarriorStagedBinary",
     "TaskwarriorStagingResult",
     "activate_staged_taskwarrior",
@@ -130,6 +137,7 @@ __all__ = [
     "validate_taskwarrior_build_dependencies",
     "validate_taskwarrior_executable",
     "validate_taskwarrior_installer_config",
+    "validate_taskwarrior_source_network",
     "verify_expected_sha256",
     "write_taskwarrior_installation_record",
 ]
