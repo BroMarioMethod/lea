@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TextIO, cast
+from uuid import UUID
 
 from lea.cli.contracts import (
     CliIssue,
@@ -22,9 +23,11 @@ from lea.cli.status import (
 )
 from lea.cli.task_commands import (
     TaskCommandDependencies,
+    execute_task_complete,
     execute_task_create,
     execute_task_list,
     execute_task_modify,
+    render_task_complete_result,
     render_task_create_result,
     render_task_list_result,
     render_task_modify_result,
@@ -120,6 +123,32 @@ def execute_local_cli(
             human_renderer=render_task_create_result,
         )
 
+    if namespace.command == "task" and namespace.task_command == "complete":
+        validation_error = _validate_task_uuid(namespace.uuid)
+
+        if validation_error is not None:
+            return write_cli_result(
+                validation_error,
+                stdout=stdout,
+                stderr=stderr,
+                json_output=bool(namespace.json),
+                human_renderer=_render_first_issue,
+            )
+
+        result = execute_task_complete(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            task_uuid=namespace.uuid,
+            dependencies=task_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_task_complete_result,
+        )
+
     if namespace.command == "task" and namespace.task_command == "modify":
         request_result = _task_modify_request(namespace)
 
@@ -200,6 +229,29 @@ def _expected_profile(
         return None
 
     return RuntimeProfile(namespace.profile)
+
+
+def _validate_task_uuid(task_uuid: str) -> CliResult | None:
+    """Validate one canonical lower-case task UUID."""
+    try:
+        canonical = str(UUID(task_uuid))
+    except ValueError:
+        canonical = ""
+
+    if canonical == task_uuid:
+        return None
+
+    return CliResult.failed(
+        exit_code=LocalCliExitCode.VALIDATION_ERROR,
+        issues=(
+            CliIssue(
+                code="task_uuid_invalid",
+                message="The task UUID is not canonical.",
+                field="uuid",
+            ),
+        ),
+        data={"task": None},
+    )
 
 
 def _task_modify_request(

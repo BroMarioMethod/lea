@@ -118,6 +118,29 @@ def execute_task_modify(
     )
 
 
+def execute_task_complete(
+    *,
+    config_path: Path,
+    expected_profile: RuntimeProfile | None,
+    task_uuid: str,
+    dependencies: TaskCommandDependencies | None = None,
+) -> CliResult:
+    """Complete one task through the configured provider-neutral boundary."""
+    provider_result = _load_task_provider(
+        config_path=config_path,
+        expected_profile=expected_profile,
+        dependencies=dependencies,
+    )
+
+    if isinstance(provider_result, CliResult):
+        return _with_task_data(provider_result)
+
+    return _map_task_mutation_result(
+        provider_result.complete_task(task_uuid),
+        success_message="Task completed",
+    )
+
+
 def render_task_list_result(result: CliResult) -> str:
     """Render one stable human-readable task list."""
     data = result.data
@@ -283,6 +306,14 @@ def _map_task_mutation_result(
     )
 
 
+def render_task_complete_result(result: CliResult) -> str:
+    """Render one stable human-readable task-completion result."""
+    return _render_task_mutation_result(
+        result,
+        default_heading="Task completed",
+    )
+
+
 def render_task_modify_result(result: CliResult) -> str:
     """Render one stable human-readable task-modification result."""
     data = result.data
@@ -295,9 +326,31 @@ def render_task_modify_result(result: CliResult) -> str:
     if not isinstance(raw_task, dict):
         return _render_issues(result)
 
+    return _render_task_mutation_result(
+        result,
+        default_heading="Task modified",
+    )
+
+
+def _render_task_mutation_result(
+    result: CliResult,
+    *,
+    default_heading: str,
+) -> str:
+    """Render one stable human-readable task mutation."""
+    data = result.data
+
+    if not isinstance(data, dict):
+        return _render_issues(result)
+
+    raw_task = data.get("task")
+
+    if not isinstance(raw_task, dict):
+        return _render_issues(result)
+
     task = cast(dict[str, object], raw_task)
     message = data.get("message")
-    heading = str(message) if message is not None else "Task modified"
+    heading = str(message) if message is not None else default_heading
     lines = [heading, ""]
     lines.extend(_render_task_lines(task))
     return "\n".join(lines)

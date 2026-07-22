@@ -112,3 +112,19 @@ def test_empty_task_modification_returns_validation_error() -> None:
     assert exit_code == LocalCliExitCode.VALIDATION_ERROR
     assert stdout.getvalue() == ""
     assert "at least one change" in stderr.getvalue()
+
+
+def test_invalid_task_completion_uuid_returns_validation_error() -> None:
+    """Invalid completion UUIDs should fail before provider loading."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        ["task", "complete", "not-a-uuid"],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.VALIDATION_ERROR
+    assert stdout.getvalue() == ""
+    assert "not canonical" in stderr.getvalue()
