@@ -1,20 +1,22 @@
 # LEA-SPEC-0012: Taskwarrior Installer Contract
 
 - **Status:** Accepted
-- **Version:** 1.0
-- **Date:** 21 July 2026
+- **Version:** 1.1
+- **Date:** 22 July 2026
 - **Related ADR:** `ADR-0012_TASKWARRIOR_DISTRIBUTION.md`
 - **Related provider specification:** `LEA-SPEC-0011_TASK_PROVIDER_TASKWARRIOR_CLI.md`
 
 ## 1. Purpose
 
-This specification defines the deterministic contract for installing, validating and configuring the Taskwarrior runtime used by LEA.
+This specification defines the deterministic contract for installing,
+validating and configuring the Taskwarrior runtime used by LEA.
 
-It does not define a general-purpose Taskwarrior installer. It defines only the Taskwarrior installation required by LEA.
+It does not define a general-purpose Taskwarrior installer. It defines only the
+Taskwarrior installation required by LEA.
 
 ## 2. Supported installation modes
 
-The installer must support exactly these modes:
+The installer supports exactly:
 
 ```text
 bundled-binary
@@ -22,39 +24,37 @@ source-build
 external-executable
 ```
 
-The default mode is `bundled-binary`.
+The default and recommended mode is `bundled-binary`.
 
-An automatic mode may select `bundled-binary` first and fall back to `source-build` only when the user explicitly permits compilation.
-
-The installer must never silently switch to an executable found through `PATH`.
+The generic entry point dispatches strictly by the configured mode. It must not
+silently switch modes and must never select an executable through `PATH`.
 
 ## 3. Required inputs
 
 ### 3.1 Common inputs
 
-- installation root;
 - LEA service user and group;
 - Taskwarrior version;
+- platform identifier;
 - configuration directory;
 - state directory;
 - tools directory;
-- non-interactive or interactive execution mode.
+- installation-record path.
 
 ### 3.2 Bundled-binary inputs
 
-- platform identifier;
 - binary artefact path;
 - expected SHA-256 checksum;
 - licence and provenance records.
 
 ### 3.3 Source-build inputs
 
-- source archive path or pinned source URL;
+- local pinned source archive path;
 - expected SHA-256 checksum;
 - build directory;
-- installation prefix;
 - build concurrency;
-- explicit dependency policy.
+- explicit build dependency policy;
+- finite dependency, network, build and smoke-test timeouts.
 
 ### 3.4 External-executable inputs
 
@@ -62,35 +62,18 @@ The installer must never silently switch to an executable found through `PATH`.
 
 ## 4. Canonical paths
 
-Default production paths:
-
 ```text
-Taskwarrior executable:
-/opt/lea-tools/taskwarrior/<version>/bin/task
-
-Taskwarrior configuration:
-/etc/lea/taskwarrior/taskrc
-
-Taskwarrior state root:
-/var/lib/lea/taskwarrior
-
-Taskwarrior home:
-/var/lib/lea/taskwarrior/home
-
-Taskwarrior data:
-/var/lib/lea/taskwarrior/data
-
-Installation record:
-/var/lib/lea/install/taskwarrior.json
+Executable:          /opt/lea-tools/taskwarrior/<version>/bin/task
+Configuration:       /etc/lea/taskwarrior/taskrc
+State root:          /var/lib/lea/taskwarrior
+Home:                /var/lib/lea/taskwarrior/home
+Data:                /var/lib/lea/taskwarrior/data
+Installation record: /var/lib/lea/install/taskwarrior.json
 ```
-
-Paths may be overridden only by explicit installer arguments or configuration.
 
 Every persisted path must be absolute.
 
 ## 5. Platform identifiers
-
-The installer must normalise platforms to explicit canonical identifiers.
 
 Initial canonical identifiers:
 
@@ -99,9 +82,7 @@ linux-x86_64
 linux-aarch64
 ```
 
-The installer must recognise common architecture aliases and normalise them before artefact selection.
-
-At minimum:
+Required aliases:
 
 ```text
 x86_64  -> linux-x86_64
@@ -110,123 +91,115 @@ aarch64 -> linux-aarch64
 arm64   -> linux-aarch64
 ```
 
-This includes the 64-bit Raspberry Pi 4B pilot platform running DietPi.
-
-Unknown platforms must fail with a structured unsupported-platform result unless source-build mode is explicitly selected.
+Unknown platforms fail closed unless a supported explicitly selected
+source-build policy applies.
 
 ## 6. Installation phases
 
-The installer must execute these phases in order:
+Managed installation executes:
 
-1. preflight;
-2. source or artefact selection;
-3. integrity verification;
-4. staged installation;
-5. permissions and ownership;
-6. version validation;
-7. isolated configuration creation;
-8. lifecycle smoke test;
-9. atomic activation;
-10. installation-record creation;
-11. final report.
+1. configuration validation;
+2. existing-installation inspection;
+3. preflight;
+4. source or artefact selection;
+5. integrity verification;
+6. staging or source extraction;
+7. build where applicable;
+8. isolated lifecycle smoke test;
+9. runtime-layout provisioning;
+10. atomic activation;
+11. installation-record persistence;
+12. cleanup and final result.
 
-A failure before atomic activation must not replace a previously working installation.
+A failure before activation must preserve a previously working installation.
 
 ## 7. Preflight contract
 
-Preflight must validate:
+Preflight validates:
 
-- the installer has required privileges;
-- destination parent directories are writable or creatable;
-- required disk space is available;
-- platform is supported for the selected mode;
-- no required input is blank;
-- all configured paths are absolute;
-- the requested version is supported;
-- temporary directories are on a usable filesystem.
+- required paths are absolute;
+- destination parents are writable or creatable;
+- required inputs are present;
+- requested version and platform are supported;
+- source-build dependencies exist;
+- source-build timeouts and concurrency are positive;
+- source-build network trust is valid before a clean online build.
 
-Source-build preflight must report missing build dependencies before compilation begins.
+Privilege elevation and ownership changes belong to a later privileged
+installation boundary. Tests use isolated writable paths.
 
 ## 8. Integrity verification
 
-LEA-provided binaries and pinned source archives must be verified with SHA-256 before use.
+Bundled binaries and pinned source archives are SHA-256 verified before use.
 
-A checksum mismatch must:
-
-- stop installation;
-- delete or quarantine the staged artefact;
-- preserve any active installation;
-- return a structured failure;
-- record no successful installation state.
-
-Checksums must be compared using lower-case hexadecimal form.
+A mismatch stops installation, preserves any active installation, creates no
+success record and removes installer-managed staging.
 
 ## 9. Binary installation
 
-Bundled binaries must be copied into a staging directory under the target tools root.
+Bundled binaries are copied into private staging beneath the tools root,
+verified independently, smoke-tested and atomically activated.
 
-The installer must:
-
-- avoid executing directly from a download or repository path;
-- set executable permissions explicitly;
-- avoid world-writable permissions;
-- preserve the Taskwarrior licence and provenance files;
-- verify the staged executable before activation.
-
-The final versioned executable must not be overwritten in place. Replacement must use a new staged directory followed by atomic activation.
+Final version directories are not overwritten in place.
 
 ## 10. Source-build contract
 
-The source build must:
+Source-build mode must:
 
-- unpack only after checksum verification;
-- reject unsafe archive paths;
-- build in a temporary directory;
-- avoid modifying the source archive;
-- use an explicit installation prefix;
-- capture build stdout, stderr, duration and exit status;
-- enforce a finite build timeout;
-- avoid shell-string construction where practical;
-- install only after a successful build;
-- verify the installed executable independently.
+- verify the archive before extraction;
+- reject unsafe archive members;
+- safely materialise only verified internal regular-file symlinks;
+- build in an installer-managed temporary directory;
+- use exact build-tool paths;
+- require C++17, Rust 1.81.0 or newer and `pkg-config` UUID support;
+- use explicit CMake source, build and installation paths;
+- capture stdout, stderr, duration and exit status;
+- enforce a finite timeout;
+- avoid shell-string construction and `shell=True`;
+- independently checksum and smoke-test the built executable;
+- stage only the verified executable before atomic activation;
+- clean extracted source and staging;
+- avoid `/usr/bin` and other unversioned system paths.
 
-The source build must not install Taskwarrior into `/usr/bin` or another unversioned system path.
+A clean online Taskwarrior 3.4.2 build also validates:
+
+```text
+/usr/bin/git
+/etc/ssl/certs/ca-certificates.crt
+https://github.com/corrosion-rs/corrosion.git
+```
+
+TLS certificate verification must remain enabled.
+
+On a Raspberry Pi 4B with 4 GB RAM, build concurrency 1 is the recommended
+default. Concurrency 2 is validated but provides less memory headroom.
+
+The build phase timeout is initially 7 200 seconds.
 
 ## 11. External executable contract
 
-An external executable is accepted only when:
+An external executable is accepted only when its exact absolute path identifies
+a regular executable file, `_version` reports a supported version and the
+isolated lifecycle smoke test succeeds.
 
-- the configured path is absolute;
-- the file exists;
-- it is a regular file;
-- it is executable by the LEA runtime user;
-- `_version` succeeds;
-- the returned version matches the supported policy;
-- the isolated lifecycle smoke test succeeds.
-
-The executable is not copied unless an explicit installer option requests managed copying.
+The external executable is not copied or modified.
 
 ## 12. Version validation
 
-Version detection must invoke:
+Version detection invokes:
 
 ```text
 task _version
 ```
 
-with LEA's explicit runtime configuration arguments and environment.
+For Milestone 2.2, supported versions are `3.4.x`.
 
-For Milestone 2.2, supported versions are:
-
-```text
-3.4.x
-```
-
-`--version` must not be used by the LEA adapter because Taskwarrior 3.4.2 may return a non-zero status when runtime `rc.*` arguments are present.
+`--version` is not used because Taskwarrior 3.4.2 may return a non-zero status
+when runtime `rc.*` arguments are supplied.
 
 ## 13. Runtime configuration
 
-The installer-created `taskrc` must initially include:
+The installer-created taskrc contains:
 
 ```text
 confirmation=no
@@ -234,132 +207,96 @@ hooks=0
 verbose=nothing
 ```
 
-The runtime invocation must additionally supply:
+Runtime invocation additionally supplies exact configuration, data, HOME and
+TASKRC values.
 
-- exact `rc:<taskrc-path>`;
-- exact `rc.data.location:<data-path>`;
-- `rc.confirmation:no`;
-- `rc.verbose:nothing`;
-- explicit `HOME`;
-- explicit `TASKRC`.
-
-The taskrc file and state directories must be owned by the LEA service account and must not be writable by unrelated users.
+LEA-managed state is isolated from users' personal Taskwarrior data.
 
 ## 14. Lifecycle smoke test
 
-The smoke test must use a temporary isolated Taskwarrior state directory and must not modify production task data.
-
-It must perform:
+The isolated smoke test performs:
 
 1. `_version`;
-2. create one task;
-3. parse the created UUID;
-4. export the exact task;
-5. modify the exact task;
-6. complete the exact task;
-7. create a second task;
-8. delete the second task;
-9. verify returned statuses and UUIDs.
+2. create;
+3. exact UUID parse and list;
+4. modify;
+5. complete;
+6. create a second task;
+7. delete the second task;
+8. verify UUIDs and statuses.
 
-The smoke test must clean up its temporary directory on success and ordinary failure.
+Temporary state is removed on success and ordinary failure.
 
 ## 15. Created UUID parsing
 
-Taskwarrior 3.4.2 may return creation output in this form:
+Accepted forms are:
 
 ```text
-Created task <uuid>.
+Created task <canonical-uuid>.
+<canonical-uuid>
 ```
 
-The installer and provider may also accept a raw canonical UUID for compatibility with controlled test doubles.
-
-No other output form may be accepted.
+The raw UUID form exists only for controlled compatibility. No other output is
+accepted.
 
 ## 16. Installation record
 
-A successful installation must write a machine-readable record containing at least:
+A successful installation writes an atomic strict JSON record containing:
 
-```json
-{
-  "schema_version": 1,
-  "component": "taskwarrior",
-  "version": "3.4.2",
-  "mode": "bundled-binary",
-  "platform": "linux-aarch64",
-  "executable": "/opt/lea-tools/taskwarrior/3.4.2/bin/task",
-  "sha256": "<lower-case hexadecimal checksum>",
-  "taskrc": "/etc/lea/taskwarrior/taskrc",
-  "home": "/var/lib/lea/taskwarrior/home",
-  "data": "/var/lib/lea/taskwarrior/data",
-  "smoke_test": "passed",
-  "installed_at": "<UTC timestamp>"
-}
-```
+- schema version;
+- component;
+- version;
+- mode;
+- canonical platform;
+- exact executable path;
+- executable SHA-256;
+- taskrc, home and data paths;
+- smoke-test result;
+- canonical UTC timestamp.
 
-The record must be written atomically.
-
-Displayed timestamps must be localised for the user, while stored timestamps may remain UTC.
+Displayed timestamps are localised for the user.
 
 ## 17. Idempotency
 
-Re-running the installer with the same validated version and checksum must be safe.
+Re-running against a matching validated installation returns
+`already_installed`.
 
-The installer should report:
-
-```text
-already-installed
-```
-
-when the active installation already matches the requested state.
-
-Configuration and permission drift may be repaired when doing so does not overwrite user-owned data.
-
-Production task data must never be deleted merely because installation is repeated.
+A matching source installation is detected before network checks or compilation.
+Production task data is never deleted merely because installation is repeated.
 
 ## 18. Upgrade behaviour
 
-An upgrade must:
+The long-term upgrade contract remains:
 
-- install the new version beside the existing version;
-- validate it independently;
-- run the smoke test;
-- atomically switch the active configured path;
-- retain the previous version until activation succeeds;
-- permit rollback to the previous validated executable.
+- install beside the current version;
+- validate independently;
+- activate atomically;
+- preserve the previous executable until success;
+- permit rollback;
+- never edit TaskChampion SQLite directly.
 
-The installer must not migrate or directly edit TaskChampion SQLite.
+Automated upgrade orchestration is deferred beyond Milestone 2.2.
 
 ## 19. Uninstall behaviour
 
-Uninstall must distinguish between:
+The long-term uninstall contract distinguishes executable files, configuration
+and production data. Production task data is preserved by default.
 
-- executable and installer-managed files;
-- configuration;
-- production task data.
-
-By default, uninstall must preserve production task data.
-
-Task-data removal requires an explicit destructive option and confirmation outside automated agent execution.
+Uninstall implementation and destructive data removal are deferred beyond
+Milestone 2.2 and require their own approval and specification.
 
 ## 20. Logging
 
-Every installation phase must emit structured logs containing:
+Every installation phase is designed for structured logs containing operation
+identifier, component, phase, timestamps, result, failure code, validated
+program arguments, duration and relevant paths.
 
-- operation identifier;
-- component;
-- phase;
-- start and finish timestamps;
-- result;
-- error code when applicable;
-- executed program and argument list, excluding secrets;
-- duration;
-- relevant validated paths.
+The installer must not log arbitrary environment dumps.
 
-Logs must not contain arbitrary environment-variable dumps.
+Structured installer event integration is deferred to the shared runtime logging
+milestone; immutable result contracts already expose phase diagnostics.
 
 ## 21. Failure codes
-
-The installer contract reserves these codes:
 
 ```text
 taskwarrior_install_invalid_argument
@@ -380,13 +317,11 @@ taskwarrior_install_record_failed
 taskwarrior_install_already_installed
 ```
 
-Error messages must be actionable and must not expose private data.
-
 ## 22. Security requirements
 
 The installer must:
 
-- never use `PATH` to select the runtime Taskwarrior executable;
+- avoid runtime executable discovery through `PATH`;
 - avoid `shell=True`;
 - reject relative executable paths;
 - reject unsafe archive members;
@@ -394,26 +329,27 @@ The installer must:
 - use restrictive permissions;
 - isolate smoke-test and production storage;
 - avoid direct TaskChampion database access;
-- avoid deleting existing task data during failed installation;
-- fail closed when version or provenance cannot be established.
+- preserve existing task data on failure;
+- fail closed when version, integrity or provenance is unverified;
+- require verified TLS for clean online source builds.
 
-## 23. Benchmark requirement
+## 23. Raspberry Pi evidence
 
-The installer documentation must include the benchmark command:
+Provider benchmark:
 
 ```bash
 uv run python scripts/benchmark_taskwarrior_provider.py --iterations 5
 ```
 
-The recorded Raspberry Pi pilot baseline was measured on:
+Platform:
 
 ```text
-Device: Raspberry Pi 4B
-Memory: 4 GB
-Operating system: DietPi, 64-bit
-Architecture: ARM64 / AArch64
-Taskwarrior: 3.4.2
-Iterations: 5
+Raspberry Pi 4B
+4 GB RAM
+DietPi 64-bit
+ARM64 / AArch64
+Taskwarrior 3.4.2
+5 iterations
 ```
 
 | Operation | Median |
@@ -425,25 +361,61 @@ Iterations: 5
 | Complete | 39.26 ms |
 | Delete | 38.92 ms |
 
-This baseline satisfies the initial Raspberry Pi 4B benchmark requirement for the pilot environment. Additional benchmark runs should still be recorded for release artefacts and materially different Raspberry Pi configurations.
+Real clean source-installer evidence with concurrency 2:
 
-Benchmark results are evidence, not hard runtime guarantees.
+| Phase | Duration |
+|---|---:|
+| Configure | 22.16 s |
+| Build | 3 004.38 s |
+| Install | 0.20 s |
+| Complete first installation | 3 029.81 s |
+| Idempotent second installation | 0.5132 s |
 
-## 24. Acceptance criteria
+The second run performed no build and returned the same installation record.
 
-This specification is satisfied when:
+## 24. Third-party provenance
 
+The repository contains:
+
+```text
+third_party/taskwarrior/VERSION
+third_party/taskwarrior/SHA256SUMS
+third_party/taskwarrior/LICENSE
+third_party/taskwarrior/NOTICE.md
+```
+
+Taskwarrior remains under its upstream MIT licence. LEA's AGPL-3.0-only licence
+does not replace it.
+
+The verified Taskwarrior 3.4.2 source checksum is:
+
+```text
+d302761fcd1268e4a5a545613a2b68c61abd50c0bcaade3b3e68d728dd02e716
+```
+
+## 25. Milestone 2.2 acceptance criteria
+
+Milestone 2.2 is complete when:
+
+- provider-neutral task contracts and the Taskwarrior CLI provider exist;
+- create, list, modify, complete and delete are deterministic;
 - all three installation modes are implemented;
-- checksums are verified;
-- exact paths are persisted;
-- `_version` is used;
-- isolated configuration and storage are created;
-- lifecycle smoke testing passes;
-- installation records are atomic;
-- repeated installation is safe;
-- upgrade rollback is possible;
-- uninstall preserves task data by default;
-- structured failure codes are tested;
-- Linux x86-64 and AArch64 release paths are documented;
-- Raspberry Pi 4B results are recorded;
-- the complete LEA test suite passes.
+- generic mode dispatch exists;
+- SHA-256 verification, safe extraction and isolated staging exist;
+- source dependencies and verified network trust are checked;
+- lifecycle smoke testing is shared across modes;
+- activation and records are atomic and idempotent;
+- real Raspberry Pi provider and source-build evidence is recorded;
+- licence, provenance and operator documentation are included;
+- the complete test and CI gates pass.
+
+The following are explicitly deferred:
+
+- uninstall implementation;
+- automated upgrades and rollback UX;
+- destructive task-data removal;
+- publication automation for Linux binary artefacts;
+- fully offline transitive source-build bundles.
+
+These deferrals do not weaken the requirement that future lifecycle operations
+preserve production task data by default.

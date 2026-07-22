@@ -1,195 +1,169 @@
 # ADR-0012: Taskwarrior Distribution Strategy
 
 - **Status:** Accepted
-- **Date:** 21 July 2026
+- **Version:** 1.1
+- **Date:** 22 July 2026
 - **Decision owners:** LEA maintainers
-- **Related specification:** `LEA-SPEC-0011_TASK_PROVIDER_TASKWARRIOR_CLI.md`
+- **Related specifications:** `LEA-SPEC-0011_TASK_PROVIDER_TASKWARRIOR_CLI.md`,
+  `LEA-SPEC-0012_TASKWARRIOR_INSTALLER_CONTRACT.md`
 
 ## Context
 
-LEA requires a supported Taskwarrior 3.4.x executable for its task-provider adapter.
+LEA requires a supported Taskwarrior 3.4.x executable at an exact path, with
+configuration and state isolated from users' personal Taskwarrior installations.
 
-Relying only on the operating system package manager is insufficient because:
-
-- supported distributions may provide older Taskwarrior releases;
-- package availability varies by architecture and distribution;
-- LEA requires a known executable path;
-- LEA must isolate its configuration and task database from a user's personal Taskwarrior installation;
-- installation must remain practical for non-technical users;
-- source compilation requires a larger toolchain and increases installation time and failure risk.
-
-LEA should therefore provide a convenient default installation path while retaining deterministic, auditable fallbacks.
+Distribution package versions vary, source compilation is expensive on small
+hardware, and runtime discovery through `PATH` is non-deterministic.
 
 ## Decision
 
-LEA will use a three-tier Taskwarrior distribution strategy.
+LEA uses a three-tier distribution strategy.
 
-### Tier 1: Verified release binary
+### Tier 1: verified release binary
 
-The default installer will prefer a LEA release artefact containing a Taskwarrior binary built for a supported platform.
+This is the recommended default.
 
-Initial supported targets:
-
-- Linux x86-64;
-- Linux AArch64.
-
-The installer must:
-
-1. detect the host platform;
-2. select an exact supported artefact;
-3. verify its recorded SHA-256 checksum;
-4. copy it to the versioned LEA tools directory;
-5. verify executable permissions;
-6. execute `_version`;
-7. reject unsupported versions;
-8. run an isolated lifecycle smoke test;
-9. record the installed executable path and checksum.
-
-The canonical installation path is:
+LEA verifies the platform artefact checksum, stages it beneath the tools root,
+runs the shared lifecycle smoke test and atomically activates:
 
 ```text
 /opt/lea-tools/taskwarrior/<version>/bin/task
 ```
 
-LEA must never discover Taskwarrior through `PATH` during normal runtime.
+Initial targets are Linux AArch64 and Linux x86-64.
 
-### Tier 2: Pinned source build
+Release publication automation is deferred, but the installer contract and
+provenance structure required to consume those artefacts are implemented.
 
-When no verified binary exists for the target platform, an administrator may request a source build.
+### Tier 2: pinned source build
 
-The source-build path must use:
+An administrator may explicitly request a source build.
 
-- an exact Taskwarrior release version;
-- a pinned source archive;
-- a recorded SHA-256 checksum;
-- an isolated temporary build directory;
-- an explicit installation prefix;
-- a post-install `_version` check;
-- the same lifecycle smoke test used for binary installation.
+The build uses:
 
-The source archive remains a separate third-party component and must not be mixed into `src/lea`.
+- Taskwarrior 3.4.2;
+- a local pinned source archive;
+- the recorded SHA-256 checksum;
+- safe manual extraction;
+- exact build-tool paths;
+- explicit CMake source, build and installation paths;
+- finite probes and build timeout;
+- a private temporary build tree;
+- post-build checksum and lifecycle validation;
+- the same staging and activation boundary as bundled binaries.
 
-The preferred repository layout is:
+The clean Taskwarrior 3.4.2 CMake build retrieves Corrosion through verified
+HTTPS. Source-build preflight therefore validates `/usr/bin/git`, the Debian CA
+bundle and canonical Git `HEAD` reachability before compilation.
 
-```text
-third_party/
-└── taskwarrior/
-    ├── VERSION
-    ├── SHA256SUMS
-    ├── LICENSE
-    ├── NOTICE.md
-    └── sources/
-```
+A fully offline transitive build bundle is a future extension.
 
-The source archive may be:
+The Raspberry Pi 4B pilot completed a clean build in approximately 50 minutes.
+Concurrency 1 is the safe default for 4 GB systems; concurrency 2 is validated
+but used swap and reduced headroom.
 
-- committed directly when repository-size impact is acceptable; or
-- downloaded by a release/build process from a pinned location and verified before use.
+### Tier 3: administrator-supplied executable
 
-A Git submodule will not be used because it adds clone, update and reproducibility failure modes for users.
+An administrator may register an exact absolute executable path.
 
-### Tier 3: Administrator-supplied executable
+LEA validates its file type, executability, `_version` output and complete
+isolated lifecycle behaviour. It neither copies nor alters the executable.
 
-An administrator may supply an existing Taskwarrior executable through an explicit absolute path.
+## Runtime isolation
 
-The installer must validate:
-
-- the path is absolute;
-- the file exists;
-- the file is executable;
-- `_version` returns a supported 3.4.x version;
-- an isolated lifecycle smoke test passes.
-
-LEA must store and use the exact validated path. It must not fall back to `PATH`.
-
-## Isolation requirements
-
-LEA will not use a user's personal Taskwarrior configuration or database.
-
-The production layout will use:
+LEA uses:
 
 ```text
 /etc/lea/taskwarrior/taskrc
-/var/lib/lea/taskwarrior/
-/var/lib/lea/taskwarrior/home/
-/var/lib/lea/taskwarrior/data/
+/var/lib/lea/taskwarrior/home
+/var/lib/lea/taskwarrior/data
 ```
 
-The exact final layout may be refined by the installer specification, but the following rules are fixed:
-
-- configuration is LEA-managed;
-- storage is LEA-managed;
-- hooks are disabled unless a later specification explicitly enables them;
-- confirmations are disabled for approved deterministic actions;
-- runtime execution uses explicit `HOME`, `TASKRC` and data-location values;
-- direct access to TaskChampion SQLite is prohibited in the CLI adapter.
+Runtime calls use explicit executable, HOME, TASKRC, taskrc and data paths.
+Direct TaskChampion SQLite access is prohibited.
 
 ## Licensing and provenance
 
-Taskwarrior remains a distinct third-party component.
+Taskwarrior remains a distinct MIT-licensed third-party component.
 
-LEA distributions containing Taskwarrior source or binaries must preserve:
+The repository preserves:
 
-- Taskwarrior's licence text;
-- upstream copyright notices;
-- source-version provenance;
-- build provenance;
-- checksums for distributed artefacts.
+```text
+third_party/taskwarrior/VERSION
+third_party/taskwarrior/SHA256SUMS
+third_party/taskwarrior/LICENSE
+third_party/taskwarrior/NOTICE.md
+```
 
-LEA's AGPL-3.0-only licence does not replace the licence of bundled third-party components.
+LEA's AGPL-3.0-only licence does not replace Taskwarrior's licence.
+
+The source archive is not committed merely because it is small. Release and
+installation processes may retrieve or supply the pinned archive separately,
+but must verify it before use.
 
 ## Consequences
 
 ### Positive
 
-- normal users avoid installing compilers and build dependencies;
-- supported installations are fast and predictable;
-- runtime behaviour uses a known Taskwarrior version;
-- LEA remains portable to unsupported systems through source builds;
-- administrators retain control over externally managed installations;
-- personal Taskwarrior data remains isolated.
+- normal users can use fast verified binaries;
+- exact paths and versions are deterministic;
+- source builds remain available for unsupported targets;
+- administrators may retain external package ownership;
+- personal Taskwarrior state remains isolated;
+- one smoke-test contract validates every mode;
+- repeated source installation avoids recompilation.
 
 ### Negative
 
-- release engineering must build and verify multiple platform artefacts;
-- third-party provenance and checksums must be maintained;
-- source-build support adds installer complexity;
-- unsupported architectures may require a lengthy local build;
-- security updates require refreshing bundled artefacts and checksums.
+- release engineering must eventually publish multiple artefacts;
+- provenance must be maintained for every binary;
+- clean source builds require a toolchain and verified network access;
+- the Raspberry Pi build takes roughly 50 minutes;
+- a fully offline source build requires future transitive dependency packaging.
 
 ## Rejected alternatives
 
-### Use the distribution package only
+### Distribution package only
 
-Rejected because package versions and availability vary and may not satisfy LEA's supported baseline.
+Rejected because supported versions and architectures vary.
 
-### Search for `task` through `PATH`
+### Search `PATH`
 
-Rejected because it is non-deterministic and may select an unsupported or user-managed executable.
+Rejected because it may select an unsupported or user-managed executable.
 
-### Require every user to compile Taskwarrior
+### Require source builds for all users
 
-Rejected because it imposes unnecessary toolchain, time and troubleshooting costs.
+Rejected because compilation is slow and resource-intensive.
 
-### Use a Git submodule
+### Git submodule
 
-Rejected because it complicates cloning, offline installation and version reproducibility.
+Rejected because it complicates cloning, reproducibility and offline setup.
 
 ### Reimplement Taskwarrior or TaskChampion
 
-Rejected for Milestone 2.2 because the existing Taskwarrior CLI satisfies the required operations and measured performance is acceptable.
+Rejected for Milestone 2.2. The existing CLI meets the required operations and
+its measured Raspberry Pi performance is acceptable.
 
-A future direct TaskChampion provider remains possible when evidence justifies it.
+## Deferred lifecycle work
+
+Automated upgrades, rollback UX, uninstall, destructive data removal, release
+publication automation and fully offline build packaging are deferred.
+
+The fixed policy remains that user and production task data are preserved by
+default.
 
 ## Acceptance criteria
 
-This decision is implemented when:
+This decision is implemented for Milestone 2.2 when:
 
-- the installer contract supports all three tiers;
-- exact-path validation exists;
-- checksum verification exists for LEA-provided artefacts;
-- source-build behaviour is deterministic;
-- isolated lifecycle smoke testing exists;
-- licence and provenance files are included;
-- installation documentation describes each path;
-- supported release artefacts can be produced reproducibly.
+- all three installer tiers work;
+- generic mode dispatch exists;
+- integrity, safe extraction, exact-path and TLS trust checks exist;
+- shared isolated smoke testing exists;
+- activation and records are atomic and idempotent;
+- provenance and operator documentation are present;
+- real Raspberry Pi evidence is recorded;
+- the full quality gate passes.
+
+Producing public platform binaries is a release-engineering follow-on, not a
+blocker for the provider and installer milestone.
