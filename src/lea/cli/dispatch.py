@@ -24,13 +24,16 @@ from lea.cli.task_commands import (
     TaskCommandDependencies,
     execute_task_create,
     execute_task_list,
+    execute_task_modify,
     render_task_create_result,
     render_task_list_result,
+    render_task_modify_result,
 )
 from lea.runtime import RuntimeProfile
 from lea.tasks import (
     TaskCreateRequest,
     TaskListQuery,
+    TaskModifyRequest,
     TaskStatus,
 )
 
@@ -117,6 +120,32 @@ def execute_local_cli(
             human_renderer=render_task_create_result,
         )
 
+    if namespace.command == "task" and namespace.task_command == "modify":
+        request_result = _task_modify_request(namespace)
+
+        if isinstance(request_result, CliResult):
+            return write_cli_result(
+                request_result,
+                stdout=stdout,
+                stderr=stderr,
+                json_output=bool(namespace.json),
+                human_renderer=_render_first_issue,
+            )
+
+        result = execute_task_modify(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            request=request_result,
+            dependencies=task_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_task_modify_result,
+        )
+
     result = _not_implemented_result(namespace)
     return write_cli_result(
         result,
@@ -171,6 +200,32 @@ def _expected_profile(
         return None
 
     return RuntimeProfile(namespace.profile)
+
+
+def _task_modify_request(
+    namespace: argparse.Namespace,
+) -> TaskModifyRequest | CliResult:
+    """Build one validated provider-neutral task modification."""
+    try:
+        return TaskModifyRequest(
+            task_uuid=namespace.uuid,
+            description=namespace.description,
+            project=namespace.project,
+            priority=namespace.priority,
+            add_tags=tuple(namespace.add_tag),
+            remove_tags=tuple(namespace.remove_tag),
+        )
+    except ValueError as error:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.VALIDATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="task_modification_invalid",
+                    message=str(error),
+                ),
+            ),
+            data={"task": None},
+        )
 
 
 def _not_implemented_result(namespace: argparse.Namespace) -> CliResult:

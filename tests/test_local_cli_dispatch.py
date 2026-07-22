@@ -92,3 +92,23 @@ def test_non_system_profile_requires_explicit_configuration() -> None:
     assert exit_code == LocalCliExitCode.USAGE_ERROR
     assert stdout.getvalue() == ""
     assert "--config is required" in stderr.getvalue()
+
+
+def test_empty_task_modification_returns_validation_error() -> None:
+    """A modification with no changes should fail before provider loading."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        [
+            "task",
+            "modify",
+            "11111111-1111-4111-8111-111111111111",
+        ],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.VALIDATION_ERROR
+    assert stdout.getvalue() == ""
+    assert "at least one change" in stderr.getvalue()

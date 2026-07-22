@@ -153,3 +153,33 @@ def test_parser_preserves_task_create_fields() -> None:
     assert namespace.project == "lea"
     assert namespace.priority == "H"
     assert namespace.tag == ["create", "cli"]
+
+
+def test_parser_preserves_task_modify_fields() -> None:
+    """Supported task modifications should parse deterministically."""
+    namespace = create_local_cli_parser().parse_args(
+        [
+            "task",
+            "modify",
+            "11111111-1111-4111-8111-111111111111",
+            "--description",
+            "Updated CLI task",
+            "--project",
+            "lea.updated",
+            "--priority",
+            "M",
+            "--add-tag",
+            "updated",
+            "--add-tag",
+            "cli",
+            "--remove-tag",
+            "create",
+        ]
+    )
+
+    assert namespace.uuid == "11111111-1111-4111-8111-111111111111"
+    assert namespace.description == "Updated CLI task"
+    assert namespace.project == "lea.updated"
+    assert namespace.priority == "M"
+    assert namespace.add_tag == ["updated", "cli"]
+    assert namespace.remove_tag == ["create"]

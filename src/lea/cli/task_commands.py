@@ -29,6 +29,8 @@ from lea.tasks import (
     TaskCreateResult,
     TaskListQuery,
     TaskListResult,
+    TaskModifyRequest,
+    TaskMutationResult,
     TaskProvider,
     TaskProviderIssue,
     TaskRecord,
@@ -91,6 +93,29 @@ def execute_task_create(
         return _with_task_data(provider_result)
 
     return _map_task_create_result(provider_result.create_task(request))
+
+
+def execute_task_modify(
+    *,
+    config_path: Path,
+    expected_profile: RuntimeProfile | None,
+    request: TaskModifyRequest,
+    dependencies: TaskCommandDependencies | None = None,
+) -> CliResult:
+    """Modify one task through the configured provider-neutral boundary."""
+    provider_result = _load_task_provider(
+        config_path=config_path,
+        expected_profile=expected_profile,
+        dependencies=dependencies,
+    )
+
+    if isinstance(provider_result, CliResult):
+        return _with_task_data(provider_result)
+
+    return _map_task_mutation_result(
+        provider_result.modify_task(request),
+        success_message="Task modified",
+    )
 
 
 def render_task_list_result(result: CliResult) -> str:
@@ -228,6 +253,54 @@ def _map_task_list_result(result: TaskListResult) -> CliResult:
     return CliResult.succeeded(
         data={"tasks": [_task_to_json(task) for task in result.tasks]},
     )
+
+
+def _map_task_mutation_result(
+    result: TaskMutationResult,
+    *,
+    success_message: str,
+) -> CliResult:
+    """Map one provider task-mutation result to the Local CLI contract."""
+    if not result.success:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=_provider_issues(result.issues),
+            data={"task": None},
+        )
+
+    task = result.task
+
+    if task is None:
+        return _with_task_data(
+            _internal_failure("Successful task mutation returned no task.")
+        )
+
+    return CliResult.succeeded(
+        data={
+            "message": success_message,
+            "task": _task_to_json(task),
+        },
+    )
+
+
+def render_task_modify_result(result: CliResult) -> str:
+    """Render one stable human-readable task-modification result."""
+    data = result.data
+
+    if not isinstance(data, dict):
+        return _render_issues(result)
+
+    raw_task = data.get("task")
+
+    if not isinstance(raw_task, dict):
+        return _render_issues(result)
+
+    task = cast(dict[str, object], raw_task)
+    message = data.get("message")
+    heading = str(message) if message is not None else "Task modified"
+    lines = [heading, ""]
+    lines.extend(_render_task_lines(task))
+    return "\n".join(lines)
 
 
 def _map_task_create_result(result: TaskCreateResult) -> CliResult:

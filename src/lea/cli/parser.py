@@ -123,8 +123,41 @@ def _add_task_subcommands(parser: argparse.ArgumentParser) -> None:
         help="Task tag. May be supplied more than once.",
     )
 
+    modify_parser = subparsers.add_parser(
+        "modify",
+        help="Modify one exact task.",
+    )
+    modify_parser.add_argument(
+        "uuid",
+        help="Canonical task UUID.",
+    )
+    modify_parser.add_argument(
+        "--description",
+        help="Replacement task description.",
+    )
+    modify_parser.add_argument(
+        "--project",
+        help="Replacement task project.",
+    )
+    modify_parser.add_argument(
+        "--priority",
+        choices=("H", "M", "L"),
+        help="Replacement task priority.",
+    )
+    modify_parser.add_argument(
+        "--add-tag",
+        action="append",
+        default=[],
+        help="Tag to add. May be supplied more than once.",
+    )
+    modify_parser.add_argument(
+        "--remove-tag",
+        action="append",
+        default=[],
+        help="Tag to remove. May be supplied more than once.",
+    )
+
     for command, help_text in (
-        ("modify", "Modify one exact task."),
         ("complete", "Complete one exact task."),
         ("delete", "Delete one exact task without purging provider storage."),
     ):
