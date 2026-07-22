@@ -128,3 +128,28 @@ def test_parser_preserves_task_list_filters() -> None:
     assert namespace.status == "completed"
     assert namespace.project == "lea"
     assert namespace.tag == "cli"
+
+
+def test_parser_preserves_task_create_fields() -> None:
+    """Supported task-creation fields should parse deterministically."""
+    namespace = create_local_cli_parser().parse_args(
+        [
+            "task",
+            "create",
+            "--description",
+            "Create CLI task",
+            "--project",
+            "lea",
+            "--priority",
+            "H",
+            "--tag",
+            "create",
+            "--tag",
+            "cli",
+        ]
+    )
+
+    assert namespace.description == "Create CLI task"
+    assert namespace.project == "lea"
+    assert namespace.priority == "H"
+    assert namespace.tag == ["create", "cli"]

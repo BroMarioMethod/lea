@@ -25,7 +25,9 @@ from lea.cli.status import (
 )
 from lea.cli.task_commands import (
     TaskCommandDependencies,
+    execute_task_create,
     execute_task_list,
+    render_task_create_result,
     render_task_list_result,
 )
 
@@ -45,10 +47,12 @@ __all__ = [
     "create_local_cli_parser",
     "execute_local_cli",
     "execute_status",
+    "execute_task_create",
     "execute_task_list",
     "normalise_runtime_cli_exit_code",
     "render_cli_result_json",
     "render_status_result",
+    "render_task_create_result",
     "render_task_list_result",
     "write_cli_result",
 ]

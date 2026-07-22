@@ -22,11 +22,17 @@ from lea.cli.status import (
 )
 from lea.cli.task_commands import (
     TaskCommandDependencies,
+    execute_task_create,
     execute_task_list,
+    render_task_create_result,
     render_task_list_result,
 )
 from lea.runtime import RuntimeProfile
-from lea.tasks import TaskListQuery, TaskStatus
+from lea.tasks import (
+    TaskCreateRequest,
+    TaskListQuery,
+    TaskStatus,
+)
 
 
 def execute_local_cli(
@@ -89,6 +95,26 @@ def execute_local_cli(
             stderr=stderr,
             json_output=bool(namespace.json),
             human_renderer=render_task_list_result,
+        )
+
+    if namespace.command == "task" and namespace.task_command == "create":
+        result = execute_task_create(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            request=TaskCreateRequest(
+                description=namespace.description,
+                project=namespace.project,
+                priority=namespace.priority,
+                tags=tuple(namespace.tag),
+            ),
+            dependencies=task_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_task_create_result,
         )
 
     result = _not_implemented_result(namespace)

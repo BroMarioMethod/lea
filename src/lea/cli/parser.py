@@ -107,6 +107,21 @@ def _add_task_subcommands(parser: argparse.ArgumentParser) -> None:
         required=True,
         help="Task description.",
     )
+    create_parser.add_argument(
+        "--project",
+        help="Task project.",
+    )
+    create_parser.add_argument(
+        "--priority",
+        choices=("H", "M", "L"),
+        help="Task priority.",
+    )
+    create_parser.add_argument(
+        "--tag",
+        action="append",
+        default=[],
+        help="Task tag. May be supplied more than once.",
+    )
 
     for command, help_text in (
         ("modify", "Modify one exact task."),

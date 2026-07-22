@@ -1,7 +1,7 @@
 # LEA-SPEC-0013: Local Command-Line Interface
 
 - **Status:** Accepted
-- **Version:** 1.2
+- **Version:** 1.3
 - **Date:** 22 July 2026
 - **Milestone:** 2.3 — Local CLI
 - **Related specifications:**
@@ -188,11 +188,10 @@ Optional fields:
 --project <project>
 --priority <H|M|L>
 --tag <tag>
---due <timestamp-or-supported-date>
 ```
 
-The exact supported date grammar must be deterministic and documented before
-`--due` is implemented.
+`--tag` may be supplied more than once. The exact supported date grammar must
+be deterministic and documented before `--due` is implemented.
 
 The CLI must not silently reinterpret invalid dates.
 
