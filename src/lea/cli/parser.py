@@ -197,7 +197,10 @@ def _add_proposal_subcommands(parser: argparse.ArgumentParser) -> None:
         help="Maximum number of proposals to return.",
     )
 
-    for command, help_text in (("show", "Show one persistent proposal."),):
+    for command, help_text in (
+        ("show", "Show one persistent proposal."),
+        ("execute", "Execute one approved persistent proposal."),
+    ):
         command_parser = subparsers.add_parser(
             command,
             help=help_text,

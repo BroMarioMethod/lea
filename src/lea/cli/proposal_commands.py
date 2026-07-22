@@ -1,4 +1,4 @@
-"""Read-only Local CLI proposal commands."""
+"""Local CLI proposal commands."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -10,10 +10,15 @@ from lea.actions import (
     ActionHandlerRegistry,
     ActionStatus,
     ConfirmationDecision,
+    action_execution_result_to_dict,
     proposal_to_dict,
 )
 from lea.audit import IntegrityJsonlAuditStore, generate_event_id
 from lea.cli.contracts import CliIssue, CliResult, JsonValue, LocalCliExitCode
+from lea.cli.task_provider import (
+    TaskProviderDependencies,
+    load_task_provider,
+)
 from lea.orchestration import ActionOrchestrator, OrchestrationOutcome
 from lea.proposals import (
     MarkdownProposalRepository,
@@ -28,12 +33,17 @@ from lea.runtime import (
     localise_utc_timestamp,
     runtime_proposal_repository,
 )
+from lea.tasks import task_action_handler_registry
 
 ConfigurationLoader = Callable[[str | Path], ConfigurationResult]
 ProposalRepositoryFactory = Callable[[RuntimeConfig], MarkdownProposalRepository]
 
 AuditStoreFactory = Callable[[RuntimeConfig], IntegrityJsonlAuditStore]
 OrchestratorFactory = Callable[[IntegrityJsonlAuditStore], ActionOrchestrator]
+ExecutionOrchestratorFactory = Callable[
+    [ActionHandlerRegistry, IntegrityJsonlAuditStore],
+    ActionOrchestrator,
+]
 
 
 def _runtime_audit_store(config: RuntimeConfig) -> IntegrityJsonlAuditStore:
@@ -51,6 +61,18 @@ def _runtime_orchestrator(
     )
 
 
+def _runtime_execution_orchestrator(
+    registry: ActionHandlerRegistry,
+    audit_store: IntegrityJsonlAuditStore,
+) -> ActionOrchestrator:
+    return ActionOrchestrator(
+        registry,
+        audit_store,
+        lambda: datetime.now(UTC),
+        generate_event_id,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ProposalCommandDependencies:
     """Injected read-only dependencies for proposal commands."""
@@ -59,6 +81,10 @@ class ProposalCommandDependencies:
     create_repository: ProposalRepositoryFactory = runtime_proposal_repository
     create_audit_store: AuditStoreFactory = _runtime_audit_store
     create_orchestrator: OrchestratorFactory = _runtime_orchestrator
+    create_execution_orchestrator: ExecutionOrchestratorFactory = (
+        _runtime_execution_orchestrator
+    )
+    task_provider_dependencies: TaskProviderDependencies | None = None
 
 
 def execute_proposal_list(
@@ -239,6 +265,228 @@ def execute_proposal_show(
             },
         )
     )
+
+
+def execute_proposal_execute(
+    *,
+    config_path: Path,
+    expected_profile: RuntimeProfile | None,
+    proposal_id: str,
+    dependencies: ProposalCommandDependencies | None = None,
+) -> CliResult:
+    """Execute one persistent approved proposal."""
+    validation = _validate_proposal_id(proposal_id)
+    if validation is not None:
+        return validation
+
+    resolved = dependencies or ProposalCommandDependencies()
+    configuration = resolved.load_configuration(config_path)
+    if not configuration.success:
+        return _configuration_failure(configuration)
+
+    config = configuration.config
+    if config is None:
+        return _internal_failure(
+            "Successful configuration loading returned no runtime configuration."
+        )
+
+    if expected_profile is not None and config.profile is not expected_profile:
+        return _profile_mismatch_failure()
+
+    repository = resolved.create_repository(config)
+    read_result = repository.read(proposal_id)
+    if not read_result.success:
+        return _map_proposal_read_failure(read_result)
+
+    proposal = read_result.proposal
+    if proposal is None:
+        return _internal_failure("Successful proposal reading returned no proposal.")
+
+    if proposal.status is not ActionStatus.APPROVED:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="execution_rejected",
+                    message="Only approved proposals may be executed.",
+                    field="status",
+                ),
+            ),
+            data={
+                "proposal": proposal_to_dict(proposal),
+                "execution": None,
+                "audit_persisted": False,
+                "proposal_persisted": False,
+            },
+        )
+
+    provider_result = load_task_provider(
+        config_path=config_path,
+        expected_profile=expected_profile,
+        dependencies=resolved.task_provider_dependencies,
+    )
+    if isinstance(provider_result, CliResult):
+        return CliResult.failed(
+            exit_code=provider_result.exit_code,
+            issues=provider_result.issues,
+            data={
+                "proposal": proposal_to_dict(proposal),
+                "execution": None,
+                "audit_persisted": False,
+                "proposal_persisted": False,
+            },
+        )
+
+    try:
+        registry = task_action_handler_registry(provider_result)
+        audit_store = resolved.create_audit_store(config)
+        orchestrator = resolved.create_execution_orchestrator(registry, audit_store)
+        orchestration = orchestrator.execute(proposal)
+    except Exception:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="proposal_execution_failed",
+                    message="The proposal execution workflow could not complete.",
+                ),
+            ),
+            data={
+                "proposal": proposal_to_dict(proposal),
+                "execution": None,
+                "audit_persisted": False,
+                "proposal_persisted": False,
+            },
+        )
+
+    execution = orchestration.execution
+    audit_persisted = bool(orchestration.persisted_events)
+
+    if execution is None or not audit_persisted:
+        issue = orchestration.issue
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code=issue.code if issue is not None else "execution_rejected",
+                    message=(
+                        issue.message
+                        if issue is not None
+                        else "The proposal could not be executed."
+                    ),
+                ),
+            ),
+            data={
+                "proposal": proposal_to_dict(orchestration.proposal),
+                "execution": (
+                    action_execution_result_to_dict(execution)
+                    if execution is not None
+                    else None
+                ),
+                "audit_persisted": audit_persisted,
+                "proposal_persisted": False,
+            },
+        )
+
+    execution_data = action_execution_result_to_dict(execution)
+    replacement = repository.replace(
+        orchestration.proposal,
+        expected_status=ActionStatus.APPROVED,
+    )
+
+    if not replacement.success:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="proposal_execution_partial_persistence",
+                    message=(
+                        "The execution audit event was persisted, but the "
+                        "proposal document could not be replaced."
+                    ),
+                ),
+                *tuple(
+                    CliIssue(
+                        code=issue.code,
+                        message=issue.message,
+                        field=issue.field,
+                    )
+                    for issue in replacement.issues
+                ),
+            ),
+            data={
+                "proposal": proposal_to_dict(orchestration.proposal),
+                "execution": execution_data,
+                "audit_persisted": True,
+                "proposal_persisted": False,
+            },
+        )
+
+    data = {
+        "proposal": proposal_to_dict(orchestration.proposal),
+        "execution": execution_data,
+        "audit_persisted": True,
+        "proposal_persisted": True,
+    }
+
+    if orchestration.proposal.status is ActionStatus.SUCCEEDED:
+        return CliResult.succeeded(data=cast(JsonValue, data))
+
+    recorded_execution = execution.execution
+    error = recorded_execution.error if recorded_execution is not None else None
+    return CliResult.failed(
+        exit_code=LocalCliExitCode.APPLICATION_ERROR,
+        issues=(
+            CliIssue(
+                code=(
+                    error.code
+                    if error is not None
+                    else "proposal_execution_action_failed"
+                ),
+                message=(
+                    error.message
+                    if error is not None
+                    else "The proposal action failed during execution."
+                ),
+            ),
+        ),
+        data=cast(JsonValue, data),
+    )
+
+
+def render_proposal_execute_result(result: CliResult) -> str:
+    """Render one stable human-readable proposal execution result."""
+    data = result.data
+    if not isinstance(data, dict):
+        return _render_issues(result)
+
+    proposal = data.get("proposal")
+    if not isinstance(proposal, dict):
+        return _render_issues(result)
+
+    execution = data.get("execution")
+    error_code: object | None = None
+
+    if isinstance(execution, dict):
+        recorded_execution = execution.get("execution")
+        if isinstance(recorded_execution, dict):
+            error = recorded_execution.get("error")
+            if isinstance(error, dict):
+                error_code = error.get("code")
+
+    heading = "Proposal executed." if result.success else "Proposal execution failed."
+    lines = [
+        heading,
+        f"Proposal ID: {proposal.get('proposal_id', 'not available')}",
+        f"Status: {proposal.get('status', 'not available')}",
+        f"Audit persisted: {str(data.get('audit_persisted')).lower()}",
+        f"Proposal persisted: {str(data.get('proposal_persisted')).lower()}",
+    ]
+
+    if error_code is not None:
+        lines.append(f"Error: {error_code}")
+
+    return "\n".join(lines)
 
 
 def execute_proposal_approve(

@@ -1,7 +1,7 @@
 # LEA-SPEC-0013: Local Command-Line Interface
 
 - **Status:** Accepted
-- **Version:** 1.12
+- **Version:** 1.13
 - **Date:** 22 July 2026
 - **Milestone:** 2.3 — Local CLI
 - **Related specifications:**
@@ -40,6 +40,7 @@ lea proposal show
 lea proposal approve
 lea proposal reject
 lea proposal cancel
+lea proposal execute
 ```
 
 The existing runtime CLI remains available through:
@@ -326,6 +327,30 @@ lea proposal cancel <proposal-id> --actor <name> [--reason <text>]
 ```
 
 Cancellation must use the existing confirmation and orchestration contracts and must apply only to a proposal awaiting confirmation. It must not execute the underlying action. The cancellation decision and resulting proposal state must be audited and persisted.
+
+### 7.6 Execute
+
+```text
+lea proposal execute <proposal-id>
+```
+
+Execution applies only to a proposal in the `approved` state.
+
+The command must:
+
+- load the configured provider through the shared provider-loading boundary;
+- register the provider-neutral action handlers supported by the runtime;
+- execute through `ActionOrchestrator`;
+- persist the action-execution audit event;
+- replace the canonical proposal document using `approved` as the expected
+  existing status;
+- persist successful actions as `succeeded`;
+- persist handled action failures as `failed`;
+- report partial persistence when the audit event was persisted but the
+  proposal document could not be replaced.
+
+Execution does not accept an actor argument. The approving actor and decision
+were already recorded by `lea proposal approve`.
 
 ## 8. Direct task operations versus proposals
 
@@ -691,8 +716,8 @@ Milestone 2.3 is complete when:
 
 - `lea status` reports runtime and provider state;
 - all initial task commands work through `TaskProvider`;
-- proposal list, show, approve, reject and cancel use repository and orchestration
-  boundaries;
+- proposal list, show, approve, reject, cancel and execute use repository and
+  orchestration boundaries;
 - human-readable output is stable and localised;
 - `--json` produces deterministic structured output;
 - stable exit codes are implemented and documented;

@@ -38,6 +38,7 @@ def test_root_parser_uses_public_program_name() -> None:
             "cancel",
         ),
         (["proposal", "show", "proposal-1"], "proposal", "show"),
+        (["proposal", "execute", "proposal-1"], "proposal", "execute"),
         (
             [
                 "proposal",

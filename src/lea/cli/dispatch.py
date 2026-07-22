@@ -20,11 +20,13 @@ from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
     execute_proposal_approve,
     execute_proposal_cancel,
+    execute_proposal_execute,
     execute_proposal_list,
     execute_proposal_reject,
     execute_proposal_show,
     render_proposal_approve_result,
     render_proposal_cancel_result,
+    render_proposal_execute_result,
     render_proposal_list_result,
     render_proposal_reject_result,
     render_proposal_show_result,
@@ -136,6 +138,21 @@ def execute_local_cli(
             stderr=stderr,
             json_output=bool(namespace.json),
             human_renderer=render_proposal_approve_result,
+        )
+
+    if namespace.command == "proposal" and namespace.proposal_command == "execute":
+        result = execute_proposal_execute(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            proposal_id=namespace.proposal_id,
+            dependencies=proposal_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_proposal_execute_result,
         )
 
     if namespace.command == "proposal" and namespace.proposal_command == "cancel":
