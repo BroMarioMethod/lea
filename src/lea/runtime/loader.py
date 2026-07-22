@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from lea.runtime.contracts import (
     RUNTIME_SCHEMA_VERSION,
+    ComponentRecordPaths,
     ConfigurationIssue,
     ConfigurationResult,
     RuntimeConfig,
@@ -23,6 +24,7 @@ TOP_LEVEL_FIELDS = frozenset(
         "display_timezone",
         "paths",
         "files",
+        "component_records",
         "secrets",
     }
 )
@@ -34,6 +36,7 @@ REQUIRED_TOP_LEVEL_FIELDS = frozenset(
         "display_timezone",
         "paths",
         "files",
+        "component_records",
     }
 )
 
@@ -55,6 +58,12 @@ FILE_FIELDS = frozenset(
     {
         "audit_file",
         "log_file",
+    }
+)
+
+COMPONENT_RECORD_FIELDS = frozenset(
+    {
+        "taskwarrior",
     }
 )
 
@@ -187,6 +196,10 @@ def _construct_runtime_config(
         data["files"],
         field="files",
     )
+    component_records_data = _require_mapping(
+        data["component_records"],
+        field="component_records",
+    )
 
     _validate_fields(
         paths_data,
@@ -199,6 +212,12 @@ def _construct_runtime_config(
         known=FILE_FIELDS,
         required=FILE_FIELDS,
         field_prefix="files",
+    )
+    _validate_fields(
+        component_records_data,
+        known=COMPONENT_RECORD_FIELDS,
+        required=COMPONENT_RECORD_FIELDS,
+        field_prefix="component_records",
     )
 
     secrets_value = data.get("secrets", {})
@@ -269,6 +288,20 @@ def _construct_runtime_config(
             field="paths",
         )
 
+    try:
+        component_records = ComponentRecordPaths(
+            taskwarrior=_parse_path(
+                component_records_data["taskwarrior"],
+                field="component_records.taskwarrior",
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        _fail(
+            code="invalid_path",
+            message=str(error),
+            field="component_records.taskwarrior",
+        )
+
     telegram_token_file: Path | None = None
 
     if "telegram_token_file" in secrets_data:
@@ -293,6 +326,7 @@ def _construct_runtime_config(
         profile=profile,
         display_timezone=display_timezone,
         paths=runtime_paths,
+        component_records=component_records,
         secrets=secret_paths,
     )
 

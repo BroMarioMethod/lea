@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from lea.runtime.contracts import (
     RUNTIME_SCHEMA_VERSION,
+    ComponentRecordPaths,
     RuntimeConfig,
     RuntimePaths,
     RuntimeProfile,
@@ -76,6 +77,9 @@ def _build_runtime_config(
         profile=profile,
         display_timezone=display_timezone,
         paths=paths,
+        component_records=ComponentRecordPaths(
+            taskwarrior=paths.state_dir / "install" / "taskwarrior.json",
+        ),
         secrets=SecretPaths(
             telegram_token_file=telegram_token_file,
         ),

@@ -41,7 +41,8 @@ def test_rendered_toml_has_deterministic_order(
     assert rendered.index("schema_version") < rendered.index("profile")
     assert rendered.index("profile") < rendered.index("display_timezone")
     assert rendered.index("[paths]") < rendered.index("[files]")
-    assert rendered.index("[files]") < rendered.index("[secrets]")
+    assert rendered.index("[files]") < rendered.index("[component_records]")
+    assert rendered.index("[component_records]") < rendered.index("[secrets]")
 
 
 def test_rendered_toml_ends_with_one_newline(
@@ -217,3 +218,11 @@ def test_rendered_profile_uses_stable_enum_value(
 
     assert config.profile is RuntimeProfile.TEST
     assert 'profile = "test"' in rendered
+
+
+def test_rendered_configuration_contains_component_record(tmp_path: Path) -> None:
+    """Serialisation should preserve the Taskwarrior record path."""
+    config = create_config(tmp_path)
+    rendered = render_runtime_config(config)
+    assert "[component_records]" in rendered
+    assert f'taskwarrior = "{config.component_records.taskwarrior}"' in rendered

@@ -11,6 +11,7 @@ def render_runtime_config(
 ) -> str:
     """Render one runtime configuration as deterministic TOML."""
     paths = config.paths
+    component_records = config.component_records
     secrets = config.secrets
 
     lines = [
@@ -32,6 +33,9 @@ def render_runtime_config(
         "[files]",
         f"audit_file = {_toml_path(paths.audit_file)}",
         f"log_file = {_toml_path(paths.log_file)}",
+        "",
+        "[component_records]",
+        f"taskwarrior = {_toml_path(component_records.taskwarrior)}",
     ]
 
     if secrets.telegram_token_file is not None:

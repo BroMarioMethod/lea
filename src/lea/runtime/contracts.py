@@ -112,6 +112,20 @@ class RuntimePaths:
 
 
 @dataclass(frozen=True, slots=True)
+class ComponentRecordPaths:
+    """Installation-record paths for managed runtime components."""
+
+    taskwarrior: Path
+
+    def __post_init__(self) -> None:
+        """Validate component installation-record paths."""
+        _validate_absolute_path(
+            self.taskwarrior,
+            field_name="taskwarrior",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SecretPaths:
     """Filesystem references to secrets without secret values."""
 
@@ -134,6 +148,7 @@ class RuntimeConfig:
     profile: RuntimeProfile
     display_timezone: str
     paths: RuntimePaths
+    component_records: ComponentRecordPaths
     secrets: SecretPaths
 
     def __post_init__(self) -> None:
