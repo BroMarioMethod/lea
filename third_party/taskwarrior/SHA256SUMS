@@ -1,0 +1,7 @@
+# Taskwarrior third-party artefact checksums
+#
+# Verified upstream source archive:
+d302761fcd1268e4a5a545613a2b68c61abd50c0bcaade3b3e68d728dd02e716  task-3.4.2.tar.gz
+
+# Platform binary checksums are added by the release process when LEA
+# publishes verified linux-aarch64 or linux-x86_64 artefacts.
