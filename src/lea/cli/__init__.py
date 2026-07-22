@@ -13,8 +13,10 @@ from lea.cli.dispatch import execute_local_cli
 from lea.cli.parser import create_local_cli_parser
 from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
+    execute_proposal_approve,
     execute_proposal_list,
     execute_proposal_show,
+    render_proposal_approve_result,
     render_proposal_list_result,
     render_proposal_show_result,
 )
@@ -60,6 +62,7 @@ __all__ = [
     "cli_result_to_dict",
     "create_local_cli_parser",
     "execute_local_cli",
+    "execute_proposal_approve",
     "execute_proposal_list",
     "execute_proposal_show",
     "execute_status",
@@ -70,6 +73,7 @@ __all__ = [
     "execute_task_modify",
     "normalise_runtime_cli_exit_code",
     "render_cli_result_json",
+    "render_proposal_approve_result",
     "render_proposal_list_result",
     "render_proposal_show_result",
     "render_status_result",

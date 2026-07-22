@@ -27,7 +27,17 @@ def test_root_parser_uses_public_program_name() -> None:
         (["task", "delete", "00000000-0000-0000-0000-000000000001"], "task", "delete"),
         (["proposal", "list"], "proposal", "list"),
         (["proposal", "show", "proposal-1"], "proposal", "show"),
-        (["proposal", "approve", "proposal-1"], "proposal", "approve"),
+        (
+            [
+                "proposal",
+                "approve",
+                "proposal-1",
+                "--actor",
+                "Marius",
+            ],
+            "proposal",
+            "approve",
+        ),
         (["proposal", "reject", "proposal-1"], "proposal", "reject"),
     ],
 )

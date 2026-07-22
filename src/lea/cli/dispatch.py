@@ -18,8 +18,10 @@ from lea.cli.contracts import (
 from lea.cli.parser import create_local_cli_parser
 from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
+    execute_proposal_approve,
     execute_proposal_list,
     execute_proposal_show,
+    render_proposal_approve_result,
     render_proposal_list_result,
     render_proposal_show_result,
 )
@@ -113,6 +115,23 @@ def execute_local_cli(
             stderr=stderr,
             json_output=bool(namespace.json),
             human_renderer=render_proposal_list_result,
+        )
+
+    if namespace.command == "proposal" and namespace.proposal_command == "approve":
+        result = execute_proposal_approve(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            proposal_id=namespace.proposal_id,
+            actor=namespace.actor,
+            reason=namespace.reason,
+            dependencies=proposal_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_proposal_approve_result,
         )
 
     if namespace.command == "proposal" and namespace.proposal_command == "show":

@@ -197,10 +197,7 @@ def _add_proposal_subcommands(parser: argparse.ArgumentParser) -> None:
         help="Maximum number of proposals to return.",
     )
 
-    for command, help_text in (
-        ("show", "Show one persistent proposal."),
-        ("approve", "Approve one persistent proposal."),
-    ):
+    for command, help_text in (("show", "Show one persistent proposal."),):
         command_parser = subparsers.add_parser(
             command,
             help=help_text,
@@ -209,6 +206,24 @@ def _add_proposal_subcommands(parser: argparse.ArgumentParser) -> None:
             "proposal_id",
             help="Stable proposal identifier.",
         )
+
+    approve_parser = subparsers.add_parser(
+        "approve",
+        help="Approve one persistent proposal.",
+    )
+    approve_parser.add_argument(
+        "proposal_id",
+        help="Stable proposal identifier.",
+    )
+    approve_parser.add_argument(
+        "--actor",
+        required=True,
+        help="Human actor recording the approval.",
+    )
+    approve_parser.add_argument(
+        "--reason",
+        help="Optional human-readable approval reason.",
+    )
 
     reject_parser = subparsers.add_parser(
         "reject",

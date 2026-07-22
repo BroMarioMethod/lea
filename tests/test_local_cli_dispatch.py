@@ -47,7 +47,7 @@ def test_recognised_command_returns_structured_placeholder() -> None:
     exit_code = execute_local_cli(
         [
             "proposal",
-            "approve",
+            "reject",
             "11111111-1111-4111-8111-111111111111",
         ],
         stdout=stdout,
@@ -57,7 +57,7 @@ def test_recognised_command_returns_structured_placeholder() -> None:
     assert exit_code == LocalCliExitCode.APPLICATION_ERROR
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == (
-        "The 'lea proposal approve' command is recognised but is not implemented yet.\n"
+        "The 'lea proposal reject' command is recognised but is not implemented yet.\n"
     )
 
 
@@ -70,7 +70,7 @@ def test_json_placeholder_is_one_stdout_document() -> None:
         [
             "--json",
             "proposal",
-            "approve",
+            "reject",
             "11111111-1111-4111-8111-111111111111",
         ],
         stdout=stdout,
@@ -82,7 +82,7 @@ def test_json_placeholder_is_one_stdout_document() -> None:
     assert exit_code == LocalCliExitCode.APPLICATION_ERROR
     assert payload["success"] is False
     assert payload["exit_code"] == 1
-    assert payload["data"] == {"command": "lea proposal approve"}
+    assert payload["data"] == {"command": "lea proposal reject"}
     assert payload["issues"][0]["code"] == "cli_command_not_implemented"
     assert stderr.getvalue() == ""
 
