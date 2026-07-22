@@ -40,12 +40,12 @@ def test_missing_command_returns_usage_error() -> None:
 
 
 def test_recognised_command_returns_structured_placeholder() -> None:
-    """Accepted grammar should fail clearly until implemented."""
+    """Accepted unimplemented grammar should fail clearly."""
     stdout = StringIO()
     stderr = StringIO()
 
     exit_code = execute_local_cli(
-        ["task", "list"],
+        ["proposal", "list"],
         stdout=stdout,
         stderr=stderr,
     )
@@ -53,7 +53,7 @@ def test_recognised_command_returns_structured_placeholder() -> None:
     assert exit_code == LocalCliExitCode.APPLICATION_ERROR
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == (
-        "The 'lea task list' command is recognised but is not implemented yet.\n"
+        "The 'lea proposal list' command is recognised but is not implemented yet.\n"
     )
 
 

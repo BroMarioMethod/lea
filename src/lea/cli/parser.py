@@ -13,7 +13,9 @@ def create_local_cli_parser() -> argparse.ArgumentParser:
         description="Use LEA through its deterministic local interface.",
     )
     parser.add_argument(
-        "--json", action="store_true", help="Write one deterministic JSON result."
+        "--json",
+        action="store_true",
+        help="Write one deterministic JSON result.",
     )
     parser.add_argument(
         "--config",
@@ -34,56 +36,126 @@ def create_local_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable colour in human-readable output.",
     )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("status", help="Inspect LEA runtime and provider status.")
+    subparsers.add_parser(
+        "status",
+        help="Inspect LEA runtime and provider status.",
+    )
+
     task_parser = subparsers.add_parser(
-        "task", help="Manage tasks through the configured task provider."
+        "task",
+        help="Manage tasks through the configured task provider.",
     )
     _add_task_subcommands(task_parser)
+
     proposal_parser = subparsers.add_parser(
-        "proposal", help="Review and decide persistent action proposals."
+        "proposal",
+        help="Review and decide persistent action proposals.",
     )
     _add_proposal_subcommands(proposal_parser)
+
     return parser
 
 
 def _absolute_path(value: str) -> Path:
     """Parse one explicit absolute filesystem path."""
     path = Path(value)
+
     if not path.is_absolute():
         raise argparse.ArgumentTypeError("PATH must be absolute.")
+
     return path
 
 
 def _add_task_subcommands(parser: argparse.ArgumentParser) -> None:
     """Add the initial task command grammar."""
-    subparsers = parser.add_subparsers(dest="task_command", required=True)
-    subparsers.add_parser("list", help="List tasks.")
-    create_parser = subparsers.add_parser("create", help="Create one task.")
-    create_parser.add_argument("--description", required=True, help="Task description.")
+    subparsers = parser.add_subparsers(
+        dest="task_command",
+        required=True,
+    )
+
+    list_parser = subparsers.add_parser(
+        "list",
+        help="List tasks.",
+    )
+    list_parser.add_argument(
+        "--uuid",
+        help="Canonical task UUID.",
+    )
+    list_parser.add_argument(
+        "--status",
+        choices=("pending", "completed", "deleted"),
+        default="pending",
+        help="Task status filter.",
+    )
+    list_parser.add_argument(
+        "--project",
+        help="Exact project filter.",
+    )
+    list_parser.add_argument(
+        "--tag",
+        help="Exact tag filter.",
+    )
+
+    create_parser = subparsers.add_parser(
+        "create",
+        help="Create one task.",
+    )
+    create_parser.add_argument(
+        "--description",
+        required=True,
+        help="Task description.",
+    )
+
     for command, help_text in (
         ("modify", "Modify one exact task."),
         ("complete", "Complete one exact task."),
         ("delete", "Delete one exact task without purging provider storage."),
     ):
-        command_parser = subparsers.add_parser(command, help=help_text)
-        command_parser.add_argument("uuid", help="Canonical task UUID.")
+        command_parser = subparsers.add_parser(
+            command,
+            help=help_text,
+        )
+        command_parser.add_argument(
+            "uuid",
+            help="Canonical task UUID.",
+        )
 
 
 def _add_proposal_subcommands(parser: argparse.ArgumentParser) -> None:
     """Add the initial proposal command grammar."""
-    subparsers = parser.add_subparsers(dest="proposal_command", required=True)
-    subparsers.add_parser("list", help="List persistent proposals.")
+    subparsers = parser.add_subparsers(
+        dest="proposal_command",
+        required=True,
+    )
+    subparsers.add_parser(
+        "list",
+        help="List persistent proposals.",
+    )
+
     for command, help_text in (
         ("show", "Show one persistent proposal."),
         ("approve", "Approve one persistent proposal."),
     ):
-        command_parser = subparsers.add_parser(command, help=help_text)
-        command_parser.add_argument("proposal_id", help="Stable proposal identifier.")
+        command_parser = subparsers.add_parser(
+            command,
+            help=help_text,
+        )
+        command_parser.add_argument(
+            "proposal_id",
+            help="Stable proposal identifier.",
+        )
+
     reject_parser = subparsers.add_parser(
-        "reject", help="Reject one persistent proposal."
+        "reject",
+        help="Reject one persistent proposal.",
     )
-    reject_parser.add_argument("proposal_id", help="Stable proposal identifier.")
     reject_parser.add_argument(
-        "--reason", help="Optional human-readable rejection reason."
+        "proposal_id",
+        help="Stable proposal identifier.",
+    )
+    reject_parser.add_argument(
+        "--reason",
+        help="Optional human-readable rejection reason.",
     )

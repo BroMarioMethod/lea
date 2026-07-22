@@ -105,3 +105,26 @@ def test_parser_rejects_relative_configuration_path() -> None:
         )
 
     assert error.value.code == 2
+
+
+def test_parser_preserves_task_list_filters() -> None:
+    """Supported task-list filters should parse deterministically."""
+    namespace = create_local_cli_parser().parse_args(
+        [
+            "task",
+            "list",
+            "--uuid",
+            "11111111-1111-4111-8111-111111111111",
+            "--status",
+            "completed",
+            "--project",
+            "lea",
+            "--tag",
+            "cli",
+        ]
+    )
+
+    assert namespace.uuid == "11111111-1111-4111-8111-111111111111"
+    assert namespace.status == "completed"
+    assert namespace.project == "lea"
+    assert namespace.tag == "cli"

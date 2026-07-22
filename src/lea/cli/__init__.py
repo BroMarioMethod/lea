@@ -23,6 +23,11 @@ from lea.cli.status import (
     execute_status,
     render_status_result,
 )
+from lea.cli.task_commands import (
+    TaskCommandDependencies,
+    execute_task_list,
+    render_task_list_result,
+)
 
 __all__ = [
     "DEFAULT_RUNTIME_CONFIG",
@@ -34,13 +39,16 @@ __all__ = [
     "LocalCliExitCode",
     "RuntimeCliExitCode",
     "StatusDependencies",
+    "TaskCommandDependencies",
     "cli_issue_to_dict",
     "cli_result_to_dict",
     "create_local_cli_parser",
     "execute_local_cli",
     "execute_status",
+    "execute_task_list",
     "normalise_runtime_cli_exit_code",
     "render_cli_result_json",
     "render_status_result",
+    "render_task_list_result",
     "write_cli_result",
 ]

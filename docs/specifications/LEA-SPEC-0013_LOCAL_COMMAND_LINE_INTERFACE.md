@@ -1,7 +1,7 @@
 # LEA-SPEC-0013: Local Command-Line Interface
 
 - **Status:** Accepted
-- **Version:** 1.1
+- **Version:** 1.2
 - **Date:** 22 July 2026
 - **Milestone:** 2.3 — Local CLI
 - **Related specifications:**
@@ -153,14 +153,14 @@ Supported initial filters:
 
 ```text
 --uuid <uuid>
---status <pending|completed|deleted|waiting>
+--status <pending|completed|deleted>
 --project <project>
 --tag <tag>
---limit <positive-integer>
 ```
 
-Multiple `--tag` options may be supplied and are interpreted according to the
-provider-neutral task query contract.
+The initial slice supports one exact tag filter. Waiting semantics, multiple-tag
+semantics and result limiting are deferred until their provider-neutral
+contracts and deterministic ordering behaviour are specified.
 
 Human-readable output uses a stable table or line-oriented layout.
 

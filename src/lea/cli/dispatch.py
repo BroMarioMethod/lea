@@ -7,7 +7,11 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TextIO, cast
 
-from lea.cli.contracts import CliIssue, CliResult, LocalCliExitCode
+from lea.cli.contracts import (
+    CliIssue,
+    CliResult,
+    LocalCliExitCode,
+)
 from lea.cli.parser import create_local_cli_parser
 from lea.cli.rendering import write_cli_result
 from lea.cli.status import (
@@ -16,7 +20,13 @@ from lea.cli.status import (
     execute_status,
     render_status_result,
 )
+from lea.cli.task_commands import (
+    TaskCommandDependencies,
+    execute_task_list,
+    render_task_list_result,
+)
 from lea.runtime import RuntimeProfile
+from lea.tasks import TaskListQuery, TaskStatus
 
 
 def execute_local_cli(
@@ -25,28 +35,31 @@ def execute_local_cli(
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
     status_dependencies: StatusDependencies | None = None,
+    task_dependencies: TaskCommandDependencies | None = None,
 ) -> int:
     """Parse and dispatch one Local CLI command."""
     parser = create_local_cli_parser()
+
     try:
         with redirect_stdout(stdout), redirect_stderr(stderr):
             namespace = parser.parse_args(list(arguments))
     except SystemExit as error:
         return _normalise_argparse_exit(error)
 
-    if namespace.command == "status":
-        usage_issue = _validate_status_selection(namespace)
-        if usage_issue is not None:
-            return write_cli_result(
-                usage_issue,
-                stdout=stdout,
-                stderr=stderr,
-                json_output=bool(namespace.json),
-                human_renderer=_render_first_issue,
-            )
+    selection_issue = _validate_runtime_selection(namespace)
 
+    if selection_issue is not None:
+        return write_cli_result(
+            selection_issue,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=_render_first_issue,
+        )
+
+    if namespace.command == "status":
         result = execute_status(
-            config_path=_status_config_path(namespace),
+            config_path=_config_path(namespace),
             expected_profile=_expected_profile(namespace),
             dependencies=status_dependencies,
         )
@@ -56,6 +69,26 @@ def execute_local_cli(
             stderr=stderr,
             json_output=bool(namespace.json),
             human_renderer=render_status_result,
+        )
+
+    if namespace.command == "task" and namespace.task_command == "list":
+        result = execute_task_list(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            query=TaskListQuery(
+                uuid=namespace.uuid,
+                status=TaskStatus(namespace.status),
+                project=namespace.project,
+                tag=namespace.tag,
+            ),
+            dependencies=task_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_task_list_result,
         )
 
     result = _not_implemented_result(namespace)
@@ -68,10 +101,10 @@ def execute_local_cli(
     )
 
 
-def _validate_status_selection(
+def _validate_runtime_selection(
     namespace: argparse.Namespace,
 ) -> CliResult | None:
-    """Validate deterministic status configuration selection."""
+    """Validate deterministic runtime configuration selection."""
     if namespace.config is not None:
         return None
 
@@ -96,10 +129,11 @@ def _validate_status_selection(
     return None
 
 
-def _status_config_path(namespace: argparse.Namespace) -> Path:
+def _config_path(namespace: argparse.Namespace) -> Path:
     """Return the explicit or canonical system configuration path."""
     if namespace.config is not None:
         return cast(Path, namespace.config)
+
     return DEFAULT_RUNTIME_CONFIG
 
 
@@ -109,12 +143,14 @@ def _expected_profile(
     """Return the optional asserted runtime profile."""
     if namespace.profile is None:
         return None
+
     return RuntimeProfile(namespace.profile)
 
 
 def _not_implemented_result(namespace: argparse.Namespace) -> CliResult:
     """Return a structured placeholder for accepted command grammar."""
     command_path = _command_path(namespace)
+
     return CliResult.failed(
         exit_code=LocalCliExitCode.APPLICATION_ERROR,
         issues=(
@@ -133,9 +169,15 @@ def _not_implemented_result(namespace: argparse.Namespace) -> CliResult:
 def _command_path(namespace: argparse.Namespace) -> str:
     """Return the selected command path in display form."""
     parts = ["lea", namespace.command]
-    nested_command = getattr(namespace, f"{namespace.command}_command", None)
+    nested_command = getattr(
+        namespace,
+        f"{namespace.command}_command",
+        None,
+    )
+
     if nested_command is not None:
         parts.append(nested_command)
+
     return " ".join(parts)
 
 
@@ -153,4 +195,5 @@ def _normalise_argparse_exit(error: SystemExit) -> int:
     """Return one stable parser exit status."""
     if error.code == 0:
         return int(LocalCliExitCode.SUCCESS)
+
     return int(LocalCliExitCode.USAGE_ERROR)
