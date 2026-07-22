@@ -128,3 +128,19 @@ def test_invalid_task_completion_uuid_returns_validation_error() -> None:
     assert exit_code == LocalCliExitCode.VALIDATION_ERROR
     assert stdout.getvalue() == ""
     assert "not canonical" in stderr.getvalue()
+
+
+def test_invalid_task_deletion_uuid_returns_validation_error() -> None:
+    """Invalid deletion UUIDs should fail before provider loading."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        ["task", "delete", "not-a-uuid"],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.VALIDATION_ERROR
+    assert stdout.getvalue() == ""
+    assert "not canonical" in stderr.getvalue()

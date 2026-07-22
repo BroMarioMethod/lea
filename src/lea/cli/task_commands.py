@@ -141,6 +141,29 @@ def execute_task_complete(
     )
 
 
+def execute_task_delete(
+    *,
+    config_path: Path,
+    expected_profile: RuntimeProfile | None,
+    task_uuid: str,
+    dependencies: TaskCommandDependencies | None = None,
+) -> CliResult:
+    """Delete one task through the configured provider-neutral boundary."""
+    provider_result = _load_task_provider(
+        config_path=config_path,
+        expected_profile=expected_profile,
+        dependencies=dependencies,
+    )
+
+    if isinstance(provider_result, CliResult):
+        return _with_task_data(provider_result)
+
+    return _map_task_mutation_result(
+        provider_result.delete_task(task_uuid),
+        success_message="Task deleted",
+    )
+
+
 def render_task_list_result(result: CliResult) -> str:
     """Render one stable human-readable task list."""
     data = result.data
@@ -303,6 +326,14 @@ def _map_task_mutation_result(
             "message": success_message,
             "task": _task_to_json(task),
         },
+    )
+
+
+def render_task_delete_result(result: CliResult) -> str:
+    """Render one stable human-readable task-deletion result."""
+    return _render_task_mutation_result(
+        result,
+        default_heading="Task deleted",
     )
 
 

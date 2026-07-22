@@ -25,10 +25,12 @@ from lea.cli.task_commands import (
     TaskCommandDependencies,
     execute_task_complete,
     execute_task_create,
+    execute_task_delete,
     execute_task_list,
     execute_task_modify,
     render_task_complete_result,
     render_task_create_result,
+    render_task_delete_result,
     render_task_list_result,
     render_task_modify_result,
 )
@@ -121,6 +123,32 @@ def execute_local_cli(
             stderr=stderr,
             json_output=bool(namespace.json),
             human_renderer=render_task_create_result,
+        )
+
+    if namespace.command == "task" and namespace.task_command == "delete":
+        validation_error = _validate_task_uuid(namespace.uuid)
+
+        if validation_error is not None:
+            return write_cli_result(
+                validation_error,
+                stdout=stdout,
+                stderr=stderr,
+                json_output=bool(namespace.json),
+                human_renderer=_render_first_issue,
+            )
+
+        result = execute_task_delete(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            task_uuid=namespace.uuid,
+            dependencies=task_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_task_delete_result,
         )
 
     if namespace.command == "task" and namespace.task_command == "complete":
