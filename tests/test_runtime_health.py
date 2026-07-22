@@ -7,6 +7,7 @@ import pytest
 
 from lea.runtime import (
     RUNTIME_SCHEMA_VERSION,
+    ComponentRecordPaths,
     RuntimeConfig,
     RuntimeHealthIssue,
     RuntimeHealthResult,
@@ -52,6 +53,9 @@ def create_config(
         profile=RuntimeProfile.TEST,
         display_timezone="Africa/Gaborone",
         paths=create_paths(root),
+        component_records=ComponentRecordPaths(
+            taskwarrior=root / "state" / "install" / "taskwarrior.json",
+        ),
         secrets=SecretPaths(
             telegram_token_file=secret_path,
         ),

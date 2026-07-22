@@ -109,7 +109,7 @@ class SuccessfulProvider:
                 task_record(
                     uuid=FIRST_UUID,
                     description=("LEA Taskwarrior installer smoke test"),
-                    tags=("lea-smoke-test",),
+                    tags=("lea_smoke_test",),
                 ),
             ),
             issues=(),
@@ -125,7 +125,7 @@ class SuccessfulProvider:
             task=task_record(
                 uuid=request.task_uuid,
                 description=("LEA Taskwarrior installer smoke test modified"),
-                tags=("lea-smoke-test", "modified"),
+                tags=("lea_smoke_test", "modified"),
             ),
             issues=(),
         )

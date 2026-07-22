@@ -141,3 +141,31 @@ def test_template_is_deterministic(
     )
 
     assert first == second
+
+
+def test_system_template_configures_taskwarrior_record() -> None:
+    """The system template should identify its Taskwarrior record."""
+    config = system_runtime_config()
+    assert config.component_records.taskwarrior == Path(
+        "/var/lib/lea/install/taskwarrior.json"
+    )
+
+
+def test_development_template_configures_taskwarrior_record(
+    tmp_path: Path,
+) -> None:
+    """Development records should remain below the runtime state root."""
+    root = tmp_path / "workspace"
+    config = development_runtime_config(root)
+    assert config.component_records.taskwarrior == (
+        root / ".lea" / "state" / "install" / "taskwarrior.json"
+    )
+
+
+def test_test_template_configures_taskwarrior_record(tmp_path: Path) -> None:
+    """Test records should remain inside the isolated runtime."""
+    root = tmp_path / "runtime"
+    config = isolated_test_runtime_config(root)
+    assert config.component_records.taskwarrior == (
+        root / "state" / "install" / "taskwarrior.json"
+    )

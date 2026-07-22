@@ -41,6 +41,9 @@ backup_dir = "{state_dir / "backups"}"
 audit_file = "{state_dir / "audit" / "actions-integrity.jsonl"}"
 log_file = "{log_dir / "lea.log"}"
 
+[component_records]
+taskwarrior = "{state_dir / "install" / "taskwarrior.json"}"
+
 [secrets]
 telegram_token_file = "{root / "secrets" / "telegram-token"}"
 """.strip()
@@ -72,6 +75,9 @@ def test_valid_development_configuration(
     assert result.config.profile is RuntimeProfile.DEVELOPMENT
     assert result.config.display_timezone == "Africa/Gaborone"
     assert result.config.paths.config_file == path
+    assert result.config.component_records.taskwarrior == (
+        tmp_path / "state" / "install" / "taskwarrior.json"
+    )
     assert result.issues == ()
 
 
@@ -421,3 +427,29 @@ def test_loading_is_independent_of_working_directory(
     assert result.success is True
     assert result.config is not None
     assert result.config.paths.config_file == path
+
+
+def test_missing_component_records_table(tmp_path: Path) -> None:
+    """Component installation records are required runtime inputs."""
+    contents = valid_toml(tmp_path)
+    start = contents.index("[component_records]")
+    end = contents.index("[secrets]")
+    contents = contents[:start] + contents[end:]
+    path = write_config(tmp_path, contents)
+    result = load_runtime_config(path)
+    assert result.success is False
+    assert result.issues[0].field == "component_records"
+
+
+def test_relative_taskwarrior_component_record_is_rejected(
+    tmp_path: Path,
+) -> None:
+    """Component installation records must use absolute paths."""
+    contents = valid_toml(tmp_path).replace(
+        str(tmp_path / "state" / "install" / "taskwarrior.json"),
+        "install/taskwarrior.json",
+    )
+    path = write_config(tmp_path, contents)
+    result = load_runtime_config(path)
+    assert result.success is False
+    assert result.issues[0].field == "component_records.taskwarrior"

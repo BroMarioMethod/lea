@@ -3,6 +3,7 @@
 from lea.runtime.bootstrap import bootstrap_runtime
 from lea.runtime.contracts import (
     RUNTIME_SCHEMA_VERSION,
+    ComponentRecordPaths,
     ConfigurationIssue,
     ConfigurationResult,
     RuntimeBootstrapResult,
@@ -56,6 +57,7 @@ from lea.runtime.verification import setup_and_verify_runtime
 
 __all__ = [
     "RUNTIME_SCHEMA_VERSION",
+    "ComponentRecordPaths",
     "ConfigurationIssue",
     "ConfigurationResult",
     "RuntimeBootstrapResult",

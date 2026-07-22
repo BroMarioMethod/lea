@@ -7,6 +7,7 @@ import pytest
 
 from lea.runtime import (
     RUNTIME_SCHEMA_VERSION,
+    ComponentRecordPaths,
     ConfigurationIssue,
     ConfigurationResult,
     RuntimeConfig,
@@ -41,6 +42,9 @@ def create_config() -> RuntimeConfig:
         profile=RuntimeProfile.SYSTEM,
         display_timezone="Africa/Gaborone",
         paths=create_paths(),
+        component_records=ComponentRecordPaths(
+            taskwarrior=Path("/var/lib/lea/install/taskwarrior.json"),
+        ),
         secrets=SecretPaths(
             telegram_token_file=Path("/etc/lea/secrets/telegram-bot-token")
         ),
@@ -206,6 +210,9 @@ def test_unsupported_schema_version_is_rejected() -> None:
             profile=RuntimeProfile.SYSTEM,
             display_timezone="Africa/Gaborone",
             paths=create_paths(),
+            component_records=ComponentRecordPaths(
+                taskwarrior=Path("/var/lib/lea/install/taskwarrior.json"),
+            ),
             secrets=SecretPaths(),
         )
 
@@ -221,6 +228,9 @@ def test_blank_display_timezone_is_rejected() -> None:
             profile=RuntimeProfile.SYSTEM,
             display_timezone="   ",
             paths=create_paths(),
+            component_records=ComponentRecordPaths(
+                taskwarrior=Path("/var/lib/lea/install/taskwarrior.json"),
+            ),
             secrets=SecretPaths(),
         )
 
@@ -357,3 +367,9 @@ def test_failed_result_requires_issues() -> None:
             config=None,
             issues=(),
         )
+
+
+def test_component_record_paths_require_absolute_paths() -> None:
+    """Component installation records must use absolute paths."""
+    with pytest.raises(ValueError, match="must be an absolute path"):
+        ComponentRecordPaths(taskwarrior=Path("install/taskwarrior.json"))
