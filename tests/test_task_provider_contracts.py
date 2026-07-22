@@ -210,3 +210,42 @@ def test_task_provider_protocol_is_runtime_checkable() -> None:
             )
 
     assert isinstance(Provider(), TaskProvider)
+
+
+def test_requests_normalise_hyphenated_tags() -> None:
+    """Input contracts should canonicalise safe hyphenated tags."""
+    create = TaskCreateRequest(
+        description="Test",
+        tags=("local-cli", "local_cli"),
+    )
+    listing = TaskListQuery(tag="local-cli")
+    modify = TaskModifyRequest(
+        task_uuid=TASK_UUID,
+        add_tags=("sales-followup",),
+    )
+
+    assert create.tags == ("local_cli",)
+    assert listing.tag == "local_cli"
+    assert modify.add_tags == ("sales_followup",)
+
+
+def test_modify_detects_conflicts_after_tag_normalisation() -> None:
+    """Equivalent raw tags must conflict after normalisation."""
+    with pytest.raises(ValueError, match="same tag"):
+        TaskModifyRequest(
+            task_uuid=TASK_UUID,
+            add_tags=("local-cli",),
+            remove_tags=("local_cli",),
+        )
+
+
+def test_task_record_rejects_non_canonical_provider_tags() -> None:
+    """Provider read-back must not be silently rewritten."""
+    with pytest.raises(ValueError, match="canonical"):
+        TaskRecord(
+            uuid=TASK_UUID,
+            description="Test",
+            status=TaskStatus.PENDING,
+            entry=datetime(2026, 7, 21, 17, 26, 8, tzinfo=UTC),
+            tags=("local-cli",),
+        )

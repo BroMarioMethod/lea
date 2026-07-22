@@ -144,3 +144,26 @@ def test_invalid_task_deletion_uuid_returns_validation_error() -> None:
     assert exit_code == LocalCliExitCode.VALIDATION_ERROR
     assert stdout.getvalue() == ""
     assert "not canonical" in stderr.getvalue()
+
+
+def test_invalid_task_tag_returns_validation_error() -> None:
+    """Unsupported tags should fail before provider loading."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        [
+            "task",
+            "create",
+            "--description",
+            "Test",
+            "--tag",
+            "client/work",
+        ],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.VALIDATION_ERROR
+    assert stdout.getvalue() == ""
+    assert "only letters, digits and underscores" in stderr.getvalue()

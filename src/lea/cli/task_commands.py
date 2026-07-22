@@ -1,6 +1,6 @@
 """Local CLI task command services."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -177,7 +177,8 @@ def render_task_list_result(result: CliResult) -> str:
         return _render_issues(result)
 
     if not tasks:
-        return "No tasks found." if result.success else _render_issues(result)
+        rendered = "No tasks found." if result.success else _render_issues(result)
+        return _append_normalisations(rendered, data)
 
     lines = [
         "Tasks",
@@ -192,7 +193,7 @@ def render_task_list_result(result: CliResult) -> str:
         task = cast(dict[str, object], raw_task)
         lines.extend(_render_task_lines(task))
 
-    return "\n".join(lines)
+    return _append_normalisations("\n".join(lines), data)
 
 
 def render_task_create_result(result: CliResult) -> str:
@@ -210,7 +211,7 @@ def render_task_create_result(result: CliResult) -> str:
     task = cast(dict[str, object], raw_task)
     lines = ["Task created", ""]
     lines.extend(_render_task_lines(task))
-    return "\n".join(lines)
+    return _append_normalisations("\n".join(lines), data)
 
 
 def _load_task_provider(
@@ -384,6 +385,29 @@ def _render_task_mutation_result(
     heading = str(message) if message is not None else default_heading
     lines = [heading, ""]
     lines.extend(_render_task_lines(task))
+    return _append_normalisations("\n".join(lines), data)
+
+
+def _append_normalisations(
+    rendered: str,
+    data: Mapping[str, object],
+) -> str:
+    """Append disclosed task-tag normalisations to human output."""
+    raw_normalisations = data.get("normalisations")
+
+    if not isinstance(raw_normalisations, list):
+        return rendered
+
+    lines = [rendered, ""]
+
+    for raw in raw_normalisations:
+        if not isinstance(raw, dict):
+            continue
+
+        original = raw.get("input")
+        canonical = raw.get("value")
+        lines.append(f"Tag '{original}' was normalised to '{canonical}'.")
+
     return "\n".join(lines)
 
 

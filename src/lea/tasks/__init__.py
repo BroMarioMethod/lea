@@ -13,6 +13,7 @@ from lea.tasks.contracts import (
     TaskStatus,
 )
 from lea.tasks.provider import TaskProvider
+from lea.tasks.tags import normalise_task_tag
 
 __all__ = [
     "TaskCreateRequest",
@@ -26,4 +27,5 @@ __all__ = [
     "TaskProviderIssue",
     "TaskRecord",
     "TaskStatus",
+    "normalise_task_tag",
 ]

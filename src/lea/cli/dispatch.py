@@ -11,6 +11,7 @@ from uuid import UUID
 from lea.cli.contracts import (
     CliIssue,
     CliResult,
+    JsonValue,
     LocalCliExitCode,
 )
 from lea.cli.parser import create_local_cli_parser
@@ -40,6 +41,7 @@ from lea.tasks import (
     TaskListQuery,
     TaskModifyRequest,
     TaskStatus,
+    normalise_task_tag,
 )
 
 
@@ -86,17 +88,25 @@ def execute_local_cli(
         )
 
     if namespace.command == "task" and namespace.task_command == "list":
+        list_request_result = _task_list_query(namespace)
+
+        if isinstance(list_request_result, CliResult):
+            return write_cli_result(
+                list_request_result,
+                stdout=stdout,
+                stderr=stderr,
+                json_output=bool(namespace.json),
+                human_renderer=_render_first_issue,
+            )
+
+        query, normalisations = list_request_result
         result = execute_task_list(
             config_path=_config_path(namespace),
             expected_profile=_expected_profile(namespace),
-            query=TaskListQuery(
-                uuid=namespace.uuid,
-                status=TaskStatus(namespace.status),
-                project=namespace.project,
-                tag=namespace.tag,
-            ),
+            query=query,
             dependencies=task_dependencies,
         )
+        result = _with_normalisations(result, normalisations)
         return write_cli_result(
             result,
             stdout=stdout,
@@ -106,17 +116,25 @@ def execute_local_cli(
         )
 
     if namespace.command == "task" and namespace.task_command == "create":
+        create_request_result = _task_create_request(namespace)
+
+        if isinstance(create_request_result, CliResult):
+            return write_cli_result(
+                create_request_result,
+                stdout=stdout,
+                stderr=stderr,
+                json_output=bool(namespace.json),
+                human_renderer=_render_first_issue,
+            )
+
+        create_request, normalisations = create_request_result
         result = execute_task_create(
             config_path=_config_path(namespace),
             expected_profile=_expected_profile(namespace),
-            request=TaskCreateRequest(
-                description=namespace.description,
-                project=namespace.project,
-                priority=namespace.priority,
-                tags=tuple(namespace.tag),
-            ),
+            request=create_request,
             dependencies=task_dependencies,
         )
+        result = _with_normalisations(result, normalisations)
         return write_cli_result(
             result,
             stdout=stdout,
@@ -178,23 +196,25 @@ def execute_local_cli(
         )
 
     if namespace.command == "task" and namespace.task_command == "modify":
-        request_result = _task_modify_request(namespace)
+        modify_request_result = _task_modify_request(namespace)
 
-        if isinstance(request_result, CliResult):
+        if isinstance(modify_request_result, CliResult):
             return write_cli_result(
-                request_result,
+                modify_request_result,
                 stdout=stdout,
                 stderr=stderr,
                 json_output=bool(namespace.json),
                 human_renderer=_render_first_issue,
             )
 
+        modify_request, normalisations = modify_request_result
         result = execute_task_modify(
             config_path=_config_path(namespace),
             expected_profile=_expected_profile(namespace),
-            request=request_result,
+            request=modify_request,
             dependencies=task_dependencies,
         )
+        result = _with_normalisations(result, normalisations)
         return write_cli_result(
             result,
             stdout=stdout,
@@ -282,30 +302,128 @@ def _validate_task_uuid(task_uuid: str) -> CliResult | None:
     )
 
 
-def _task_modify_request(
+def _task_list_query(
     namespace: argparse.Namespace,
-) -> TaskModifyRequest | CliResult:
-    """Build one validated provider-neutral task modification."""
+) -> tuple[TaskListQuery, list[dict[str, str]]] | CliResult:
+    """Build one validated task-list query and report normalisation."""
     try:
-        return TaskModifyRequest(
-            task_uuid=namespace.uuid,
-            description=namespace.description,
-            project=namespace.project,
-            priority=namespace.priority,
-            add_tags=tuple(namespace.add_tag),
-            remove_tags=tuple(namespace.remove_tag),
+        normalisations = _tag_normalisations(
+            [namespace.tag] if namespace.tag is not None else []
+        )
+        return (
+            TaskListQuery(
+                uuid=namespace.uuid,
+                status=TaskStatus(namespace.status),
+                project=namespace.project,
+                tag=namespace.tag,
+            ),
+            normalisations,
         )
     except ValueError as error:
-        return CliResult.failed(
-            exit_code=LocalCliExitCode.VALIDATION_ERROR,
-            issues=(
-                CliIssue(
-                    code="task_modification_invalid",
-                    message=str(error),
-                ),
-            ),
-            data={"task": None},
+        return _task_validation_failure(
+            code="task_list_query_invalid",
+            message=str(error),
         )
+
+
+def _task_create_request(
+    namespace: argparse.Namespace,
+) -> tuple[TaskCreateRequest, list[dict[str, str]]] | CliResult:
+    """Build one validated task creation and report normalisation."""
+    try:
+        return (
+            TaskCreateRequest(
+                description=namespace.description,
+                project=namespace.project,
+                priority=namespace.priority,
+                tags=tuple(namespace.tag),
+            ),
+            _tag_normalisations(namespace.tag),
+        )
+    except ValueError as error:
+        return _task_validation_failure(
+            code="task_creation_invalid",
+            message=str(error),
+        )
+
+
+def _task_modify_request(
+    namespace: argparse.Namespace,
+) -> tuple[TaskModifyRequest, list[dict[str, str]]] | CliResult:
+    """Build one validated provider-neutral task modification."""
+    try:
+        return (
+            TaskModifyRequest(
+                task_uuid=namespace.uuid,
+                description=namespace.description,
+                project=namespace.project,
+                priority=namespace.priority,
+                add_tags=tuple(namespace.add_tag),
+                remove_tags=tuple(namespace.remove_tag),
+            ),
+            _tag_normalisations([*namespace.add_tag, *namespace.remove_tag]),
+        )
+    except ValueError as error:
+        return _task_validation_failure(
+            code="task_modification_invalid",
+            message=str(error),
+        )
+
+
+def _tag_normalisations(values: list[str]) -> list[dict[str, str]]:
+    """Describe every task tag changed by canonical normalisation."""
+    normalisations: list[dict[str, str]] = []
+
+    for value in values:
+        canonical = normalise_task_tag(value)
+
+        if canonical != value:
+            normalisations.append(
+                {
+                    "field": "tag",
+                    "input": value,
+                    "value": canonical,
+                }
+            )
+
+    return normalisations
+
+
+def _with_normalisations(
+    result: CliResult,
+    normalisations: list[dict[str, str]],
+) -> CliResult:
+    """Attach input normalisations to CLI result data."""
+    if not normalisations or not isinstance(result.data, dict):
+        return result
+
+    data = dict(result.data)
+    data["normalisations"] = cast(JsonValue, normalisations)
+    return CliResult(
+        success=result.success,
+        exit_code=result.exit_code,
+        data=data,
+        issues=result.issues,
+    )
+
+
+def _task_validation_failure(
+    *,
+    code: str,
+    message: str,
+) -> CliResult:
+    """Return one deterministic task-input validation failure."""
+    return CliResult.failed(
+        exit_code=LocalCliExitCode.VALIDATION_ERROR,
+        issues=(
+            CliIssue(
+                code=code,
+                message=message,
+                field="tag",
+            ),
+        ),
+        data={"task": None},
+    )
 
 
 def _not_implemented_result(namespace: argparse.Namespace) -> CliResult:

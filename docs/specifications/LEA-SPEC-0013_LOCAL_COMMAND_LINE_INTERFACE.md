@@ -1,7 +1,7 @@
 # LEA-SPEC-0013: Local Command-Line Interface
 
 - **Status:** Accepted
-- **Version:** 1.6
+- **Version:** 1.7
 - **Date:** 22 July 2026
 - **Milestone:** 2.3 — Local CLI
 - **Related specifications:**
@@ -692,3 +692,15 @@ Milestone 2.3 is complete when:
 - direct storage access is absent;
 - isolated integration tests pass;
 - the full repository quality and CI gates pass.
+
+### 6.6 Task-tag normalisation
+
+Task-tag input is trimmed and each hyphen is replaced with an underscore before
+validation. Canonical tags must match `[A-Za-z_][A-Za-z0-9_]*`.
+
+The CLI reports every changed tag in both human-readable and JSON output.
+Other unsupported characters are rejected rather than silently removed.
+Duplicate tags and add/remove conflicts are evaluated after normalisation.
+
+Provider task records must already contain canonical tags and are never
+silently rewritten during read-back.

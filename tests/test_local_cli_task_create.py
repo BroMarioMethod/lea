@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-from lea.cli import LocalCliExitCode
+from lea.cli import CliResult, LocalCliExitCode
 from lea.cli.task_commands import (
     TaskCommandDependencies,
     execute_task_create,
@@ -238,3 +238,33 @@ def test_task_create_unavailable_provider_maps_to_exit_eight(
 
     assert result.exit_code is LocalCliExitCode.PROVIDER_UNAVAILABLE
     assert result.data == {"task": None}
+
+
+def test_task_create_renderer_discloses_tag_normalisation() -> None:
+    """Human output should disclose changed task tags."""
+    result = CliResult.succeeded(
+        data={
+            "task": {
+                "description": "Create CLI task",
+                "due": None,
+                "entry": "2026-07-22T12:00:00+00:00",
+                "modified": None,
+                "priority": None,
+                "project": None,
+                "status": "pending",
+                "tags": ["local_cli"],
+                "uuid": TASK_UUID,
+            },
+            "normalisations": [
+                {
+                    "field": "tag",
+                    "input": "local-cli",
+                    "value": "local_cli",
+                }
+            ],
+        }
+    )
+
+    rendered = render_task_create_result(result)
+
+    assert "Tag 'local-cli' was normalised to 'local_cli'." in rendered

@@ -5,6 +5,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
+from lea.tasks.tags import normalise_task_tag, validate_canonical_task_tag
+
 
 class TaskStatus(StrEnum):
     """Supported provider-neutral task statuses."""
@@ -85,13 +87,12 @@ class TaskRecord:
         if self.priority is not None and not self.priority.strip():
             raise ValueError("priority must be non-empty when provided.")
 
-        normalised_tags = tuple(sorted(set(self.tags)))
+        canonical_tags = tuple(sorted(set(self.tags)))
 
-        for tag in normalised_tags:
-            if not tag.strip():
-                raise ValueError("tags must not contain blank values.")
+        for tag in canonical_tags:
+            validate_canonical_task_tag(tag)
 
-        object.__setattr__(self, "tags", normalised_tags)
+        object.__setattr__(self, "tags", canonical_tags)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,18 +110,16 @@ class TaskCreateRequest:
         if not self.description.strip():
             raise ValueError("description must be non-empty.")
 
+        canonical_tags = _normalise_task_tags(self.tags)
+
         _validate_optional_task_fields(
             project=self.project,
             due=self.due,
             priority=self.priority,
-            tags=self.tags,
+            tags=canonical_tags,
         )
 
-        object.__setattr__(
-            self,
-            "tags",
-            tuple(sorted(set(self.tags))),
-        )
+        object.__setattr__(self, "tags", canonical_tags)
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,12 +136,11 @@ class TaskListQuery:
         if self.uuid is not None:
             _validate_uuid(self.uuid, field_name="uuid")
 
-        for field_name, value in (
-            ("project", self.project),
-            ("tag", self.tag),
-        ):
-            if value is not None and not value.strip():
-                raise ValueError(f"{field_name} must be non-empty when provided.")
+        if self.project is not None and not self.project.strip():
+            raise ValueError("project must be non-empty when provided.")
+
+        if self.tag is not None:
+            object.__setattr__(self, "tag", normalise_task_tag(self.tag))
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,12 +181,8 @@ class TaskModifyRequest:
                 "priority and clear_priority must not be supplied together."
             )
 
-        add_tags = tuple(sorted(set(self.add_tags)))
-        remove_tags = tuple(sorted(set(self.remove_tags)))
-
-        for tag in (*add_tags, *remove_tags):
-            if not tag.strip():
-                raise ValueError("tag changes must not contain blank values.")
+        add_tags = _normalise_task_tags(self.add_tags)
+        remove_tags = _normalise_task_tags(self.remove_tags)
 
         if set(add_tags) & set(remove_tags):
             raise ValueError("The same tag must not be added and removed.")
@@ -335,8 +329,12 @@ def _validate_optional_task_fields(
         raise ValueError("priority must be non-empty when provided.")
 
     for tag in tags:
-        if not tag.strip():
-            raise ValueError("tags must not contain blank values.")
+        validate_canonical_task_tag(tag)
+
+
+def _normalise_task_tags(tags: tuple[str, ...]) -> tuple[str, ...]:
+    """Normalise, deduplicate and sort task tags."""
+    return tuple(sorted({normalise_task_tag(tag) for tag in tags}))
 
 
 def _validate_uuid(
