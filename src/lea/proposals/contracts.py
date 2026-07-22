@@ -120,6 +120,63 @@ class ProposalWriteResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ProposalReplaceResult:
+    """Immutable result of atomically replacing one proposal document."""
+
+    success: bool
+    proposal: ActionProposal | None
+    previous_proposal: ActionProposal | None
+    path: Path | None
+    issues: tuple[ProposalRepositoryIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Validate proposal-replacement result consistency."""
+        if self.success:
+            if self.proposal is None:
+                raise ValueError(
+                    "A successful proposal replacement must contain a proposal."
+                )
+
+            if self.previous_proposal is None:
+                raise ValueError(
+                    "A successful proposal replacement must contain "
+                    "the previous proposal."
+                )
+
+            if self.path is None:
+                raise ValueError(
+                    "A successful proposal replacement must contain a path."
+                )
+
+            if self.issues:
+                raise ValueError(
+                    "A successful proposal replacement must not contain issues."
+                )
+
+            _validate_absolute_path(
+                self.path,
+                field_name="path",
+            )
+            return
+
+        if self.proposal is not None:
+            raise ValueError(
+                "A failed proposal replacement must not contain a proposal."
+            )
+
+        if not self.issues:
+            raise ValueError(
+                "A failed proposal replacement must contain at least one issue."
+            )
+
+        if self.path is not None:
+            _validate_absolute_path(
+                self.path,
+                field_name="path",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ProposalReadResult:
     """Immutable result of reading one proposal document."""
 

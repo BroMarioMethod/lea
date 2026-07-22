@@ -6,10 +6,11 @@ from contextlib import suppress
 from pathlib import Path
 from uuid import UUID
 
-from lea.actions import ActionProposal
+from lea.actions import ActionProposal, ActionStatus
 from lea.proposals.contracts import (
     ProposalListResult,
     ProposalReadResult,
+    ProposalReplaceResult,
     ProposalRepositoryIssue,
     ProposalVerificationResult,
     ProposalWriteResult,
@@ -211,6 +212,108 @@ class MarkdownProposalRepository:
         return ProposalReadResult(
             success=True,
             proposal=proposal,
+            path=destination,
+            issues=(),
+        )
+
+    def replace(
+        self,
+        proposal: ActionProposal,
+        *,
+        expected_status: ActionStatus,
+    ) -> ProposalReplaceResult:
+        """Atomically replace one existing canonical proposal document."""
+        destination = self.path_for(proposal.proposal_id)
+        existing_result = self.read(proposal.proposal_id)
+
+        if not existing_result.success:
+            return ProposalReplaceResult(
+                success=False,
+                proposal=None,
+                previous_proposal=None,
+                path=destination,
+                issues=existing_result.issues,
+            )
+
+        existing = existing_result.proposal
+
+        if existing is None:
+            return _replace_failure(
+                code="proposal_read_failed",
+                message=(
+                    "Proposal reading succeeded without returning "
+                    "the existing proposal."
+                ),
+                proposal_id=proposal.proposal_id,
+                path=destination,
+            )
+
+        if existing.status is not expected_status:
+            return _replace_failure(
+                code="proposal_status_conflict",
+                message=(
+                    "The existing proposal status does not match the expected status."
+                ),
+                proposal_id=proposal.proposal_id,
+                path=destination,
+                field="status",
+            )
+
+        document = render_proposal_document(proposal)
+        temporary_path: Path | None = None
+
+        try:
+            temporary_path = self._write_temporary_document(
+                document,
+                proposal_id=proposal.proposal_id,
+            )
+            os.replace(
+                temporary_path,
+                destination,
+            )
+            temporary_path = None
+
+            if self._fsync:
+                _fsync_directory(self._root)
+        except OSError:
+            return _replace_failure(
+                code="proposal_replace_failed",
+                message="The proposal document could not be replaced.",
+                proposal_id=proposal.proposal_id,
+                path=destination,
+            )
+        finally:
+            if temporary_path is not None:
+                with suppress(OSError):
+                    temporary_path.unlink(missing_ok=True)
+
+        readback = self.read(proposal.proposal_id)
+
+        if not readback.success:
+            return ProposalReplaceResult(
+                success=False,
+                proposal=None,
+                previous_proposal=existing,
+                path=destination,
+                issues=readback.issues,
+            )
+
+        persisted = readback.proposal
+
+        if persisted != proposal:
+            return _replace_failure(
+                code="proposal_readback_mismatch",
+                message=(
+                    "The replaced proposal did not match the requested canonical value."
+                ),
+                proposal_id=proposal.proposal_id,
+                path=destination,
+            )
+
+        return ProposalReplaceResult(
+            success=True,
+            proposal=persisted,
+            previous_proposal=existing,
             path=destination,
             issues=(),
         )
@@ -605,6 +708,32 @@ def _failure(
                 message=message,
                 proposal_id=proposal_id,
                 path=path,
+            ),
+        ),
+    )
+
+
+def _replace_failure(
+    *,
+    code: str,
+    message: str,
+    proposal_id: str,
+    path: Path,
+    field: str | None = None,
+) -> ProposalReplaceResult:
+    """Construct one deterministic failed replacement result."""
+    return ProposalReplaceResult(
+        success=False,
+        proposal=None,
+        previous_proposal=None,
+        path=path,
+        issues=(
+            ProposalRepositoryIssue(
+                code=code,
+                message=message,
+                proposal_id=proposal_id,
+                path=path,
+                field=field,
             ),
         ),
     )

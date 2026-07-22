@@ -11,6 +11,7 @@ from lea.proposals import (
     ProposalDocumentResult,
     ProposalListResult,
     ProposalReadResult,
+    ProposalReplaceResult,
     ProposalRepositoryIssue,
     ProposalVerificationResult,
     ProposalWriteResult,
@@ -296,6 +297,64 @@ def test_document_result_is_immutable() -> None:
     result = ProposalDocumentResult(
         success=True,
         proposal=create_proposal(),
+        issues=(),
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        result.success = False  # type: ignore[misc]
+
+
+def test_successful_replace_result() -> None:
+    """Successful replacement should contain old and new proposals."""
+    previous = create_proposal()
+    replacement = ActionProposal.from_dict(
+        {
+            **previous.to_dict(),
+            "status": "approved",
+        }
+    )
+    path = Path(f"/var/lib/lea/proposals/{PROPOSAL_ID}.md")
+
+    result = ProposalReplaceResult(
+        success=True,
+        proposal=replacement,
+        previous_proposal=previous,
+        path=path,
+        issues=(),
+    )
+
+    assert result.proposal == replacement
+    assert result.previous_proposal == previous
+    assert result.path == path
+
+
+def test_failed_replace_result_requires_issue() -> None:
+    """Failed replacement must explain its failure."""
+    with pytest.raises(ValueError, match="must contain at least one issue"):
+        ProposalReplaceResult(
+            success=False,
+            proposal=None,
+            previous_proposal=None,
+            path=None,
+            issues=(),
+        )
+
+
+def test_replace_result_is_immutable() -> None:
+    """Replacement results must not permit reassignment."""
+    previous = create_proposal()
+    replacement = ActionProposal.from_dict(
+        {
+            **previous.to_dict(),
+            "status": "approved",
+        }
+    )
+
+    result = ProposalReplaceResult(
+        success=True,
+        proposal=replacement,
+        previous_proposal=previous,
+        path=Path(f"/var/lib/lea/proposals/{PROPOSAL_ID}.md"),
         issues=(),
     )
 
