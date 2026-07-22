@@ -11,6 +11,11 @@ from lea.cli.contracts import (
 )
 from lea.cli.dispatch import execute_local_cli
 from lea.cli.parser import create_local_cli_parser
+from lea.cli.proposal_commands import (
+    ProposalCommandDependencies,
+    execute_proposal_list,
+    render_proposal_list_result,
+)
 from lea.cli.rendering import HumanResultRenderer, write_cli_result
 from lea.cli.serialisation import (
     cli_issue_to_dict,
@@ -45,6 +50,7 @@ __all__ = [
     "JsonScalar",
     "JsonValue",
     "LocalCliExitCode",
+    "ProposalCommandDependencies",
     "RuntimeCliExitCode",
     "StatusDependencies",
     "TaskCommandDependencies",
@@ -52,6 +58,7 @@ __all__ = [
     "cli_result_to_dict",
     "create_local_cli_parser",
     "execute_local_cli",
+    "execute_proposal_list",
     "execute_status",
     "execute_task_complete",
     "execute_task_create",
@@ -60,6 +67,7 @@ __all__ = [
     "execute_task_modify",
     "normalise_runtime_cli_exit_code",
     "render_cli_result_json",
+    "render_proposal_list_result",
     "render_status_result",
     "render_task_complete_result",
     "render_task_create_result",

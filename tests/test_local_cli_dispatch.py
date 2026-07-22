@@ -45,7 +45,11 @@ def test_recognised_command_returns_structured_placeholder() -> None:
     stderr = StringIO()
 
     exit_code = execute_local_cli(
-        ["proposal", "list"],
+        [
+            "proposal",
+            "show",
+            "11111111-1111-4111-8111-111111111111",
+        ],
         stdout=stdout,
         stderr=stderr,
     )
@@ -53,7 +57,7 @@ def test_recognised_command_returns_structured_placeholder() -> None:
     assert exit_code == LocalCliExitCode.APPLICATION_ERROR
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == (
-        "The 'lea proposal list' command is recognised but is not implemented yet.\n"
+        "The 'lea proposal show' command is recognised but is not implemented yet.\n"
     )
 
 

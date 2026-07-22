@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TextIO, cast
 from uuid import UUID
 
+from lea.actions import ActionStatus
 from lea.cli.contracts import (
     CliIssue,
     CliResult,
@@ -15,6 +16,11 @@ from lea.cli.contracts import (
     LocalCliExitCode,
 )
 from lea.cli.parser import create_local_cli_parser
+from lea.cli.proposal_commands import (
+    ProposalCommandDependencies,
+    execute_proposal_list,
+    render_proposal_list_result,
+)
 from lea.cli.rendering import write_cli_result
 from lea.cli.status import (
     DEFAULT_RUNTIME_CONFIG,
@@ -52,6 +58,7 @@ def execute_local_cli(
     stderr: TextIO = sys.stderr,
     status_dependencies: StatusDependencies | None = None,
     task_dependencies: TaskCommandDependencies | None = None,
+    proposal_dependencies: ProposalCommandDependencies | None = None,
 ) -> int:
     """Parse and dispatch one Local CLI command."""
     parser = create_local_cli_parser()
@@ -85,6 +92,25 @@ def execute_local_cli(
             stderr=stderr,
             json_output=bool(namespace.json),
             human_renderer=render_status_result,
+        )
+
+    if namespace.command == "proposal" and namespace.proposal_command == "list":
+        result = execute_proposal_list(
+            config_path=_config_path(namespace),
+            expected_profile=_expected_profile(namespace),
+            status=(
+                ActionStatus(namespace.status) if namespace.status is not None else None
+            ),
+            action_type=namespace.action_type,
+            limit=namespace.limit,
+            dependencies=proposal_dependencies,
+        )
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=render_proposal_list_result,
         )
 
     if namespace.command == "task" and namespace.task_command == "list":

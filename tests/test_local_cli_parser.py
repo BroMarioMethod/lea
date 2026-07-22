@@ -183,3 +183,23 @@ def test_parser_preserves_task_modify_fields() -> None:
     assert namespace.priority == "M"
     assert namespace.add_tag == ["updated", "cli"]
     assert namespace.remove_tag == ["create"]
+
+
+def test_parser_preserves_proposal_list_filters() -> None:
+    """Supported proposal-list filters should parse deterministically."""
+    namespace = create_local_cli_parser().parse_args(
+        [
+            "proposal",
+            "list",
+            "--status",
+            "approved",
+            "--action-type",
+            "task.modify",
+            "--limit",
+            "10",
+        ]
+    )
+
+    assert namespace.status == "approved"
+    assert namespace.action_type == "task.modify"
+    assert namespace.limit == 10

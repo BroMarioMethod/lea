@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 
+from lea.actions import ActionStatus
 from lea.runtime import RuntimeProfile
 
 
@@ -177,9 +178,23 @@ def _add_proposal_subcommands(parser: argparse.ArgumentParser) -> None:
         dest="proposal_command",
         required=True,
     )
-    subparsers.add_parser(
+    list_parser = subparsers.add_parser(
         "list",
         help="List persistent proposals.",
+    )
+    list_parser.add_argument(
+        "--status",
+        choices=tuple(status.value for status in ActionStatus),
+        help="Filter by exact proposal status.",
+    )
+    list_parser.add_argument(
+        "--action-type",
+        help="Filter by exact namespaced action type.",
+    )
+    list_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Maximum number of proposals to return.",
     )
 
     for command, help_text in (

@@ -1,7 +1,7 @@
 # LEA-SPEC-0013: Local Command-Line Interface
 
 - **Status:** Accepted
-- **Version:** 1.7
+- **Version:** 1.8
 - **Date:** 22 July 2026
 - **Milestone:** 2.3 — Local CLI
 - **Related specifications:**
