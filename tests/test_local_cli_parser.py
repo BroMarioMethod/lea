@@ -38,7 +38,17 @@ def test_root_parser_uses_public_program_name() -> None:
             "proposal",
             "approve",
         ),
-        (["proposal", "reject", "proposal-1"], "proposal", "reject"),
+        (
+            [
+                "proposal",
+                "reject",
+                "proposal-1",
+                "--actor",
+                "Marius",
+            ],
+            "proposal",
+            "reject",
+        ),
     ],
 )
 def test_parser_accepts_initial_command_grammar(
@@ -65,6 +75,8 @@ def test_parser_preserves_rejection_reason() -> None:
             "proposal",
             "reject",
             "proposal-1",
+            "--actor",
+            "Marius",
             "--reason",
             "The action is no longer required.",
         ]

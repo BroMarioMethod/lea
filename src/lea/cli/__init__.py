@@ -15,9 +15,11 @@ from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
     execute_proposal_approve,
     execute_proposal_list,
+    execute_proposal_reject,
     execute_proposal_show,
     render_proposal_approve_result,
     render_proposal_list_result,
+    render_proposal_reject_result,
     render_proposal_show_result,
 )
 from lea.cli.rendering import HumanResultRenderer, write_cli_result
@@ -64,6 +66,7 @@ __all__ = [
     "execute_local_cli",
     "execute_proposal_approve",
     "execute_proposal_list",
+    "execute_proposal_reject",
     "execute_proposal_show",
     "execute_status",
     "execute_task_complete",
@@ -75,6 +78,7 @@ __all__ = [
     "render_cli_result_json",
     "render_proposal_approve_result",
     "render_proposal_list_result",
+    "render_proposal_reject_result",
     "render_proposal_show_result",
     "render_status_result",
     "render_task_complete_result",

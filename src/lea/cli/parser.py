@@ -234,6 +234,11 @@ def _add_proposal_subcommands(parser: argparse.ArgumentParser) -> None:
         help="Stable proposal identifier.",
     )
     reject_parser.add_argument(
+        "--actor",
+        required=True,
+        help="Human actor recording the rejection.",
+    )
+    reject_parser.add_argument(
         "--reason",
         help="Optional human-readable rejection reason.",
     )
