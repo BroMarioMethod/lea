@@ -26,6 +26,10 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallFailureCode,
     TaskwarriorInstallMode,
 )
+from lea.installers.taskwarrior.dispatch import (
+    TaskwarriorInstallResult,
+    install_taskwarrior,
+)
 from lea.installers.taskwarrior.external_installer import (
     TaskwarriorExternalInstallResult,
     install_external_taskwarrior,
@@ -95,6 +99,7 @@ __all__ = [
     "TaskwarriorExtractedSource",
     "TaskwarriorInstallFailureCode",
     "TaskwarriorInstallMode",
+    "TaskwarriorInstallResult",
     "TaskwarriorInstallationRecord",
     "TaskwarriorInstallerConfig",
     "TaskwarriorInstallerIssue",
@@ -120,6 +125,7 @@ __all__ = [
     "install_bundled_taskwarrior",
     "install_external_taskwarrior",
     "install_source_taskwarrior",
+    "install_taskwarrior",
     "installation_record_matches",
     "is_supported_taskwarrior_version",
     "is_valid_sha256",
