@@ -593,6 +593,184 @@ def render_proposal_reject_result(result: CliResult) -> str:
     )
 
 
+def execute_proposal_cancel(
+    *,
+    config_path: Path,
+    expected_profile: RuntimeProfile | None,
+    proposal_id: str,
+    actor: str,
+    reason: str | None,
+    dependencies: ProposalCommandDependencies | None = None,
+) -> CliResult:
+    """Cancel one persistent proposal awaiting confirmation."""
+    validation = _validate_proposal_id(proposal_id)
+    if validation is not None:
+        return validation
+
+    if not actor.strip():
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.VALIDATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="proposal_actor_invalid",
+                    message="--actor must be a non-empty string.",
+                    field="actor",
+                ),
+            ),
+            data={"proposal": None},
+        )
+
+    if reason is not None and not reason.strip():
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.VALIDATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="proposal_reason_invalid",
+                    message="--reason must be non-empty when provided.",
+                    field="reason",
+                ),
+            ),
+            data={"proposal": None},
+        )
+
+    resolved = dependencies or ProposalCommandDependencies()
+    configuration = resolved.load_configuration(config_path)
+    if not configuration.success:
+        return _configuration_failure(configuration)
+
+    config = configuration.config
+    if config is None:
+        return _internal_failure(
+            "Successful configuration loading returned no runtime configuration."
+        )
+
+    if expected_profile is not None and config.profile is not expected_profile:
+        return _profile_mismatch_failure()
+
+    repository = resolved.create_repository(config)
+    read_result = repository.read(proposal_id)
+    if not read_result.success:
+        return _map_proposal_read_failure(read_result)
+
+    proposal = read_result.proposal
+    if proposal is None:
+        return _internal_failure("Successful proposal reading returned no proposal.")
+
+    try:
+        audit_store = resolved.create_audit_store(config)
+        orchestrator = resolved.create_orchestrator(audit_store)
+        confirmation = orchestrator.confirm(
+            proposal,
+            ConfirmationDecision.CANCELLED,
+            actor.strip(),
+            reason=reason.strip() if reason is not None else None,
+        )
+    except Exception:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="proposal_cancellation_failed",
+                    message="The proposal cancellation workflow could not complete.",
+                ),
+            ),
+            data={"proposal": None},
+        )
+
+    if confirmation.outcome is not OrchestrationOutcome.CANCELLED:
+        issue = confirmation.issue
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code=(
+                        issue.code
+                        if issue is not None
+                        else "proposal_cancellation_rejected"
+                    ),
+                    message=(
+                        issue.message
+                        if issue is not None
+                        else "The proposal could not be cancelled."
+                    ),
+                ),
+            ),
+            data={"proposal": None},
+        )
+
+    replacement = repository.replace(
+        confirmation.proposal,
+        expected_status=ActionStatus.AWAITING_CONFIRMATION,
+    )
+    if not replacement.success:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="proposal_cancellation_partial_persistence",
+                    message=(
+                        "The cancellation audit event was persisted, but the "
+                        "proposal document could not be replaced."
+                    ),
+                ),
+                *tuple(
+                    CliIssue(
+                        code=issue.code,
+                        message=issue.message,
+                        field=issue.field,
+                    )
+                    for issue in replacement.issues
+                ),
+            ),
+            data={
+                "proposal": proposal_to_dict(confirmation.proposal),
+                "audit_persisted": True,
+                "proposal_persisted": False,
+            },
+        )
+
+    decision = confirmation.decision_application
+    record = decision.record if decision is not None else None
+    return CliResult.succeeded(
+        data={
+            "proposal": proposal_to_dict(confirmation.proposal),
+            "audit_persisted": True,
+            "proposal_persisted": True,
+            "actor": record.actor if record is not None else actor.strip(),
+            "reason": record.reason if record is not None else reason,
+            "decided_at": (
+                record.decided_at.isoformat() if record is not None else None
+            ),
+        }
+    )
+
+
+def render_proposal_cancel_result(result: CliResult) -> str:
+    """Render one stable human-readable proposal cancellation result."""
+    if not result.success:
+        return _render_issues(result)
+
+    data = result.data
+    if not isinstance(data, dict):
+        return _render_issues(result)
+
+    proposal = data.get("proposal")
+    if not isinstance(proposal, dict):
+        return _render_issues(result)
+
+    return "\n".join(
+        [
+            "Proposal cancelled.",
+            f"Proposal ID: {proposal.get('proposal_id', 'not available')}",
+            f"Status: {proposal.get('status', 'not available')}",
+            f"Actor: {data.get('actor', 'not available')}",
+            f"Reason: {data.get('reason') or 'not provided'}",
+            f"Audit persisted: {str(data.get('audit_persisted')).lower()}",
+            f"Proposal persisted: {str(data.get('proposal_persisted')).lower()}",
+        ]
+    )
+
+
 def render_proposal_show_result(result: CliResult) -> str:
     """Render one stable human-readable proposal detail view."""
     data = result.data

@@ -225,6 +225,24 @@ def _add_proposal_subcommands(parser: argparse.ArgumentParser) -> None:
         help="Optional human-readable approval reason.",
     )
 
+    cancel_parser = subparsers.add_parser(
+        "cancel",
+        help="Cancel one persistent proposal.",
+    )
+    cancel_parser.add_argument(
+        "proposal_id",
+        help="Stable proposal identifier.",
+    )
+    cancel_parser.add_argument(
+        "--actor",
+        required=True,
+        help="Human actor recording the cancellation.",
+    )
+    cancel_parser.add_argument(
+        "--reason",
+        help="Optional human-readable cancellation reason.",
+    )
+
     reject_parser = subparsers.add_parser(
         "reject",
         help="Reject one persistent proposal.",

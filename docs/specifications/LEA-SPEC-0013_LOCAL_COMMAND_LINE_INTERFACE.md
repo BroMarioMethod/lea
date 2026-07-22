@@ -1,7 +1,7 @@
 # LEA-SPEC-0013: Local Command-Line Interface
 
 - **Status:** Accepted
-- **Version:** 1.11
+- **Version:** 1.12
 - **Date:** 22 July 2026
 - **Milestone:** 2.3 — Local CLI
 - **Related specifications:**
@@ -39,6 +39,7 @@ lea proposal list
 lea proposal show
 lea proposal approve
 lea proposal reject
+lea proposal cancel
 ```
 
 The existing runtime CLI remains available through:
@@ -317,6 +318,14 @@ Optional:
 Rejection must use the existing confirmation and orchestration contracts.
 
 A reason may be required by policy in a later revision.
+
+### 7.5 Cancel
+
+```text
+lea proposal cancel <proposal-id> --actor <name> [--reason <text>]
+```
+
+Cancellation must use the existing confirmation and orchestration contracts and must apply only to a proposal awaiting confirmation. It must not execute the underlying action. The cancellation decision and resulting proposal state must be audited and persisted.
 
 ## 8. Direct task operations versus proposals
 
@@ -653,7 +662,7 @@ Implementation should proceed in these slices:
 6. task modify;
 7. task complete and delete;
 8. proposal list and show;
-9. proposal approve and reject;
+9. proposal approve, reject and cancel;
 10. JSON serialisation;
 11. timestamp localisation;
 12. documentation and integration tests.
@@ -682,7 +691,7 @@ Milestone 2.3 is complete when:
 
 - `lea status` reports runtime and provider state;
 - all initial task commands work through `TaskProvider`;
-- proposal list, show, approve and reject use repository and orchestration
+- proposal list, show, approve, reject and cancel use repository and orchestration
   boundaries;
 - human-readable output is stable and localised;
 - `--json` produces deterministic structured output;
