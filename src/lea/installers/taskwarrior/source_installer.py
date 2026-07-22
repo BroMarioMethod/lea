@@ -38,6 +38,10 @@ from lea.installers.taskwarrior.source_archive import (
     extract_taskwarrior_source_archive,
     remove_taskwarrior_extracted_source,
 )
+from lea.installers.taskwarrior.source_network import (
+    TaskwarriorSourceNetworkConfig,
+    validate_taskwarrior_source_network,
+)
 from lea.installers.taskwarrior.staging import (
     remove_taskwarrior_staging,
     stage_taskwarrior_binary,
@@ -93,8 +97,10 @@ def install_source_taskwarrior(
     config: TaskwarriorInstallerConfig,
     *,
     build_tools: TaskwarriorBuildTools | None = None,
+    source_network: TaskwarriorSourceNetworkConfig | None = None,
     build_timeout_seconds: float = _DEFAULT_BUILD_TIMEOUT_SECONDS,
     dependency_timeout_seconds: float = 10.0,
+    network_timeout_seconds: float = 30.0,
     smoke_timeout_seconds: float = _DEFAULT_SMOKE_TIMEOUT_SECONDS,
     fsync: bool = False,
 ) -> TaskwarriorSourceInstallResult:
@@ -111,6 +117,7 @@ def install_source_taskwarrior(
     for field_name, timeout in (
         ("build_timeout_seconds", build_timeout_seconds),
         ("dependency_timeout_seconds", dependency_timeout_seconds),
+        ("network_timeout_seconds", network_timeout_seconds),
         ("smoke_timeout_seconds", smoke_timeout_seconds),
     ):
         if timeout <= 0:
@@ -149,6 +156,19 @@ def install_source_taskwarrior(
             record=None,
             build=None,
             issues=preflight_issues,
+        )
+
+    network = validate_taskwarrior_source_network(
+        source_network or TaskwarriorSourceNetworkConfig(),
+        timeout_seconds=network_timeout_seconds,
+    )
+    if not network.valid:
+        return TaskwarriorSourceInstallResult(
+            success=False,
+            already_installed=False,
+            record=None,
+            build=None,
+            issues=network.issues,
         )
 
     tools = build_tools or default_taskwarrior_build_tools()
