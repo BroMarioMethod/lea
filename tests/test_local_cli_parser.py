@@ -1,5 +1,7 @@
 """Tests for the root Local CLI parser."""
 
+from pathlib import Path
+
 import pytest
 
 from lea.cli import create_local_cli_parser
@@ -75,4 +77,31 @@ def test_parser_rejects_incomplete_commands(arguments: list[str]) -> None:
     """Incomplete command paths should be usage errors."""
     with pytest.raises(SystemExit) as error:
         create_local_cli_parser().parse_args(arguments)
+    assert error.value.code == 2
+
+
+def test_parser_accepts_explicit_runtime_selection() -> None:
+    """Global runtime selection should remain explicit and deterministic."""
+    parser = create_local_cli_parser()
+    namespace = parser.parse_args(
+        [
+            "--config",
+            "/srv/lea/config/lea.toml",
+            "--profile",
+            "development",
+            "status",
+        ]
+    )
+
+    assert namespace.config == Path("/srv/lea/config/lea.toml")
+    assert namespace.profile == "development"
+
+
+def test_parser_rejects_relative_configuration_path() -> None:
+    """Local CLI configuration paths must be absolute."""
+    with pytest.raises(SystemExit) as error:
+        create_local_cli_parser().parse_args(
+            ["--config", "relative/lea.toml", "status"]
+        )
+
     assert error.value.code == 2

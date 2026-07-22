@@ -92,6 +92,8 @@ def _uses_local_cli(arguments: Sequence[str]) -> bool:
         "--help",
         "-h",
         "--json",
+        "--config",
+        "--profile",
         "--no-colour",
         "status",
         "task",

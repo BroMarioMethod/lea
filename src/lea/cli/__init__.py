@@ -17,8 +17,15 @@ from lea.cli.serialisation import (
     cli_result_to_dict,
     render_cli_result_json,
 )
+from lea.cli.status import (
+    DEFAULT_RUNTIME_CONFIG,
+    StatusDependencies,
+    execute_status,
+    render_status_result,
+)
 
 __all__ = [
+    "DEFAULT_RUNTIME_CONFIG",
     "CliIssue",
     "CliResult",
     "HumanResultRenderer",
@@ -26,11 +33,14 @@ __all__ = [
     "JsonValue",
     "LocalCliExitCode",
     "RuntimeCliExitCode",
+    "StatusDependencies",
     "cli_issue_to_dict",
     "cli_result_to_dict",
     "create_local_cli_parser",
     "execute_local_cli",
+    "execute_status",
     "normalise_runtime_cli_exit_code",
     "render_cli_result_json",
+    "render_status_result",
     "write_cli_result",
 ]

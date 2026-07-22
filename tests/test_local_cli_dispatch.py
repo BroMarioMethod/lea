@@ -76,3 +76,19 @@ def test_json_placeholder_is_one_stdout_document() -> None:
     assert payload["data"] == {"command": "lea proposal show"}
     assert payload["issues"][0]["code"] == "cli_command_not_implemented"
     assert stderr.getvalue() == ""
+
+
+def test_non_system_profile_requires_explicit_configuration() -> None:
+    """Development and test status checks require an explicit path."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_local_cli(
+        ["--profile", "development", "status"],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == LocalCliExitCode.USAGE_ERROR
+    assert stdout.getvalue() == ""
+    assert "--config is required" in stderr.getvalue()

@@ -1,7 +1,7 @@
 # LEA-SPEC-0013: Local Command-Line Interface
 
 - **Status:** Accepted
-- **Version:** 1.0
+- **Version:** 1.1
 - **Date:** 22 July 2026
 - **Milestone:** 2.3 — Local CLI
 - **Related specifications:**
@@ -84,7 +84,7 @@ Global options initially include:
 ```text
 --json
 --config <absolute-path>
---profile <system|development|isolated-test>
+--profile <system|development|test>
 --no-colour
 --help
 --version
@@ -472,6 +472,13 @@ An explicit `--config` path must:
 - fail closed on invalid content.
 
 Profile selection must use existing runtime profiles.
+
+`--config` selects one explicit configuration file. `--profile` is an
+optional assertion against the profile declared by that file. When no
+`--config` is supplied, only the system profile is valid and the CLI
+uses `/etc/lea/lea.toml`. Development and test profiles require an
+explicit `--config` path. The CLI must not search the working directory
+or derive configuration paths from it.
 
 Taskwarrior executable, taskrc, home and data paths must come from validated
 configuration or an established provider factory. They must not be discovered

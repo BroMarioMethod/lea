@@ -1,6 +1,9 @@
 """Argument parsing for the LEA Local CLI."""
 
 import argparse
+from pathlib import Path
+
+from lea.runtime import RuntimeProfile
 
 
 def create_local_cli_parser() -> argparse.ArgumentParser:
@@ -11,6 +14,20 @@ def create_local_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--json", action="store_true", help="Write one deterministic JSON result."
+    )
+    parser.add_argument(
+        "--config",
+        type=_absolute_path,
+        metavar="PATH",
+        help=(
+            "Absolute path to the LEA TOML configuration. "
+            "Defaults to /etc/lea/lea.toml for the system profile."
+        ),
+    )
+    parser.add_argument(
+        "--profile",
+        choices=tuple(profile.value for profile in RuntimeProfile),
+        help="Require the loaded configuration to use this runtime profile.",
     )
     parser.add_argument(
         "--no-colour",
@@ -28,6 +45,14 @@ def create_local_cli_parser() -> argparse.ArgumentParser:
     )
     _add_proposal_subcommands(proposal_parser)
     return parser
+
+
+def _absolute_path(value: str) -> Path:
+    """Parse one explicit absolute filesystem path."""
+    path = Path(value)
+    if not path.is_absolute():
+        raise argparse.ArgumentTypeError("PATH must be absolute.")
+    return path
 
 
 def _add_task_subcommands(parser: argparse.ArgumentParser) -> None:
