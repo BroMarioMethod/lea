@@ -1,29 +1,20 @@
 """Local CLI task command services."""
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-from lea.adapters.taskwarrior import (
-    TaskwarriorCliProvider,
-    TaskwarriorConfig,
-)
 from lea.cli.contracts import (
     CliIssue,
     CliResult,
     JsonValue,
     LocalCliExitCode,
 )
-from lea.installers.taskwarrior import (
-    TaskwarriorInstallationRecord,
-    read_taskwarrior_installation_record,
+from lea.cli.task_provider import (
+    TaskProviderDependencies,
+    load_task_provider,
 )
-from lea.runtime import (
-    ConfigurationResult,
-    RuntimeProfile,
-    load_runtime_config,
-)
+from lea.runtime import RuntimeProfile
 from lea.tasks import (
     TaskCreateRequest,
     TaskCreateResult,
@@ -31,28 +22,11 @@ from lea.tasks import (
     TaskListResult,
     TaskModifyRequest,
     TaskMutationResult,
-    TaskProvider,
     TaskProviderIssue,
     TaskRecord,
 )
 
-ConfigurationLoader = Callable[[str | Path], ConfigurationResult]
-InstallationRecordReader = Callable[
-    [Path],
-    tuple[TaskwarriorInstallationRecord | None, tuple[object, ...]],
-]
-TaskProviderFactory = Callable[[TaskwarriorConfig], TaskProvider]
-
-
-@dataclass(frozen=True, slots=True)
-class TaskCommandDependencies:
-    """Injected dependencies for Local CLI task commands."""
-
-    load_configuration: ConfigurationLoader = load_runtime_config
-    read_installation_record: InstallationRecordReader = (
-        read_taskwarrior_installation_record
-    )
-    create_provider: TaskProviderFactory = TaskwarriorCliProvider
+TaskCommandDependencies = TaskProviderDependencies
 
 
 def execute_task_list(
@@ -63,7 +37,7 @@ def execute_task_list(
     dependencies: TaskCommandDependencies | None = None,
 ) -> CliResult:
     """List tasks through the configured provider-neutral boundary."""
-    provider_result = _load_task_provider(
+    provider_result = load_task_provider(
         config_path=config_path,
         expected_profile=expected_profile,
         dependencies=dependencies,
@@ -83,7 +57,7 @@ def execute_task_create(
     dependencies: TaskCommandDependencies | None = None,
 ) -> CliResult:
     """Create one task through the configured provider-neutral boundary."""
-    provider_result = _load_task_provider(
+    provider_result = load_task_provider(
         config_path=config_path,
         expected_profile=expected_profile,
         dependencies=dependencies,
@@ -103,7 +77,7 @@ def execute_task_modify(
     dependencies: TaskCommandDependencies | None = None,
 ) -> CliResult:
     """Modify one task through the configured provider-neutral boundary."""
-    provider_result = _load_task_provider(
+    provider_result = load_task_provider(
         config_path=config_path,
         expected_profile=expected_profile,
         dependencies=dependencies,
@@ -126,7 +100,7 @@ def execute_task_complete(
     dependencies: TaskCommandDependencies | None = None,
 ) -> CliResult:
     """Complete one task through the configured provider-neutral boundary."""
-    provider_result = _load_task_provider(
+    provider_result = load_task_provider(
         config_path=config_path,
         expected_profile=expected_profile,
         dependencies=dependencies,
@@ -149,7 +123,7 @@ def execute_task_delete(
     dependencies: TaskCommandDependencies | None = None,
 ) -> CliResult:
     """Delete one task through the configured provider-neutral boundary."""
-    provider_result = _load_task_provider(
+    provider_result = load_task_provider(
         config_path=config_path,
         expected_profile=expected_profile,
         dependencies=dependencies,
@@ -212,80 +186,6 @@ def render_task_create_result(result: CliResult) -> str:
     lines = ["Task created", ""]
     lines.extend(_render_task_lines(task))
     return _append_normalisations("\n".join(lines), data)
-
-
-def _load_task_provider(
-    *,
-    config_path: Path,
-    expected_profile: RuntimeProfile | None,
-    dependencies: TaskCommandDependencies | None,
-) -> TaskProvider | CliResult:
-    """Load and inspect the configured provider without storage discovery."""
-    resolved = dependencies or TaskCommandDependencies()
-    configuration = resolved.load_configuration(config_path)
-
-    if not configuration.success:
-        return CliResult.failed(
-            exit_code=LocalCliExitCode.CONFIGURATION_ERROR,
-            issues=tuple(
-                CliIssue(
-                    code=issue.code,
-                    message=issue.message,
-                    field=issue.field,
-                )
-                for issue in configuration.issues
-            ),
-        )
-
-    config = configuration.config
-
-    if config is None:
-        return _internal_failure(
-            "Successful configuration loading returned no runtime configuration."
-        )
-
-    if expected_profile is not None and config.profile is not expected_profile:
-        return CliResult.failed(
-            exit_code=LocalCliExitCode.CONFIGURATION_ERROR,
-            issues=(
-                CliIssue(
-                    code="configuration_profile_mismatch",
-                    message=(
-                        "The loaded runtime profile does not match "
-                        "the requested profile."
-                    ),
-                    field="profile",
-                ),
-            ),
-        )
-
-    record, record_issues = resolved.read_installation_record(
-        config.component_records.taskwarrior
-    )
-
-    if record is None:
-        return CliResult.failed(
-            exit_code=LocalCliExitCode.PROVIDER_UNAVAILABLE,
-            issues=_installation_record_issues(record_issues),
-        )
-
-    provider = resolved.create_provider(_provider_config(record))
-    inspection = provider.inspect()
-
-    if not inspection.available:
-        return CliResult.failed(
-            exit_code=LocalCliExitCode.PROVIDER_UNAVAILABLE,
-            issues=tuple(
-                CliIssue(
-                    code=issue.code,
-                    message=issue.message,
-                    field=issue.field,
-                )
-                for issue in inspection.issues
-            ),
-        )
-
-    return provider
 
 
 def _map_task_list_result(result: TaskListResult) -> CliResult:
@@ -488,54 +388,6 @@ def _provider_issues(
             field=getattr(issue, "field", None),
         )
         for issue in issues
-    )
-
-
-def _installation_record_issues(
-    issues: tuple[object, ...],
-) -> tuple[CliIssue, ...]:
-    """Map installer-record issues to Local CLI issues."""
-    mapped = tuple(
-        CliIssue(
-            code=str(
-                getattr(
-                    issue,
-                    "code",
-                    "taskwarrior_install_record_failed",
-                )
-            ),
-            message=str(
-                getattr(
-                    issue,
-                    "message",
-                    ("The Taskwarrior installation record could not be loaded."),
-                )
-            ),
-            field=getattr(issue, "field", None),
-        )
-        for issue in issues
-    )
-
-    if mapped:
-        return mapped
-
-    return (
-        CliIssue(
-            code="taskwarrior_install_record_failed",
-            message=("The Taskwarrior installation record could not be loaded."),
-        ),
-    )
-
-
-def _provider_config(
-    record: TaskwarriorInstallationRecord,
-) -> TaskwarriorConfig:
-    """Construct one provider configuration from a validated record."""
-    return TaskwarriorConfig(
-        executable=record.executable,
-        taskrc=record.taskrc,
-        data_dir=record.data,
-        home_dir=record.home,
     )
 
 
