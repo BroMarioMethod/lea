@@ -278,6 +278,42 @@ class KnowledgeListResult:
 
 
 @dataclass(frozen=True, slots=True)
+class KnowledgeReplaceResult:
+    """Immutable result of replacing one knowledge document."""
+
+    success: bool
+    document: KnowledgeDocument | None
+    previous_document: KnowledgeDocument | None
+    path: Path | None
+    previous_path: Path | None
+    issues: tuple[KnowledgeRepositoryIssue, ...]
+
+    def __post_init__(self) -> None:
+        if self.success:
+            if (
+                self.document is None
+                or self.previous_document is None
+                or self.path is None
+                or self.previous_path is None
+                or self.issues
+            ):
+                raise ValueError(
+                    "Successful knowledge replacements require both "
+                    "documents and both paths."
+                )
+
+            if not self.path.is_absolute() or not self.previous_path.is_absolute():
+                raise ValueError("Replacement paths must be absolute.")
+
+            return
+
+        if self.document is not None or not self.issues:
+            raise ValueError(
+                "Failed knowledge replacements require issues and no document."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class KnowledgeQuery:
     """Immutable exact-match knowledge repository query."""
 

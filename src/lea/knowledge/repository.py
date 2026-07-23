@@ -14,6 +14,7 @@ from lea.knowledge.contracts import (
     KnowledgeListResult,
     KnowledgeQuery,
     KnowledgeReadResult,
+    KnowledgeReplaceResult,
     KnowledgeRepositoryIssue,
     KnowledgeWriteResult,
 )
@@ -283,6 +284,201 @@ class MarkdownKnowledgeRepository:
             success=True,
             document=knowledge,
             path=path,
+            issues=(),
+        )
+
+    def replace(
+        self,
+        document: KnowledgeDocument,
+        *,
+        expected_version: int,
+    ) -> KnowledgeReplaceResult:
+        """Replace one document with optimistic version guarding."""
+        if not isinstance(expected_version, int):
+            raise TypeError("expected_version must be an integer.")
+
+        if expected_version < 1:
+            raise ValueError("expected_version must be greater than zero.")
+
+        existing_result = self.read(document.document_id)
+
+        if not existing_result.success:
+            return KnowledgeReplaceResult(
+                success=False,
+                document=None,
+                previous_document=None,
+                path=None,
+                previous_path=existing_result.path,
+                issues=existing_result.issues,
+            )
+
+        existing = existing_result.document
+        previous_path = existing_result.path
+
+        if existing is None or previous_path is None:
+            return _replace_failure(
+                code="knowledge_read_failed",
+                message=(
+                    "Knowledge reading succeeded without returning a document and path."
+                ),
+                document_id=document.document_id,
+                path=previous_path,
+            )
+
+        destination = knowledge_document_path(self._root, document)
+
+        if existing.document_version != expected_version:
+            return _replace_failure(
+                code="knowledge_version_conflict",
+                message=(
+                    "The stored knowledge version does not match the expected version."
+                ),
+                document_id=document.document_id,
+                path=previous_path,
+                previous_document=existing,
+                previous_path=previous_path,
+                expected_version=expected_version,
+                actual_version=existing.document_version,
+            )
+
+        required_version = expected_version + 1
+
+        if document.document_version != required_version:
+            return _replace_failure(
+                code="knowledge_invalid_next_version",
+                message=(
+                    "The replacement version must be exactly one "
+                    "greater than the expected version."
+                ),
+                document_id=document.document_id,
+                path=destination,
+                previous_document=existing,
+                previous_path=previous_path,
+                expected_version=required_version,
+                actual_version=document.document_version,
+            )
+
+        if document.created_at != existing.created_at:
+            return _replace_failure(
+                code="knowledge_created_at_changed",
+                message=("Replacement must preserve the original created_at value."),
+                document_id=document.document_id,
+                path=destination,
+                previous_document=existing,
+                previous_path=previous_path,
+            )
+
+        if document.updated_at < existing.updated_at:
+            return _replace_failure(
+                code="knowledge_updated_at_regressed",
+                message=("Replacement updated_at must not move backwards."),
+                document_id=document.document_id,
+                path=destination,
+                previous_document=existing,
+                previous_path=previous_path,
+            )
+
+        issue = self._prepare_destination(
+            destination,
+            document.document_id,
+        )
+
+        if issue is not None:
+            return KnowledgeReplaceResult(
+                success=False,
+                document=None,
+                previous_document=existing,
+                path=destination,
+                previous_path=previous_path,
+                issues=(issue,),
+            )
+
+        if destination != previous_path and (
+            destination.exists() or destination.is_symlink()
+        ):
+            return _replace_failure(
+                code="knowledge_destination_exists",
+                message=(
+                    "The replacement destination already exists "
+                    "and was not overwritten."
+                ),
+                document_id=document.document_id,
+                path=destination,
+                previous_document=existing,
+                previous_path=previous_path,
+            )
+
+        rendered = render_knowledge_document(document)
+        temporary_path: Path | None = None
+        published_destination = False
+
+        try:
+            temporary_path = self._write_temporary(
+                destination.parent,
+                document.document_id,
+                rendered,
+            )
+
+            if destination == previous_path:
+                os.replace(temporary_path, destination)
+                temporary_path = None
+            else:
+                os.link(temporary_path, destination)
+                published_destination = True
+                previous_path.unlink()
+
+            if self._fsync:
+                _fsync_directory(destination.parent)
+
+                if previous_path.parent != destination.parent:
+                    _fsync_directory(previous_path.parent)
+        except OSError:
+            if published_destination:
+                with suppress(OSError):
+                    destination.unlink(missing_ok=True)
+
+            return _replace_failure(
+                code=(
+                    "knowledge_move_failed"
+                    if destination != previous_path
+                    else "knowledge_replace_failed"
+                ),
+                message=(
+                    "The knowledge document could not be moved."
+                    if destination != previous_path
+                    else ("The knowledge document could not be replaced.")
+                ),
+                document_id=document.document_id,
+                path=destination,
+                previous_document=existing,
+                previous_path=previous_path,
+            )
+        finally:
+            if temporary_path is not None:
+                with suppress(OSError):
+                    temporary_path.unlink(missing_ok=True)
+
+        readback = self.read(document.document_id)
+
+        if not readback.success or readback.document != document:
+            return _replace_failure(
+                code="knowledge_readback_mismatch",
+                message=(
+                    "The replaced knowledge document did not match "
+                    "the requested canonical value."
+                ),
+                document_id=document.document_id,
+                path=destination,
+                previous_document=existing,
+                previous_path=previous_path,
+            )
+
+        return KnowledgeReplaceResult(
+            success=True,
+            document=document,
+            previous_document=existing,
+            path=destination,
+            previous_path=previous_path,
             issues=(),
         )
 
@@ -621,6 +817,37 @@ def _write_failure(
     issue: KnowledgeRepositoryIssue,
 ) -> KnowledgeWriteResult:
     return KnowledgeWriteResult(False, None, path, (issue,))
+
+
+def _replace_failure(
+    *,
+    code: str,
+    message: str,
+    document_id: str,
+    path: Path | None,
+    previous_document: KnowledgeDocument | None = None,
+    previous_path: Path | None = None,
+    expected_version: int | None = None,
+    actual_version: int | None = None,
+) -> KnowledgeReplaceResult:
+    """Construct one deterministic failed replacement result."""
+    return KnowledgeReplaceResult(
+        success=False,
+        document=None,
+        previous_document=previous_document,
+        path=path,
+        previous_path=previous_path,
+        issues=(
+            KnowledgeRepositoryIssue(
+                code=code,
+                message=message,
+                document_id=document_id,
+                path=path,
+                expected_version=expected_version,
+                actual_version=actual_version,
+            ),
+        ),
+    )
 
 
 def _read_failure(
