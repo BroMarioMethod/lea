@@ -7,7 +7,7 @@ import pytest
 
 from lea.actions import ActionContractError
 from lea.audit import (
-    AUDIT_SCHEMA_VERSION,
+    LEGACY_AUDIT_SCHEMA_VERSION,
     AuditEvent,
     AuditEventType,
 )
@@ -49,6 +49,7 @@ def test_canonical_event_type_values() -> None:
         "confirmation_decision_applied",
         "execution_completed",
         "execution_boundary_rejected",
+        "knowledge_operation_completed",
     }
 
 
@@ -156,7 +157,7 @@ def test_event_serialisation_is_deterministic() -> None:
     event = create_event()
 
     assert event.to_dict() == {
-        "schema_version": AUDIT_SCHEMA_VERSION,
+        "schema_version": LEGACY_AUDIT_SCHEMA_VERSION,
         "event_id": EVENT_ID,
         "proposal_id": PROPOSAL_ID,
         "event_type": "proposal_created",
