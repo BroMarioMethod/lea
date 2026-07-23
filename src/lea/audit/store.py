@@ -9,7 +9,7 @@ from uuid import UUID
 
 from lea.actions.errors import ActionContractError
 from lea.audit.errors import AuditStoreError
-from lea.audit.events import AuditEvent
+from lea.audit.events import AuditEvent, AuditSubjectType
 
 
 class JsonlAuditStore:
@@ -104,6 +104,19 @@ class JsonlAuditStore:
             event for event in self.read_all() if event.proposal_id == proposal_id
         )
 
+    def read_for_subject(
+        self,
+        subject_type: AuditSubjectType,
+        subject_id: str,
+    ) -> tuple[AuditEvent, ...]:
+        """Read events matching one exact generic audit subject."""
+        _validate_subject_id(subject_id)
+        return tuple(
+            event
+            for event in self.read_all()
+            if event.subject_type is subject_type and event.subject_id == subject_id
+        )
+
     def _serialise_event(
         self,
         event: AuditEvent,
@@ -179,4 +192,16 @@ def _validate_proposal_id(proposal_id: str) -> None:
     if str(parsed_identifier) != proposal_id:
         raise ActionContractError(
             "proposal_id must use canonical lower-case UUID format."
+        )
+
+
+def _validate_subject_id(subject_id: str) -> None:
+    """Validate one canonical generic audit subject UUID."""
+    try:
+        parsed_identifier = UUID(subject_id)
+    except (TypeError, ValueError) as error:
+        raise ActionContractError("subject_id must be a valid UUID.") from error
+    if str(parsed_identifier) != subject_id:
+        raise ActionContractError(
+            "subject_id must use canonical lower-case UUID format."
         )

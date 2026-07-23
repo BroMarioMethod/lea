@@ -1,8 +1,10 @@
 from lea.audit.errors import AuditStoreError
 from lea.audit.events import (
     AUDIT_SCHEMA_VERSION,
+    LEGACY_AUDIT_SCHEMA_VERSION,
     AuditEvent,
     AuditEventType,
+    AuditSubjectType,
     generate_event_id,
 )
 from lea.audit.factories import (
@@ -41,11 +43,13 @@ __all__ = [
     "AUDIT_SCHEMA_VERSION",
     "HASH_ALGORITHM",
     "INTEGRITY_VERSION",
+    "LEGACY_AUDIT_SCHEMA_VERSION",
     "AuditEvent",
     "AuditEventType",
     "AuditIntegrityIssue",
     "AuditIntegrityVerificationResult",
     "AuditStoreError",
+    "AuditSubjectType",
     "IntegrityEnvelope",
     "IntegrityJsonlAuditStore",
     "JsonlAuditStore",
