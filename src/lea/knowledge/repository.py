@@ -411,7 +411,6 @@ class MarkdownKnowledgeRepository:
 
         rendered = render_knowledge_document(document)
         temporary_path: Path | None = None
-        published_destination = False
 
         try:
             temporary_path = self._write_temporary(
@@ -423,21 +422,79 @@ class MarkdownKnowledgeRepository:
             if destination == previous_path:
                 os.replace(temporary_path, destination)
                 temporary_path = None
+
+                if self._fsync:
+                    try:
+                        _fsync_directory(destination.parent)
+                    except OSError:
+                        return _replace_failure(
+                            code="knowledge_durability_failed",
+                            message=(
+                                "The replacement was published, but its "
+                                "directory durability could not be confirmed."
+                            ),
+                            document_id=document.document_id,
+                            path=destination,
+                            previous_document=existing,
+                            previous_path=previous_path,
+                        )
             else:
                 os.link(temporary_path, destination)
-                published_destination = True
-                previous_path.unlink()
 
-            if self._fsync:
-                _fsync_directory(destination.parent)
+                if self._fsync:
+                    try:
+                        _fsync_directory(destination.parent)
+                    except OSError:
+                        with suppress(OSError):
+                            destination.unlink(missing_ok=True)
 
-                if previous_path.parent != destination.parent:
-                    _fsync_directory(previous_path.parent)
+                        return _replace_failure(
+                            code="knowledge_move_failed",
+                            message=(
+                                "The replacement destination could not be "
+                                "made durable before removing the source."
+                            ),
+                            document_id=document.document_id,
+                            path=destination,
+                            previous_document=existing,
+                            previous_path=previous_path,
+                        )
+
+                try:
+                    previous_path.unlink()
+                except OSError:
+                    with suppress(OSError):
+                        destination.unlink(missing_ok=True)
+
+                    return _replace_failure(
+                        code="knowledge_move_failed",
+                        message=(
+                            "The replacement destination was published, "
+                            "but the previous path could not be removed."
+                        ),
+                        document_id=document.document_id,
+                        path=destination,
+                        previous_document=existing,
+                        previous_path=previous_path,
+                    )
+
+                if self._fsync and previous_path.parent != destination.parent:
+                    try:
+                        _fsync_directory(previous_path.parent)
+                    except OSError:
+                        return _replace_failure(
+                            code="knowledge_durability_failed",
+                            message=(
+                                "The replacement was published and the source "
+                                "was removed, but source-directory durability "
+                                "could not be confirmed."
+                            ),
+                            document_id=document.document_id,
+                            path=destination,
+                            previous_document=existing,
+                            previous_path=previous_path,
+                        )
         except OSError:
-            if published_destination:
-                with suppress(OSError):
-                    destination.unlink(missing_ok=True)
-
             return _replace_failure(
                 code=(
                     "knowledge_move_failed"
@@ -447,7 +504,7 @@ class MarkdownKnowledgeRepository:
                 message=(
                     "The knowledge document could not be moved."
                     if destination != previous_path
-                    else ("The knowledge document could not be replaced.")
+                    else "The knowledge document could not be replaced."
                 ),
                 document_id=document.document_id,
                 path=destination,
