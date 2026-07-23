@@ -15,6 +15,7 @@ from lea.knowledge.contracts import (
     KnowledgeQuery,
     KnowledgeReadResult,
     KnowledgeReplaceResult,
+    KnowledgeRepositoryInspection,
     KnowledgeRepositoryIssue,
     KnowledgeWriteResult,
 )
@@ -553,6 +554,274 @@ class MarkdownKnowledgeRepository:
             success=True,
             documents=tuple(documents),
             issues=(),
+        )
+
+    def inspect(self) -> KnowledgeRepositoryInspection:
+        """Inspect every repository entry without modifying anything."""
+        if not self._root.exists():
+            return KnowledgeRepositoryInspection(
+                available=False,
+                checked_documents=0,
+                valid_documents=0,
+                issues=(
+                    KnowledgeRepositoryIssue(
+                        code="knowledge_directory_missing",
+                        message="The configured knowledge root does not exist.",
+                        path=self._root,
+                    ),
+                ),
+            )
+
+        if self._root.is_symlink() or not self._root.is_dir():
+            return KnowledgeRepositoryInspection(
+                available=False,
+                checked_documents=0,
+                valid_documents=0,
+                issues=(
+                    KnowledgeRepositoryIssue(
+                        code="knowledge_directory_not_directory",
+                        message=(
+                            "The configured knowledge root is not a regular directory."
+                        ),
+                        path=self._root,
+                    ),
+                ),
+            )
+
+        issues: list[KnowledgeRepositoryIssue] = []
+        checked_documents = 0
+        valid_documents = 0
+        seen_ids: dict[str, Path] = {}
+        canonical_directories = {
+            knowledge_document_type_directory(document_type)
+            for document_type in KnowledgeDocumentType
+        }
+
+        try:
+            root_entries = tuple(
+                sorted(self._root.iterdir(), key=lambda item: item.name)
+            )
+        except OSError:
+            return KnowledgeRepositoryInspection(
+                available=False,
+                checked_documents=0,
+                valid_documents=0,
+                issues=(
+                    KnowledgeRepositoryIssue(
+                        code="knowledge_read_failed",
+                        message=(
+                            "The knowledge repository root could not be inspected."
+                        ),
+                        path=self._root,
+                    ),
+                ),
+            )
+
+        for entry in root_entries:
+            if entry.is_symlink():
+                issues.append(
+                    KnowledgeRepositoryIssue(
+                        code="knowledge_symlink_rejected",
+                        message="Symbolic links are not permitted.",
+                        path=entry,
+                    )
+                )
+                continue
+
+            if entry.name not in canonical_directories:
+                issues.append(
+                    KnowledgeRepositoryIssue(
+                        code=(
+                            "knowledge_unexpected_entry"
+                            if entry.is_dir()
+                            else "knowledge_unexpected_file"
+                        ),
+                        message=(
+                            "An unexpected entry was found in the knowledge repository."
+                        ),
+                        path=entry,
+                    )
+                )
+                continue
+
+            if not entry.is_dir():
+                issues.append(
+                    KnowledgeRepositoryIssue(
+                        code="knowledge_directory_not_directory",
+                        message=("A canonical knowledge type path is not a directory."),
+                        path=entry,
+                    )
+                )
+                continue
+
+            try:
+                children = tuple(sorted(entry.iterdir(), key=lambda item: item.name))
+            except OSError:
+                issues.append(
+                    KnowledgeRepositoryIssue(
+                        code="knowledge_read_failed",
+                        message=("A knowledge type directory could not be inspected."),
+                        path=entry,
+                    )
+                )
+                continue
+
+            for path in children:
+                if path.is_symlink():
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_symlink_rejected",
+                            message="Symbolic links are not permitted.",
+                            path=path,
+                        )
+                    )
+                    continue
+
+                if path.name.startswith(".") and path.name.endswith(".tmp"):
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_temporary_file",
+                            message=("A leftover temporary knowledge file was found."),
+                            path=path,
+                        )
+                    )
+                    continue
+
+                if path.is_dir():
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_unexpected_entry",
+                            message=(
+                                "An unexpected directory was found in a "
+                                "knowledge type directory."
+                            ),
+                            path=path,
+                        )
+                    )
+                    continue
+
+                if path.suffix != ".md":
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_unexpected_file",
+                            message=("An unexpected non-Markdown file was found."),
+                            path=path,
+                        )
+                    )
+                    continue
+
+                checked_documents += 1
+
+                try:
+                    document_id = knowledge_document_id_from_filename(path.name)
+                except (TypeError, ValueError):
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_filename_mismatch",
+                            message=(
+                                "A knowledge Markdown file has a "
+                                "non-canonical filename."
+                            ),
+                            path=path,
+                        )
+                    )
+                    continue
+
+                if document_id in seen_ids:
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_duplicate_id",
+                            message=(
+                                "Multiple knowledge documents use the same identifier."
+                            ),
+                            document_id=document_id,
+                            path=path,
+                        )
+                    )
+                    continue
+
+                seen_ids[document_id] = path
+
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except UnicodeError:
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_invalid_utf8",
+                            message=("The knowledge document is not valid UTF-8."),
+                            document_id=document_id,
+                            path=path,
+                        )
+                    )
+                    continue
+                except OSError:
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_read_failed",
+                            message=("The knowledge document could not be read."),
+                            document_id=document_id,
+                            path=path,
+                        )
+                    )
+                    continue
+
+                parsed = parse_knowledge_document(content)
+
+                if not parsed.success:
+                    issues.extend(
+                        KnowledgeRepositoryIssue(
+                            code=issue.code,
+                            message=issue.message,
+                            document_id=issue.document_id or document_id,
+                            path=path,
+                            field=issue.field,
+                            line_number=issue.line_number,
+                        )
+                        for issue in parsed.issues
+                    )
+                    continue
+
+                document = parsed.document
+
+                if document is None:
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_read_failed",
+                            message=(
+                                "Knowledge parsing succeeded without "
+                                "returning a document."
+                            ),
+                            document_id=document_id,
+                            path=path,
+                        )
+                    )
+                    continue
+
+                expected_path = knowledge_document_path(
+                    self._root,
+                    document,
+                )
+
+                if document.document_id != document_id or path != expected_path:
+                    issues.append(
+                        KnowledgeRepositoryIssue(
+                            code="knowledge_filename_mismatch",
+                            message=(
+                                "The knowledge path does not match canonical metadata."
+                            ),
+                            document_id=document_id,
+                            path=path,
+                        )
+                    )
+                    continue
+
+                valid_documents += 1
+
+        return KnowledgeRepositoryInspection(
+            available=True,
+            checked_documents=checked_documents,
+            valid_documents=valid_documents,
+            issues=tuple(issues),
         )
 
     def _prepare_destination(

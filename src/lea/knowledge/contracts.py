@@ -374,11 +374,6 @@ class KnowledgeRepositoryInspection:
         if self.valid_documents > self.checked_documents:
             raise ValueError("valid_documents must not exceed checked_documents.")
 
-        if self.available and self.issues:
-            raise ValueError(
-                "An available knowledge repository must not contain issues."
-            )
-
         if not self.available and not self.issues:
             raise ValueError(
                 "An unavailable knowledge repository must contain at least one issue."
