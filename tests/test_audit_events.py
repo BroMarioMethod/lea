@@ -49,6 +49,7 @@ def test_canonical_event_type_values() -> None:
         "confirmation_decision_applied",
         "execution_completed",
         "execution_boundary_rejected",
+        "knowledge_operation_completed",
     }
 
 

@@ -8,12 +8,15 @@ from lea.knowledge.contracts import (
     KnowledgeDocumentType,
     KnowledgeExternalReference,
     KnowledgeListResult,
+    KnowledgeOperation,
     KnowledgeQuery,
     KnowledgeReadResult,
     KnowledgeReplaceResult,
     KnowledgeRepositoryInspection,
     KnowledgeRepositoryIssue,
     KnowledgeSensitivity,
+    KnowledgeServiceIssue,
+    KnowledgeServiceResult,
     KnowledgeWriteResult,
 )
 from lea.knowledge.documents import (
@@ -29,21 +32,36 @@ from lea.knowledge.paths import (
     validate_knowledge_path,
 )
 from lea.knowledge.repository import MarkdownKnowledgeRepository
+from lea.knowledge.service import (
+    KnowledgeAuditEventIdSource,
+    KnowledgeAuditSink,
+    KnowledgeOperationIdSource,
+    KnowledgeService,
+    KnowledgeUtcClock,
+)
 
 __all__ = [
     "KNOWLEDGE_SCHEMA_VERSION",
+    "KnowledgeAuditEventIdSource",
+    "KnowledgeAuditSink",
     "KnowledgeDocument",
     "KnowledgeDocumentLink",
     "KnowledgeDocumentResult",
     "KnowledgeDocumentType",
     "KnowledgeExternalReference",
     "KnowledgeListResult",
+    "KnowledgeOperation",
+    "KnowledgeOperationIdSource",
     "KnowledgeQuery",
     "KnowledgeReadResult",
     "KnowledgeReplaceResult",
     "KnowledgeRepositoryInspection",
     "KnowledgeRepositoryIssue",
     "KnowledgeSensitivity",
+    "KnowledgeService",
+    "KnowledgeServiceIssue",
+    "KnowledgeServiceResult",
+    "KnowledgeUtcClock",
     "KnowledgeWriteResult",
     "MarkdownKnowledgeRepository",
     "knowledge_document_filename",

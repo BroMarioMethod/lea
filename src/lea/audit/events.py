@@ -58,6 +58,7 @@ class AuditEventType(StrEnum):
     CONFIRMATION_DECISION_APPLIED = "confirmation_decision_applied"
     EXECUTION_COMPLETED = "execution_completed"
     EXECUTION_BOUNDARY_REJECTED = "execution_boundary_rejected"
+    KNOWLEDGE_OPERATION_COMPLETED = "knowledge_operation_completed"
 
 
 def generate_event_id() -> str:

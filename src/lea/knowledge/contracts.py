@@ -380,6 +380,61 @@ class KnowledgeRepositoryInspection:
             )
 
 
+class KnowledgeOperation(StrEnum):
+    """Supported audited knowledge-service operations."""
+
+    CREATE = "create"
+    READ = "read"
+    LIST = "list"
+    REPLACE = "replace"
+    INSPECT = "inspect"
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeServiceIssue:
+    """One structured knowledge-service problem."""
+
+    code: str
+    message: str
+    operation: KnowledgeOperation
+    subject_id: str | None
+
+    def __post_init__(self) -> None:
+        if not self.code.strip():
+            raise ValueError("Knowledge service issue code must be non-empty.")
+
+        if not self.message.strip():
+            raise ValueError("Knowledge service issue message must be non-empty.")
+
+        if self.subject_id is not None:
+            _validate_uuid(self.subject_id, field_name="subject_id")
+
+
+KnowledgeRepositoryResult = (
+    KnowledgeWriteResult
+    | KnowledgeReadResult
+    | KnowledgeListResult
+    | KnowledgeReplaceResult
+    | KnowledgeRepositoryInspection
+)
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeServiceResult:
+    """Immutable result of one audited knowledge operation."""
+
+    operation: KnowledgeOperation
+    repository_result: KnowledgeRepositoryResult | None
+    persisted_event: object | None
+    issue: KnowledgeServiceIssue | None
+
+    def __post_init__(self) -> None:
+        if self.persisted_event is None and self.issue is None:
+            raise ValueError(
+                "A knowledge service result without an event requires an issue."
+            )
+
+
 def _validate_uuid(value: str, *, field_name: str) -> None:
     """Validate one canonical lowercase hyphenated UUID."""
     try:
