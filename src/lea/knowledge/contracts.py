@@ -185,6 +185,37 @@ class KnowledgeRepositoryIssue:
 
 
 @dataclass(frozen=True, slots=True)
+class KnowledgeDocumentResult:
+    """Immutable result of parsing one Markdown knowledge document."""
+
+    success: bool
+    document: KnowledgeDocument | None
+    issues: tuple[KnowledgeRepositoryIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Validate knowledge-document result consistency."""
+        if self.success:
+            if self.document is None:
+                raise ValueError(
+                    "A successful knowledge document result must contain a document."
+                )
+            if self.issues:
+                raise ValueError(
+                    "A successful knowledge document result must not contain issues."
+                )
+            return
+
+        if self.document is not None:
+            raise ValueError(
+                "A failed knowledge document result must not contain a document."
+            )
+        if not self.issues:
+            raise ValueError(
+                "A failed knowledge document result must contain at least one issue."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class KnowledgeQuery:
     """Immutable exact-match knowledge repository query."""
 
