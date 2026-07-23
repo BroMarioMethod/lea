@@ -25,6 +25,11 @@ from lea.runtime.contracts import (
 from lea.runtime.health import check_runtime_health
 from lea.runtime.initialisation import initialise_runtime_config
 from lea.runtime.inspection import inspect_runtime
+from lea.runtime.knowledge import (
+    KNOWLEDGE_INDEX_FILENAME,
+    KnowledgeRuntime,
+    build_knowledge_runtime,
+)
 from lea.runtime.layouts import (
     development_runtime_paths,
     isolated_test_runtime_paths,
@@ -56,10 +61,12 @@ from lea.runtime.time import localise_utc_timestamp
 from lea.runtime.verification import setup_and_verify_runtime
 
 __all__ = [
+    "KNOWLEDGE_INDEX_FILENAME",
     "RUNTIME_SCHEMA_VERSION",
     "ComponentRecordPaths",
     "ConfigurationIssue",
     "ConfigurationResult",
+    "KnowledgeRuntime",
     "RuntimeBootstrapResult",
     "RuntimeConfig",
     "RuntimeHealthIssue",
@@ -76,6 +83,7 @@ __all__ = [
     "RuntimeSetupVerificationResult",
     "SecretPaths",
     "bootstrap_runtime",
+    "build_knowledge_runtime",
     "check_runtime_health",
     "development_runtime_config",
     "development_runtime_paths",
