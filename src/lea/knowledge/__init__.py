@@ -23,6 +23,15 @@ from lea.knowledge.documents import (
     parse_knowledge_document,
     render_knowledge_document,
 )
+from lea.knowledge.index import (
+    KNOWLEDGE_INDEX_SCHEMA_VERSION,
+    KnowledgeIndexClearResult,
+    KnowledgeIndexIssue,
+    KnowledgeIndexQueryResult,
+    KnowledgeIndexRebuildResult,
+    KnowledgeIndexVerification,
+    SQLiteKnowledgeIndex,
+)
 from lea.knowledge.paths import (
     knowledge_document_filename,
     knowledge_document_id_from_filename,
@@ -41,6 +50,7 @@ from lea.knowledge.service import (
 )
 
 __all__ = [
+    "KNOWLEDGE_INDEX_SCHEMA_VERSION",
     "KNOWLEDGE_SCHEMA_VERSION",
     "KnowledgeAuditEventIdSource",
     "KnowledgeAuditSink",
@@ -49,6 +59,11 @@ __all__ = [
     "KnowledgeDocumentResult",
     "KnowledgeDocumentType",
     "KnowledgeExternalReference",
+    "KnowledgeIndexClearResult",
+    "KnowledgeIndexIssue",
+    "KnowledgeIndexQueryResult",
+    "KnowledgeIndexRebuildResult",
+    "KnowledgeIndexVerification",
     "KnowledgeListResult",
     "KnowledgeOperation",
     "KnowledgeOperationIdSource",
@@ -64,6 +79,7 @@ __all__ = [
     "KnowledgeUtcClock",
     "KnowledgeWriteResult",
     "MarkdownKnowledgeRepository",
+    "SQLiteKnowledgeIndex",
     "knowledge_document_filename",
     "knowledge_document_id_from_filename",
     "knowledge_document_path",
