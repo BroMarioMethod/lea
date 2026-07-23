@@ -7,10 +7,13 @@ from lea.knowledge.contracts import (
     KnowledgeDocumentResult,
     KnowledgeDocumentType,
     KnowledgeExternalReference,
+    KnowledgeListResult,
     KnowledgeQuery,
+    KnowledgeReadResult,
     KnowledgeRepositoryInspection,
     KnowledgeRepositoryIssue,
     KnowledgeSensitivity,
+    KnowledgeWriteResult,
 )
 from lea.knowledge.documents import (
     parse_knowledge_document,
@@ -24,6 +27,7 @@ from lea.knowledge.paths import (
     knowledge_document_type_directory,
     validate_knowledge_path,
 )
+from lea.knowledge.repository import MarkdownKnowledgeRepository
 
 __all__ = [
     "KNOWLEDGE_SCHEMA_VERSION",
@@ -32,10 +36,14 @@ __all__ = [
     "KnowledgeDocumentResult",
     "KnowledgeDocumentType",
     "KnowledgeExternalReference",
+    "KnowledgeListResult",
     "KnowledgeQuery",
+    "KnowledgeReadResult",
     "KnowledgeRepositoryInspection",
     "KnowledgeRepositoryIssue",
     "KnowledgeSensitivity",
+    "KnowledgeWriteResult",
+    "MarkdownKnowledgeRepository",
     "knowledge_document_filename",
     "knowledge_document_id_from_filename",
     "knowledge_document_path",

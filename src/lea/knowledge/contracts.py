@@ -216,6 +216,68 @@ class KnowledgeDocumentResult:
 
 
 @dataclass(frozen=True, slots=True)
+class KnowledgeWriteResult:
+    """Immutable result of creating one knowledge document."""
+
+    success: bool
+    document: KnowledgeDocument | None
+    path: Path | None
+    issues: tuple[KnowledgeRepositoryIssue, ...]
+
+    def __post_init__(self) -> None:
+        if self.success:
+            if self.document is None or self.path is None or self.issues:
+                raise ValueError(
+                    "Successful knowledge writes require document and path."
+                )
+            if not self.path.is_absolute():
+                raise ValueError("path must be absolute.")
+            return
+
+        if self.document is not None or not self.issues:
+            raise ValueError("Failed knowledge writes require issues and no document.")
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeReadResult:
+    """Immutable result of reading one knowledge document."""
+
+    success: bool
+    document: KnowledgeDocument | None
+    path: Path | None
+    issues: tuple[KnowledgeRepositoryIssue, ...]
+
+    def __post_init__(self) -> None:
+        if self.success:
+            if self.document is None or self.path is None or self.issues:
+                raise ValueError(
+                    "Successful knowledge reads require document and path."
+                )
+            if not self.path.is_absolute():
+                raise ValueError("path must be absolute.")
+            return
+
+        if self.document is not None or not self.issues:
+            raise ValueError("Failed knowledge reads require issues and no document.")
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeListResult:
+    """Immutable result of listing knowledge documents."""
+
+    success: bool
+    documents: tuple[KnowledgeDocument, ...]
+    issues: tuple[KnowledgeRepositoryIssue, ...]
+
+    def __post_init__(self) -> None:
+        if self.success and self.issues:
+            raise ValueError("Successful knowledge lists must not contain issues.")
+
+        if not self.success and (self.documents or not self.issues):
+            raise ValueError("Failed knowledge lists require issues and no documents.")
+
+
+@dataclass(frozen=True, slots=True)
 class KnowledgeQuery:
     """Immutable exact-match knowledge repository query."""
 
