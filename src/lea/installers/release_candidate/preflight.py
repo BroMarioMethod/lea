@@ -6,7 +6,6 @@ import grp
 import os
 import platform
 import pwd
-import shutil
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
@@ -414,12 +413,8 @@ def _group_exists(name: str) -> bool:
 
 
 def _executable_available(path: Path) -> bool:
-    """Return whether one exact executable path is usable."""
-    return (
-        path.is_file()
-        and os.access(path, os.X_OK)
-        and shutil.which(path.name) is not None
-    )
+    """Return whether one exact required executable is available."""
+    return path.is_file() and os.access(path, os.X_OK)
 
 
 def _format_version(version: tuple[int, int, int]) -> str:

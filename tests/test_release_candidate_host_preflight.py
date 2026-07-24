@@ -9,6 +9,7 @@ from lea.installers.release_candidate import (
     HostPreflightCheckState,
     ReleaseCandidateInstallMode,
     ReleaseCandidateInstallRequest,
+    collect_host_facts,
     evaluate_host_preflight,
 )
 
@@ -99,6 +100,33 @@ def test_missing_required_executable_fails() -> None:
 
     assert result.supported is False
     assert any(issue.path == missing for issue in result.issues)
+
+
+def test_executable_elsewhere_in_path_does_not_satisfy_exact_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A matching executable elsewhere in PATH must not satisfy the exact path."""
+    path_directory = tmp_path / "bin"
+    path_directory.mkdir()
+
+    substitute = path_directory / "git"
+    substitute.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    substitute.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(path_directory))
+
+    missing = tmp_path / "required" / "git"
+
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.preflight._REQUIRED_EXECUTABLES",
+        (missing,),
+    )
+
+    facts = collect_host_facts()
+
+    assert facts.required_executables == (missing,)
+    assert facts.missing_executables == (missing,)
 
 
 def test_fresh_install_rejects_existing_markers() -> None:
