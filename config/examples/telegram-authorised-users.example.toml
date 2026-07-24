@@ -1,0 +1,24 @@
+# Example authorised users for the Telegram adapter.
+# Copy this file outside the repository and replace all fictional identifiers.
+
+schema_version = 1
+
+[[users]]
+name = "Owner"
+channel = "telegram"
+user_id = 123456789
+conversation_id = 123456789
+role = "owner"
+enabled = true
+add_capabilities = []
+remove_capabilities = []
+
+[[users]]
+name = "Example Tester"
+channel = "telegram"
+user_id = 987654321
+conversation_id = 987654321
+role = "tester"
+enabled = false
+add_capabilities = []
+remove_capabilities = []
