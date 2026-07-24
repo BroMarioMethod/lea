@@ -1,5 +1,14 @@
 """Public channel-neutral interaction contracts."""
 
+from lea.channels.application import (
+    ChannelApplication,
+    ChannelApplicationIssue,
+    ChannelApplicationResult,
+    ChannelCommandDefinition,
+    ChannelCommandHandler,
+    ChannelUtcClock,
+    DispatchingChannelApplication,
+)
 from lea.channels.authorisation import (
     AUTHORISATION_SCHEMA_VERSION,
     AuthorisedChannelUser,
@@ -37,9 +46,14 @@ __all__ = [
     "AuthorisedChannelUser",
     "AuthorisedUserConfigIssue",
     "AuthorisedUserConfigResult",
+    "ChannelApplication",
+    "ChannelApplicationIssue",
+    "ChannelApplicationResult",
     "ChannelAuthorisationIssue",
     "ChannelAuthorisationResult",
     "ChannelCapability",
+    "ChannelCommandDefinition",
+    "ChannelCommandHandler",
     "ChannelControl",
     "ChannelControlType",
     "ChannelIdentity",
@@ -51,6 +65,8 @@ __all__ = [
     "ChannelResponseOutcome",
     "ChannelRole",
     "ChannelRolePolicy",
+    "ChannelUtcClock",
+    "DispatchingChannelApplication",
     "authorise_channel_identity",
     "default_channel_role_policies",
     "load_authorised_channel_users",
