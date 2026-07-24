@@ -39,6 +39,13 @@ from lea.installers.release_candidate.provisioning import (
     create_system_provisioning_plan,
     provision_system_layout,
 )
+from lea.installers.release_candidate.systemd_service import (
+    SystemCommandResult,
+    TelegramSystemdServicePlan,
+    TelegramSystemdServiceResult,
+    create_telegram_systemd_service_plan,
+    deploy_telegram_systemd_service,
+)
 from lea.installers.release_candidate.taskwarrior import (
     ReleaseCandidateTaskwarriorInputs,
     ReleaseCandidateTaskwarriorPlan,
@@ -94,6 +101,7 @@ __all__ = [
     "ReleaseCandidateTaskwarriorInputs",
     "ReleaseCandidateTaskwarriorPlan",
     "ReleaseCandidateTaskwarriorResult",
+    "SystemCommandResult",
     "SystemProvisioningPlan",
     "SystemProvisioningResult",
     "TelegramBotIdentity",
@@ -106,6 +114,8 @@ __all__ = [
     "TelegramOnboardingIdentity",
     "TelegramOnboardingIssue",
     "TelegramOnboardingRole",
+    "TelegramSystemdServicePlan",
+    "TelegramSystemdServiceResult",
     "apply_posix_ownership",
     "collect_host_facts",
     "confirm_telegram_identity",
@@ -114,6 +124,8 @@ __all__ = [
     "create_system_provisioning_plan",
     "create_taskwarrior_installation_plan",
     "create_telegram_configuration_plan",
+    "create_telegram_systemd_service_plan",
+    "deploy_telegram_systemd_service",
     "discover_telegram_start_identity",
     "evaluate_host_preflight",
     "extract_start_identity",
