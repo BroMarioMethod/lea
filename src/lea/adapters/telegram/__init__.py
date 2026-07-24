@@ -30,6 +30,16 @@ from lea.adapters.telegram.parser import (
     TelegramUpdateParseResult,
     parse_telegram_update,
 )
+from lea.adapters.telegram.routing import (
+    TelegramCommandDefinition,
+    TelegramCommandRoute,
+    TelegramCommandRoutingIssue,
+    TelegramCommandRoutingResult,
+    TelegramRequestIdSource,
+    TelegramUtcClock,
+    default_telegram_command_definitions,
+    route_telegram_update,
+)
 
 __all__ = [
     "TELEGRAM_MAX_CALLBACK_DATA_BYTES",
@@ -38,6 +48,10 @@ __all__ = [
     "FakeTelegramTransport",
     "TelegramAnswerCallbackCall",
     "TelegramAnswerCallbackResult",
+    "TelegramCommandDefinition",
+    "TelegramCommandRoute",
+    "TelegramCommandRoutingIssue",
+    "TelegramCommandRoutingResult",
     "TelegramEditMessageCall",
     "TelegramEditMessageResult",
     "TelegramFetchUpdatesCall",
@@ -46,6 +60,7 @@ __all__ = [
     "TelegramInlineKeyboard",
     "TelegramParsedCallback",
     "TelegramParsedMessage",
+    "TelegramRequestIdSource",
     "TelegramSendMessageCall",
     "TelegramSendMessageResult",
     "TelegramSentMessage",
@@ -55,5 +70,8 @@ __all__ = [
     "TelegramUpdateKind",
     "TelegramUpdateParseIssue",
     "TelegramUpdateParseResult",
+    "TelegramUtcClock",
+    "default_telegram_command_definitions",
     "parse_telegram_update",
+    "route_telegram_update",
 ]
