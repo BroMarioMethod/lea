@@ -15,6 +15,15 @@ from lea.adapters.telegram.contracts import (
     TelegramTransportIssue,
     TelegramUpdate,
 )
+from lea.adapters.telegram.controls import (
+    TelegramCallbackAction,
+    TelegramCallbackDataResult,
+    TelegramControlIssue,
+    TelegramControlResult,
+    TelegramParsedCallbackData,
+    build_telegram_controls,
+    parse_telegram_callback_data,
+)
 from lea.adapters.telegram.fakes import (
     FakeTelegramTransport,
     TelegramAnswerCallbackCall,
@@ -48,10 +57,14 @@ __all__ = [
     "FakeTelegramTransport",
     "TelegramAnswerCallbackCall",
     "TelegramAnswerCallbackResult",
+    "TelegramCallbackAction",
+    "TelegramCallbackDataResult",
     "TelegramCommandDefinition",
     "TelegramCommandRoute",
     "TelegramCommandRoutingIssue",
     "TelegramCommandRoutingResult",
+    "TelegramControlIssue",
+    "TelegramControlResult",
     "TelegramEditMessageCall",
     "TelegramEditMessageResult",
     "TelegramFetchUpdatesCall",
@@ -59,6 +72,7 @@ __all__ = [
     "TelegramInlineButton",
     "TelegramInlineKeyboard",
     "TelegramParsedCallback",
+    "TelegramParsedCallbackData",
     "TelegramParsedMessage",
     "TelegramRequestIdSource",
     "TelegramSendMessageCall",
@@ -71,7 +85,9 @@ __all__ = [
     "TelegramUpdateParseIssue",
     "TelegramUpdateParseResult",
     "TelegramUtcClock",
+    "build_telegram_controls",
     "default_telegram_command_definitions",
+    "parse_telegram_callback_data",
     "parse_telegram_update",
     "route_telegram_update",
 ]
