@@ -161,6 +161,10 @@ def test_successful_worker_returns_zero(tmp_path: Path) -> None:
     ) -> TelegramWorkerResult:
         assert config.bot_username == "lea_test_bot"
         assert dependencies.authorised_users
+
+        request_id = dependencies.request_id_source()
+        assert isinstance(request_id, str)
+
         return TelegramWorkerResult(True, True, 2, 1, ())
 
     code = execute(

@@ -223,7 +223,7 @@ def execute(
                 offset_store=built.dependencies.offset_store,
                 application=application,
                 authorised_users=built.dependencies.authorised_users,
-                request_id_source=uuid4,
+                request_id_source=lambda: str(uuid4()),
                 clock=_utc_now,
                 stop_signal=stop,
                 sleeper=time.sleep,
