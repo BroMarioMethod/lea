@@ -1,5 +1,17 @@
 """Public channel-neutral interaction contracts."""
 
+from lea.channels.authorisation import (
+    AUTHORISATION_SCHEMA_VERSION,
+    AuthorisedChannelUser,
+    ChannelAuthorisationIssue,
+    ChannelAuthorisationResult,
+    ChannelCapability,
+    ChannelRole,
+    ChannelRolePolicy,
+    authorise_channel_identity,
+    default_channel_role_policies,
+    resolve_channel_capabilities,
+)
 from lea.channels.contracts import (
     CHANNEL_SCHEMA_VERSION,
     ChannelControl,
@@ -14,7 +26,12 @@ from lea.channels.contracts import (
 )
 
 __all__ = [
+    "AUTHORISATION_SCHEMA_VERSION",
     "CHANNEL_SCHEMA_VERSION",
+    "AuthorisedChannelUser",
+    "ChannelAuthorisationIssue",
+    "ChannelAuthorisationResult",
+    "ChannelCapability",
     "ChannelControl",
     "ChannelControlType",
     "ChannelIdentity",
@@ -24,4 +41,9 @@ __all__ = [
     "ChannelRequestType",
     "ChannelResponse",
     "ChannelResponseOutcome",
+    "ChannelRole",
+    "ChannelRolePolicy",
+    "authorise_channel_identity",
+    "default_channel_role_policies",
+    "resolve_channel_capabilities",
 ]
