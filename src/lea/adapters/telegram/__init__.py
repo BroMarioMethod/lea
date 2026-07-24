@@ -64,6 +64,15 @@ from lea.adapters.telegram.routing import (
     default_telegram_command_definitions,
     route_telegram_update,
 )
+from lea.adapters.telegram.worker import (
+    TelegramWorkerConfig,
+    TelegramWorkerDependencies,
+    TelegramWorkerIssue,
+    TelegramWorkerResult,
+    TelegramWorkerSleeper,
+    TelegramWorkerStopSignal,
+    run_telegram_worker,
+)
 
 __all__ = [
     "TELEGRAM_MAX_CALLBACK_DATA_BYTES",
@@ -110,10 +119,17 @@ __all__ = [
     "TelegramUpdateParseIssue",
     "TelegramUpdateParseResult",
     "TelegramUtcClock",
+    "TelegramWorkerConfig",
+    "TelegramWorkerDependencies",
+    "TelegramWorkerIssue",
+    "TelegramWorkerResult",
+    "TelegramWorkerSleeper",
+    "TelegramWorkerStopSignal",
     "build_telegram_controls",
     "default_telegram_command_definitions",
     "format_telegram_response",
     "parse_telegram_callback_data",
     "parse_telegram_update",
     "route_telegram_update",
+    "run_telegram_worker",
 ]
