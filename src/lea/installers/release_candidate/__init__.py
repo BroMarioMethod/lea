@@ -39,6 +39,13 @@ from lea.installers.release_candidate.provisioning import (
     create_system_provisioning_plan,
     provision_system_layout,
 )
+from lea.installers.release_candidate.taskwarrior import (
+    ReleaseCandidateTaskwarriorInputs,
+    ReleaseCandidateTaskwarriorPlan,
+    ReleaseCandidateTaskwarriorResult,
+    create_taskwarrior_installation_plan,
+    install_release_candidate_taskwarrior,
+)
 
 __all__ = [
     "BaseConfigurationPlan",
@@ -61,14 +68,19 @@ __all__ = [
     "ReleaseCandidateInstallRequest",
     "ReleaseCandidateInstallResult",
     "ReleaseCandidateInstallationRecord",
+    "ReleaseCandidateTaskwarriorInputs",
+    "ReleaseCandidateTaskwarriorPlan",
+    "ReleaseCandidateTaskwarriorResult",
     "SystemProvisioningPlan",
     "SystemProvisioningResult",
     "collect_host_facts",
     "create_base_configuration_plan",
     "create_installation_record",
     "create_system_provisioning_plan",
+    "create_taskwarrior_installation_plan",
     "evaluate_host_preflight",
     "install_base_configuration",
+    "install_release_candidate_taskwarrior",
     "provision_system_layout",
     "render_installation_record",
     "run_host_preflight",
