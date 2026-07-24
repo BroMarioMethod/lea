@@ -37,6 +37,15 @@ from lea.adapters.telegram.formatting import (
     TelegramResponseFormattingResult,
     format_telegram_response,
 )
+from lea.adapters.telegram.offsets import (
+    TELEGRAM_OFFSET_SCHEMA_VERSION,
+    FileTelegramOffsetStore,
+    TelegramOffsetIssue,
+    TelegramOffsetLoadResult,
+    TelegramOffsetState,
+    TelegramOffsetStore,
+    TelegramOffsetStoreResult,
+)
 from lea.adapters.telegram.parser import (
     TelegramParsedCallback,
     TelegramParsedMessage,
@@ -60,7 +69,9 @@ __all__ = [
     "TELEGRAM_MAX_CALLBACK_DATA_BYTES",
     "TELEGRAM_MAX_FETCH_LIMIT",
     "TELEGRAM_MAX_MESSAGE_TEXT_LENGTH",
+    "TELEGRAM_OFFSET_SCHEMA_VERSION",
     "FakeTelegramTransport",
+    "FileTelegramOffsetStore",
     "TelegramAnswerCallbackCall",
     "TelegramAnswerCallbackResult",
     "TelegramCallbackAction",
@@ -78,6 +89,11 @@ __all__ = [
     "TelegramFormattedResponse",
     "TelegramInlineButton",
     "TelegramInlineKeyboard",
+    "TelegramOffsetIssue",
+    "TelegramOffsetLoadResult",
+    "TelegramOffsetState",
+    "TelegramOffsetStore",
+    "TelegramOffsetStoreResult",
     "TelegramParsedCallback",
     "TelegramParsedCallbackData",
     "TelegramParsedMessage",
