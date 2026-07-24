@@ -22,6 +22,14 @@ from lea.adapters.telegram.fakes import (
     TelegramFetchUpdatesCall,
     TelegramSendMessageCall,
 )
+from lea.adapters.telegram.parser import (
+    TelegramParsedCallback,
+    TelegramParsedMessage,
+    TelegramUpdateKind,
+    TelegramUpdateParseIssue,
+    TelegramUpdateParseResult,
+    parse_telegram_update,
+)
 
 __all__ = [
     "TELEGRAM_MAX_CALLBACK_DATA_BYTES",
@@ -36,10 +44,16 @@ __all__ = [
     "TelegramFetchUpdatesResult",
     "TelegramInlineButton",
     "TelegramInlineKeyboard",
+    "TelegramParsedCallback",
+    "TelegramParsedMessage",
     "TelegramSendMessageCall",
     "TelegramSendMessageResult",
     "TelegramSentMessage",
     "TelegramTransport",
     "TelegramTransportIssue",
     "TelegramUpdate",
+    "TelegramUpdateKind",
+    "TelegramUpdateParseIssue",
+    "TelegramUpdateParseResult",
+    "parse_telegram_update",
 ]
