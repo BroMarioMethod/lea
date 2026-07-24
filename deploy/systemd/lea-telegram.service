@@ -1,0 +1,26 @@
+[Unit]
+Description=LEA Telegram foreground worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lea
+Group=lea
+WorkingDirectory=/opt/lea
+EnvironmentFile=/etc/lea/telegram/worker.env
+ExecStart=/opt/lea/.venv/bin/lea-telegram
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lea /var/log/lea /run/lea
+ReadOnlyPaths=/etc/lea /opt/lea
+
+[Install]
+WantedBy=multi-user.target
