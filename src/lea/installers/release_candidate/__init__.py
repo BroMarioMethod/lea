@@ -7,6 +7,7 @@ from lea.installers.release_candidate.configuration import (
     create_base_configuration_plan,
     create_installation_record,
     install_base_configuration,
+    read_installation_record,
     render_installation_record,
 )
 from lea.installers.release_candidate.contracts import (
@@ -152,6 +153,7 @@ __all__ = [
     "persist_telegram_configuration",
     "provision_system_layout",
     "read_hidden_bot_token",
+    "read_installation_record",
     "render_installation_record",
     "run_host_preflight",
     "run_post_install_health",
