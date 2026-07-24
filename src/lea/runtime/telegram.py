@@ -13,10 +13,8 @@ from lea.adapters.telegram import (
     TelegramOffsetStore,
     TelegramTransport,
 )
-from lea.channels import (
-    AuthorisedChannelUser,
-    load_authorised_channel_users,
-)
+from lea.channels.authorisation import AuthorisedChannelUser
+from lea.channels.authorised_users import load_authorised_channel_users
 from lea.runtime.contracts import RuntimeConfig
 
 _MIN_POLL_TIMEOUT_SECONDS = 1
