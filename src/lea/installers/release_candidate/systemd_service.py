@@ -111,6 +111,15 @@ class TelegramSystemdServiceResult:
             raise ValueError("A failed service result must contain at least one issue.")
 
 
+@dataclass(frozen=True, slots=True)
+class _UnitSnapshot:
+    """Pre-deployment unit state used for rollback."""
+
+    existed: bool
+    contents: str | None
+    mode: int | None
+
+
 def create_telegram_systemd_service_plan(
     request: ReleaseCandidateInstallRequest,
     *,
@@ -143,25 +152,85 @@ def deploy_telegram_systemd_service(
     apply_ownership: OwnershipApplier | None = None,
     fsync: bool = True,
 ) -> TelegramSystemdServiceResult:
-    """Install, enable, start and verify the Telegram systemd service."""
+    """Install and activate the Telegram service transactionally."""
     if not isinstance(plan, TelegramSystemdServicePlan):
         raise TypeError("plan must be a TelegramSystemdServicePlan value.")
 
     command_executor = execute or _execute_command
     ownership_applier = apply_ownership or _apply_posix_ownership
-
     commands: list[tuple[str, ...]] = []
+    snapshot: _UnitSnapshot | None = None
     changed = False
+    unit_mutated = False
     backup: Path | None = None
+    initial_enabled = False
+    initial_active = False
+    enabled_mutated = False
+    active_mutated = False
 
     try:
         source_contents = _read_source(plan.source_file)
-        changed, backup = _install_unit(
-            plan,
+        plan.destination_file.parent.mkdir(parents=True, exist_ok=True)
+        plan.backup_directory.mkdir(parents=True, exist_ok=True)
+
+        snapshot = _capture_unit_snapshot(plan.destination_file)
+        changed = _replacement_required(
+            snapshot,
             contents=source_contents,
             approve_replacement=approve_replacement,
-            fsync=fsync,
         )
+
+        initial_enabled, failure = _query_state(
+            (
+                str(plan.systemctl),
+                "is-enabled",
+                plan.service_name,
+            ),
+            execute=command_executor,
+            commands=commands,
+            operation="is-enabled",
+        )
+        if failure is not None:
+            raise _DeploymentFailure(failure)
+
+        initial_active, failure = _query_state(
+            (
+                str(plan.systemctl),
+                "is-active",
+                plan.service_name,
+            ),
+            execute=command_executor,
+            commands=commands,
+            operation="is-active",
+        )
+        if failure is not None:
+            raise _DeploymentFailure(failure)
+
+        if changed:
+            if snapshot.existed:
+                backup = _create_backup(
+                    plan.destination_file,
+                    plan.backup_directory,
+                    fsync=fsync,
+                )
+                ownership_applier(
+                    backup,
+                    plan.owner,
+                    plan.group,
+                )
+
+            unit_mutated = True
+            _atomic_write(
+                plan.destination_file,
+                contents=source_contents,
+                mode=plan.mode,
+                fsync=fsync,
+            )
+        else:
+            if snapshot.mode != plan.mode:
+                unit_mutated = True
+            plan.destination_file.chmod(plan.mode)
+
         ownership_applier(
             plan.destination_file,
             plan.owner,
@@ -179,36 +248,9 @@ def deploy_telegram_systemd_service(
                 operation="daemon-reload",
             )
             if failure is not None:
-                return _failed(
-                    changed=changed,
-                    backup=backup,
-                    enabled=False,
-                    active=False,
-                    commands=commands,
-                    issue=failure,
-                )
+                raise _DeploymentFailure(failure)
 
-        enabled_state, failure = _query_state(
-            (
-                str(plan.systemctl),
-                "is-enabled",
-                plan.service_name,
-            ),
-            execute=command_executor,
-            commands=commands,
-            operation="is-enabled",
-        )
-        if failure is not None:
-            return _failed(
-                changed=changed,
-                backup=backup,
-                enabled=False,
-                active=False,
-                commands=commands,
-                issue=failure,
-            )
-
-        if not enabled_state:
+        if not initial_enabled:
             failure = _run_required(
                 (
                     str(plan.systemctl),
@@ -220,36 +262,24 @@ def deploy_telegram_systemd_service(
                 operation="enable",
             )
             if failure is not None:
-                return _failed(
-                    changed=changed,
-                    backup=backup,
-                    enabled=False,
-                    active=False,
-                    commands=commands,
-                    issue=failure,
-                )
+                raise _DeploymentFailure(failure)
+            enabled_mutated = True
 
-        active_state, failure = _query_state(
-            (
-                str(plan.systemctl),
-                "is-active",
-                plan.service_name,
-            ),
-            execute=command_executor,
-            commands=commands,
-            operation="is-active",
-        )
-        if failure is not None:
-            return _failed(
-                changed=changed,
-                backup=backup,
-                enabled=True,
-                active=False,
+        if changed and initial_active:
+            failure = _run_required(
+                (
+                    str(plan.systemctl),
+                    "restart",
+                    plan.service_name,
+                ),
+                execute=command_executor,
                 commands=commands,
-                issue=failure,
+                operation="restart",
             )
-
-        if not active_state:
+            active_mutated = True
+            if failure is not None:
+                raise _DeploymentFailure(failure)
+        elif not initial_active:
             failure = _run_required(
                 (
                     str(plan.systemctl),
@@ -260,15 +290,9 @@ def deploy_telegram_systemd_service(
                 commands=commands,
                 operation="start",
             )
+            active_mutated = True
             if failure is not None:
-                return _failed(
-                    changed=changed,
-                    backup=backup,
-                    enabled=True,
-                    active=False,
-                    commands=commands,
-                    issue=failure,
-                )
+                raise _DeploymentFailure(failure)
 
         enabled_state, failure = _query_state(
             (
@@ -280,19 +304,15 @@ def deploy_telegram_systemd_service(
             commands=commands,
             operation="verify-is-enabled",
         )
-        if failure is not None or not enabled_state:
-            return _failed(
-                changed=changed,
-                backup=backup,
-                enabled=False,
-                active=False,
-                commands=commands,
-                issue=failure
-                or _issue(
+        if failure is not None:
+            raise _DeploymentFailure(failure)
+        if not enabled_state:
+            raise _DeploymentFailure(
+                _issue(
                     "The Telegram service was not enabled after activation.",
                     field="service_name",
                     path=plan.destination_file,
-                ),
+                )
             )
 
         active_state, failure = _query_state(
@@ -305,32 +325,70 @@ def deploy_telegram_systemd_service(
             commands=commands,
             operation="verify-is-active",
         )
-        if failure is not None or not active_state:
-            return _failed(
-                changed=changed,
-                backup=backup,
-                enabled=True,
-                active=False,
-                commands=commands,
-                issue=failure
-                or _issue(
+        if failure is not None:
+            raise _DeploymentFailure(failure)
+        if not active_state:
+            raise _DeploymentFailure(
+                _issue(
                     "The Telegram service was not active after activation.",
                     field="service_name",
                     path=plan.destination_file,
-                ),
+                )
             )
 
-    except (OSError, UnicodeError, ValueError) as error:
-        return _failed(
-            changed=changed,
-            backup=backup,
-            enabled=False,
-            active=False,
+    except _DeploymentFailure as failure:
+        rollback_failed = _rollback_deployment(
+            plan,
+            snapshot=snapshot,
+            contents_changed=changed,
+            unit_mutated=unit_mutated,
+            initial_enabled=initial_enabled,
+            initial_active=initial_active,
+            enabled_mutated=enabled_mutated,
+            active_mutated=active_mutated,
+            execute=command_executor,
+            apply_ownership=ownership_applier,
             commands=commands,
-            issue=_issue(
-                "Telegram systemd deployment failed before activation: "
-                f"{type(error).__name__}.",
-                path=plan.destination_file,
+            fsync=fsync,
+        )
+        return _failed(
+            changed=unit_mutated if rollback_failed else False,
+            backup=backup,
+            enabled=False if rollback_failed else initial_enabled,
+            active=False if rollback_failed else initial_active,
+            commands=commands,
+            issues=_failure_issues(
+                failure.issue,
+                rollback_failed=rollback_failed,
+            ),
+        )
+    except (OSError, PermissionError, RuntimeError, UnicodeError, ValueError) as error:
+        rollback_failed = _rollback_deployment(
+            plan,
+            snapshot=snapshot,
+            contents_changed=changed,
+            unit_mutated=unit_mutated,
+            initial_enabled=initial_enabled,
+            initial_active=initial_active,
+            enabled_mutated=enabled_mutated,
+            active_mutated=active_mutated,
+            execute=command_executor,
+            apply_ownership=ownership_applier,
+            commands=commands,
+            fsync=fsync,
+        )
+        return _failed(
+            changed=unit_mutated if rollback_failed else False,
+            backup=backup,
+            enabled=False if rollback_failed else initial_enabled,
+            active=False if rollback_failed else initial_active,
+            commands=commands,
+            issues=_failure_issues(
+                _issue(
+                    f"Telegram systemd deployment failed: {type(error).__name__}.",
+                    path=plan.destination_file,
+                ),
+                rollback_failed=rollback_failed,
             ),
         )
 
@@ -342,6 +400,173 @@ def deploy_telegram_systemd_service(
         active=True,
         commands=tuple(commands),
         issues=(),
+    )
+
+
+class _DeploymentFailure(Exception):
+    """Internal structured deployment failure."""
+
+    def __init__(self, issue: InstallerIssue) -> None:
+        super().__init__(issue.message)
+        self.issue = issue
+
+
+def _capture_unit_snapshot(destination: Path) -> _UnitSnapshot:
+    """Capture the safe unit state before deployment."""
+    if not destination.exists():
+        return _UnitSnapshot(
+            existed=False,
+            contents=None,
+            mode=None,
+        )
+
+    if destination.is_symlink() or not destination.is_file():
+        raise ValueError("The Telegram service destination is not a safe regular file.")
+
+    return _UnitSnapshot(
+        existed=True,
+        contents=destination.read_text(encoding="utf-8"),
+        mode=destination.stat().st_mode & 0o7777,
+    )
+
+
+def _replacement_required(
+    snapshot: _UnitSnapshot,
+    *,
+    contents: str,
+    approve_replacement: bool,
+) -> bool:
+    """Validate replacement approval and return whether contents differ."""
+    if not snapshot.existed:
+        return True
+
+    if snapshot.contents == contents:
+        return False
+
+    if not approve_replacement:
+        raise PermissionError(
+            "Replacement approval is required for the systemd service."
+        )
+
+    return True
+
+
+def _rollback_deployment(
+    plan: TelegramSystemdServicePlan,
+    *,
+    snapshot: _UnitSnapshot | None,
+    contents_changed: bool,
+    unit_mutated: bool,
+    initial_enabled: bool,
+    initial_active: bool,
+    enabled_mutated: bool,
+    active_mutated: bool,
+    execute: CommandExecutor,
+    apply_ownership: OwnershipApplier,
+    commands: list[tuple[str, ...]],
+    fsync: bool,
+) -> bool:
+    """Best-effort restoration of unit contents and service state."""
+    if snapshot is None:
+        return False
+
+    rollback_failed = False
+
+    try:
+        if unit_mutated:
+            _restore_unit_snapshot(
+                plan.destination_file,
+                snapshot,
+                fsync=fsync,
+            )
+            if snapshot.existed:
+                apply_ownership(
+                    plan.destination_file,
+                    plan.owner,
+                    plan.group,
+                )
+
+            if contents_changed:
+                failure = _run_required(
+                    (
+                        str(plan.systemctl),
+                        "daemon-reload",
+                    ),
+                    execute=execute,
+                    commands=commands,
+                    operation="rollback-daemon-reload",
+                )
+                if failure is not None:
+                    rollback_failed = True
+
+        if enabled_mutated and not initial_enabled:
+            failure = _run_required(
+                (
+                    str(plan.systemctl),
+                    "disable",
+                    plan.service_name,
+                ),
+                execute=execute,
+                commands=commands,
+                operation="rollback-disable",
+            )
+            if failure is not None:
+                rollback_failed = True
+
+        if initial_active and (contents_changed or active_mutated):
+            failure = _run_required(
+                (
+                    str(plan.systemctl),
+                    "restart",
+                    plan.service_name,
+                ),
+                execute=execute,
+                commands=commands,
+                operation="rollback-restart",
+            )
+            if failure is not None:
+                rollback_failed = True
+        elif active_mutated and not initial_active:
+            failure = _run_required(
+                (
+                    str(plan.systemctl),
+                    "stop",
+                    plan.service_name,
+                ),
+                execute=execute,
+                commands=commands,
+                operation="rollback-stop",
+            )
+            if failure is not None:
+                rollback_failed = True
+
+    except (OSError, RuntimeError, UnicodeError, ValueError):
+        rollback_failed = True
+
+    return rollback_failed
+
+
+def _restore_unit_snapshot(
+    destination: Path,
+    snapshot: _UnitSnapshot,
+    *,
+    fsync: bool,
+) -> None:
+    """Restore one unit file to its pre-deployment state."""
+    if not snapshot.existed:
+        destination.unlink(missing_ok=True)
+        if fsync:
+            _fsync_directory(destination.parent)
+        return
+
+    if snapshot.contents is None or snapshot.mode is None:
+        raise ValueError("Existing unit snapshots require contents and mode.")
+
+    _atomic_write(
+        destination,
+        contents=snapshot.contents,
+        mode=snapshot.mode,
+        fsync=fsync,
     )
 
 
@@ -358,52 +583,6 @@ def _read_source(path: Path) -> str:
         raise ValueError("The Telegram service source must not be empty.")
 
     return contents
-
-
-def _install_unit(
-    plan: TelegramSystemdServicePlan,
-    *,
-    contents: str,
-    approve_replacement: bool,
-    fsync: bool,
-) -> tuple[bool, Path | None]:
-    """Install one service unit atomically with optional backup."""
-    destination = plan.destination_file
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    plan.backup_directory.mkdir(parents=True, exist_ok=True)
-
-    existing: str | None = None
-
-    if destination.exists():
-        if destination.is_symlink() or not destination.is_file():
-            raise ValueError(
-                "The Telegram service destination is not a safe regular file."
-            )
-
-        existing = destination.read_text(encoding="utf-8")
-
-        if existing == contents:
-            destination.chmod(plan.mode)
-            return False, None
-
-        if not approve_replacement:
-            raise PermissionError(
-                "Replacement approval is required for the systemd service."
-            )
-
-    backup = (
-        _create_backup(destination, plan.backup_directory, fsync=fsync)
-        if existing is not None
-        else None
-    )
-
-    _atomic_write(
-        destination,
-        contents=contents,
-        mode=plan.mode,
-        fsync=fsync,
-    )
-    return True, backup
 
 
 def _create_backup(
@@ -504,7 +683,7 @@ def _query_state(
     commands: list[tuple[str, ...]],
     operation: str,
 ) -> tuple[bool, InstallerIssue | None]:
-    """Query one systemd state where return codes zero and one are valid."""
+    """Query systemd state; any non-zero status means not in that state."""
     commands.append(command)
 
     try:
@@ -515,16 +694,7 @@ def _query_state(
             field=operation,
         )
 
-    if result.return_code == 0:
-        return True, None
-
-    if result.return_code == 1:
-        return False, None
-
-    return False, _issue(
-        f"systemctl {operation} failed.",
-        field=operation,
-    )
+    return result.return_code == 0, None
 
 
 def _execute_command(command: tuple[str, ...]) -> SystemCommandResult:
@@ -561,6 +731,25 @@ def _fsync_directory(directory: Path) -> None:
         os.close(descriptor)
 
 
+def _failure_issues(
+    issue: InstallerIssue,
+    *,
+    rollback_failed: bool,
+) -> tuple[InstallerIssue, ...]:
+    if not rollback_failed:
+        return (issue,)
+
+    return (
+        issue,
+        InstallerIssue(
+            code=InstallerIssueCode.ROLLBACK_FAILED,
+            message="Telegram systemd deployment rollback failed.",
+            step=InstallerStepId.SYSTEMD_SERVICE,
+            path=issue.path,
+        ),
+    )
+
+
 def _failed(
     *,
     changed: bool,
@@ -568,7 +757,7 @@ def _failed(
     enabled: bool,
     active: bool,
     commands: list[tuple[str, ...]],
-    issue: InstallerIssue,
+    issues: tuple[InstallerIssue, ...],
 ) -> TelegramSystemdServiceResult:
     return TelegramSystemdServiceResult(
         success=False,
@@ -577,7 +766,7 @@ def _failed(
         enabled=enabled,
         active=active,
         commands=tuple(commands),
-        issues=(issue,),
+        issues=issues,
     )
 
 

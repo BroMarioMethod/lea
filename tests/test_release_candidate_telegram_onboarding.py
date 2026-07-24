@@ -18,6 +18,9 @@ from lea.installers.release_candidate import (
     read_hidden_bot_token,
     validate_bot_with_telegram,
 )
+from lea.installers.release_candidate.telegram_onboarding import (
+    TelegramOnboardingIssue,
+)
 
 TOKEN = "123456789:abcdefghijklmnopqrstuvwxyz_ABCDEFG"
 
@@ -116,6 +119,32 @@ def test_get_me_validation_uses_injected_client() -> None:
     assert result.success is True
     assert result.bot == _bot()
     assert client.tokens == [TOKEN]
+
+
+def test_get_me_failure_result_is_redacted() -> None:
+    """Returned client issues must not expose token-derived fields."""
+    client = FakeOnboardingClient()
+    client.validation_results.append(
+        TelegramBotValidationResult(
+            success=False,
+            bot=None,
+            issues=(
+                TelegramOnboardingIssue(
+                    code=f"token-{TOKEN}",
+                    message=f"token={TOKEN}",
+                    operation=f"get_me_{TOKEN}",
+                ),
+            ),
+        )
+    )
+
+    result = validate_bot_with_telegram(TOKEN, client)
+
+    assert result.success is False
+    assert result.issues[0].code == "telegram_get_me_rejected"
+    assert TOKEN not in result.issues[0].code
+    assert TOKEN not in result.issues[0].message
+    assert TOKEN not in result.issues[0].operation
 
 
 def test_get_me_exception_is_redacted() -> None:

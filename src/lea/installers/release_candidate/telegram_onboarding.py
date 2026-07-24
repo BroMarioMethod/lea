@@ -246,13 +246,12 @@ def validate_bot_with_telegram(
     return TelegramBotValidationResult(
         success=False,
         bot=None,
-        issues=tuple(
+        issues=(
             TelegramOnboardingIssue(
-                code=issue.code,
-                message=issue.message,
+                code="telegram_get_me_rejected",
+                message="Telegram rejected the supplied bot token.",
                 operation="get_me",
-            )
-            for issue in result.issues
+            ),
         ),
     )
 

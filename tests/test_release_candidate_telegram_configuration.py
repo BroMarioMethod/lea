@@ -2,11 +2,16 @@
 
 from pathlib import Path
 
-from lea.channels import ChannelCapability
+from lea.channels import (
+    ChannelCapability,
+    load_authorised_channel_users,
+    resolve_channel_capabilities,
+)
 from lea.installers.release_candidate import (
     ReleaseCandidateInstallMode,
     ReleaseCandidateInstallRequest,
     TelegramBotIdentity,
+    TelegramConfigurationPlan,
     TelegramOnboardingConfirmation,
     TelegramOnboardingIdentity,
     TelegramOnboardingRole,
@@ -15,6 +20,7 @@ from lea.installers.release_candidate import (
 )
 
 TOKEN = "123456789:abcdefghijklmnopqrstuvwxyz_ABCDEFG"
+REPLACEMENT_TOKEN = "987654321:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefg"
 
 
 def _request(tmp_path: Path) -> ReleaseCandidateInstallRequest:
@@ -52,6 +58,17 @@ def _confirmation(
         role=role,
         custom_capabilities=capabilities,
     )
+
+
+def _contents(plan: TelegramConfigurationPlan) -> dict[Path, str]:
+    paths = (
+        plan.runtime_config_file,
+        plan.telegram_config_file,
+        plan.authorised_users_file,
+        plan.worker_environment_file,
+        plan.token_file,
+    )
+    return {path: path.read_text(encoding="utf-8") for path in paths if path.exists()}
 
 
 def test_plan_uses_required_paths_and_modes(tmp_path: Path) -> None:
@@ -121,7 +138,9 @@ def test_second_run_is_idempotent(tmp_path: Path) -> None:
     assert second.backups_created == ()
 
 
-def test_differing_file_requires_approval(tmp_path: Path) -> None:
+def test_differing_file_requires_approval_before_any_mutation(
+    tmp_path: Path,
+) -> None:
     plan = create_telegram_configuration_plan(
         _request(tmp_path),
         _confirmation(),
@@ -136,10 +155,12 @@ def test_differing_file_requires_approval(tmp_path: Path) -> None:
     )
 
     assert result.success is False
+    assert result.changed_files == ()
+    assert not plan.runtime_config_file.exists()
     assert plan.telegram_config_file.read_text(encoding="utf-8") == "different\n"
 
 
-def test_approved_replacement_creates_backup(tmp_path: Path) -> None:
+def test_approved_replacement_creates_restricted_backup(tmp_path: Path) -> None:
     plan = create_telegram_configuration_plan(
         _request(tmp_path),
         _confirmation(),
@@ -157,15 +178,97 @@ def test_approved_replacement_creates_backup(tmp_path: Path) -> None:
     assert result.backups_created
     assert any(
         path.read_text(encoding="utf-8") == "different\n"
+        and (path.stat().st_mode & 0o777) == 0o640
         for path in result.backups_created
     )
 
 
-def test_custom_role_renders_explicit_capabilities(tmp_path: Path) -> None:
+def test_token_backup_uses_secret_mode_and_ownership(tmp_path: Path) -> None:
+    plan = create_telegram_configuration_plan(
+        _request(tmp_path),
+        _confirmation(),
+    )
+    first = persist_telegram_configuration(
+        plan,
+        token=TOKEN,
+        approve_replacement=False,
+    )
+    ownership: list[tuple[Path, str, str]] = []
+
+    second = persist_telegram_configuration(
+        plan,
+        token=REPLACEMENT_TOKEN,
+        approve_replacement=True,
+        apply_ownership=lambda path, owner, group: ownership.append(
+            (path, owner, group)
+        ),
+    )
+
+    token_backups = tuple(
+        path
+        for path in second.backups_created
+        if path.read_text(encoding="utf-8") == TOKEN + "\n"
+    )
+
+    assert first.success is True
+    assert second.success is True
+    assert len(token_backups) == 1
+    assert (token_backups[0].stat().st_mode & 0o777) == 0o600
+    assert (token_backups[0], "lea", "lea") in ownership
+
+
+def test_validation_failure_restores_all_previous_files(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    original = create_telegram_configuration_plan(
+        request,
+        _confirmation(),
+    )
+    first = persist_telegram_configuration(
+        original,
+        token=TOKEN,
+        approve_replacement=False,
+    )
+    before = _contents(original)
+
+    replacement = create_telegram_configuration_plan(
+        request,
+        _confirmation(role=TelegramOnboardingRole.TESTER),
+    )
+
+    def reject(_plan: object) -> None:
+        raise ValueError("Injected validation failure.")
+
+    result = persist_telegram_configuration(
+        replacement,
+        token=REPLACEMENT_TOKEN,
+        approve_replacement=True,
+        validate_generated_files=reject,
+    )
+
+    assert first.success is True
+    assert result.success is False
+    assert result.changed_files == ()
+    assert _contents(replacement) == before
+
+
+def test_custom_role_resolves_to_exact_selected_capabilities(
+    tmp_path: Path,
+) -> None:
     plan = create_telegram_configuration_plan(
         _request(tmp_path),
         _confirmation(role=TelegramOnboardingRole.CUSTOM),
     )
+    plan.authorised_users_file.parent.mkdir(parents=True)
+    plan.authorised_users_file.write_text(
+        plan.authorised_users_contents,
+        encoding="utf-8",
+    )
 
-    assert 'role = "read_only"' in plan.authorised_users_contents
-    assert '"Tasks.Read"' in plan.authorised_users_contents
+    loaded = load_authorised_channel_users(plan.authorised_users_file)
+
+    assert loaded.success is True
+    assert len(loaded.users) == 1
+    assert loaded.users[0].role.value == "read_only"
+    assert resolve_channel_capabilities(loaded.users[0]) == (
+        ChannelCapability.TASKS_READ.value,
+    )

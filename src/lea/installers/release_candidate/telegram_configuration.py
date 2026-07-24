@@ -9,11 +9,18 @@ from pathlib import Path
 
 from lea.channels import (
     AuthorisedChannelUser,
+    ChannelCapability,
     ChannelName,
     ChannelRole,
+    default_channel_role_policies,
     load_authorised_channel_users,
 )
-from lea.installers.release_candidate.configuration import _write_if_changed
+from lea.installers.release_candidate.configuration import (
+    _capture_snapshot,
+    _FileSnapshot,
+    _restore_snapshot,
+    _write_if_changed,
+)
 from lea.installers.release_candidate.contracts import (
     InstallerIssue,
     InstallerIssueCode,
@@ -117,6 +124,20 @@ class TelegramConfigurationResult:
             raise ValueError("A failed result must contain at least one issue.")
 
 
+@dataclass(frozen=True, slots=True)
+class _ManagedTelegramFile:
+    """One managed Telegram file and its required metadata."""
+
+    destination: Path
+    contents: str
+    mode: int
+    owner: str
+    group: str
+
+
+GeneratedFilesValidator = Callable[[TelegramConfigurationPlan], None]
+
+
 def create_telegram_configuration_plan(
     request: ReleaseCandidateInstallRequest,
     confirmation: TelegramOnboardingConfirmation,
@@ -172,100 +193,107 @@ def persist_telegram_configuration(
     token: str,
     approve_replacement: bool,
     apply_ownership: OwnershipApplier = lambda _path, _owner, _group: None,
+    validate_generated_files: GeneratedFilesValidator | None = None,
 ) -> TelegramConfigurationResult:
-    """Persist validated Telegram files atomically and idempotently."""
+    """Persist Telegram files as one validated transaction."""
     validate_bot_token_shape(token)
-
-    managed = (
-        (
-            plan.runtime_config_file,
-            plan.runtime_contents,
-            plan.configuration_mode,
-            plan.configuration_owner,
-            plan.configuration_group,
-        ),
-        (
-            plan.telegram_config_file,
-            plan.telegram_contents,
-            plan.configuration_mode,
-            plan.configuration_owner,
-            plan.configuration_group,
-        ),
-        (
-            plan.authorised_users_file,
-            plan.authorised_users_contents,
-            plan.configuration_mode,
-            plan.configuration_owner,
-            plan.configuration_group,
-        ),
-        (
-            plan.worker_environment_file,
-            plan.worker_environment_contents,
-            plan.configuration_mode,
-            plan.configuration_owner,
-            plan.configuration_group,
-        ),
-        (
-            plan.token_file,
-            token + "\n",
-            plan.token_mode,
-            plan.token_owner,
-            plan.token_group,
-        ),
-    )
+    managed = _managed_files(plan, token)
 
     changed: list[Path] = []
     backups: list[Path] = []
+    snapshots: dict[Path, _FileSnapshot] = {}
+    rollback_failed = False
 
     try:
-        plan.backup_directory.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+        plan.backup_directory.mkdir(parents=True, exist_ok=True)
 
-        for destination, contents, mode, owner, group in managed:
-            destination.parent.mkdir(parents=True, exist_ok=True)
+        # Check every replacement before mutating the first file.
+        for item in managed:
+            item.destination.parent.mkdir(parents=True, exist_ok=True)
 
-            if destination.exists():
-                if destination.is_symlink() or not destination.is_file():
-                    raise OSError(f"Unsafe managed file path: {destination}")
+            if item.destination.exists():
+                if item.destination.is_symlink() or not item.destination.is_file():
+                    raise OSError(f"Unsafe managed file path: {item.destination}")
 
-                existing = destination.read_text(encoding="utf-8")
-                if existing != contents and not approve_replacement:
+                existing = item.destination.read_text(encoding="utf-8")
+                if existing != item.contents and not approve_replacement:
                     raise PermissionError(
-                        f"Replacement approval required for {destination}."
+                        f"Replacement approval required for {item.destination}."
                     )
 
+        snapshots = {
+            item.destination: _capture_snapshot(item.destination) for item in managed
+        }
+
+        for item in managed:
             was_changed, backup = _write_if_changed(
-                destination=destination,
-                contents=contents,
+                destination=item.destination,
+                contents=item.contents,
                 backup_directory=plan.backup_directory,
-                mode=mode,
+                mode=item.mode,
+                backup_mode=item.mode,
             )
-            apply_ownership(destination, owner, group)
+            apply_ownership(
+                item.destination,
+                item.owner,
+                item.group,
+            )
 
             if was_changed:
-                changed.append(destination)
+                changed.append(item.destination)
+
             if backup is not None:
                 backups.append(backup)
+                apply_ownership(
+                    backup,
+                    item.owner,
+                    item.group,
+                )
 
-        _validate_generated_files(plan)
+        validator = validate_generated_files or _validate_generated_files
+        validator(plan)
 
-    except (OSError, PermissionError, ValueError) as error:
+    except (KeyError, OSError, PermissionError, RuntimeError, ValueError) as error:
+        try:
+            for item in reversed(managed):
+                snapshot = snapshots.get(item.destination)
+                if snapshot is None:
+                    continue
+
+                _restore_snapshot(item.destination, snapshot)
+                if snapshot.existed:
+                    apply_ownership(
+                        item.destination,
+                        item.owner,
+                        item.group,
+                    )
+        except (KeyError, OSError, RuntimeError, ValueError):
+            rollback_failed = True
+
+        issues = [
+            InstallerIssue(
+                code=InstallerIssueCode.STEP_FAILED,
+                message=(
+                    "Telegram configuration persistence failed: "
+                    f"{type(error).__name__}."
+                ),
+                step=InstallerStepId.TELEGRAM_CONFIGURATION,
+            )
+        ]
+        if rollback_failed:
+            issues.append(
+                InstallerIssue(
+                    code=InstallerIssueCode.ROLLBACK_FAILED,
+                    message="Telegram configuration rollback failed.",
+                    step=InstallerStepId.TELEGRAM_CONFIGURATION,
+                )
+            )
+
         return TelegramConfigurationResult(
             success=False,
-            changed_files=tuple(changed),
+            changed_files=tuple(changed) if rollback_failed else (),
             backups_created=tuple(backups),
-            issues=(
-                InstallerIssue(
-                    code=InstallerIssueCode.STEP_FAILED,
-                    message=(
-                        "Telegram configuration persistence failed: "
-                        f"{type(error).__name__}."
-                    ),
-                    step=InstallerStepId.TELEGRAM_CONFIGURATION,
-                ),
-            ),
+            issues=tuple(issues),
         )
 
     return TelegramConfigurationResult(
@@ -284,6 +312,49 @@ def apply_posix_ownership(path: Path, owner: str, group: str) -> None:
     user = pwd.getpwnam(owner)
     group_record = grp.getgrnam(group)
     os.chown(path, user.pw_uid, group_record.gr_gid)
+
+
+def _managed_files(
+    plan: TelegramConfigurationPlan,
+    token: str,
+) -> tuple[_ManagedTelegramFile, ...]:
+    return (
+        _ManagedTelegramFile(
+            destination=plan.runtime_config_file,
+            contents=plan.runtime_contents,
+            mode=plan.configuration_mode,
+            owner=plan.configuration_owner,
+            group=plan.configuration_group,
+        ),
+        _ManagedTelegramFile(
+            destination=plan.telegram_config_file,
+            contents=plan.telegram_contents,
+            mode=plan.configuration_mode,
+            owner=plan.configuration_owner,
+            group=plan.configuration_group,
+        ),
+        _ManagedTelegramFile(
+            destination=plan.authorised_users_file,
+            contents=plan.authorised_users_contents,
+            mode=plan.configuration_mode,
+            owner=plan.configuration_owner,
+            group=plan.configuration_group,
+        ),
+        _ManagedTelegramFile(
+            destination=plan.worker_environment_file,
+            contents=plan.worker_environment_contents,
+            mode=plan.configuration_mode,
+            owner=plan.configuration_owner,
+            group=plan.configuration_group,
+        ),
+        _ManagedTelegramFile(
+            destination=plan.token_file,
+            contents=token + "\n",
+            mode=plan.token_mode,
+            owner=plan.token_owner,
+            group=plan.token_group,
+        ),
+    )
 
 
 def _validate_generated_files(plan: TelegramConfigurationPlan) -> None:
@@ -335,11 +406,15 @@ def _render_authorised_user(
         raise ValueError("Confirmed Telegram onboarding must contain a role.")
 
     role = _channel_role(confirmation.role)
-    additions = (
-        confirmation.custom_capabilities
-        if confirmation.role is TelegramOnboardingRole.CUSTOM
-        else ()
-    )
+    additions: tuple[ChannelCapability, ...] = ()
+    removals: tuple[ChannelCapability, ...] = ()
+
+    if confirmation.role is TelegramOnboardingRole.CUSTOM:
+        selected = set(confirmation.custom_capabilities)
+        baseline = _read_only_capabilities()
+        additions = tuple(sorted(selected - baseline, key=str))
+        removals = tuple(sorted(baseline - selected, key=str))
+
     user = AuthorisedChannelUser(
         name=confirmation.identity.display_name,
         channel=ChannelName.TELEGRAM,
@@ -348,6 +423,7 @@ def _render_authorised_user(
         role=role,
         enabled=True,
         add_capabilities=additions,
+        remove_capabilities=removals,
     )
 
     additions_text = ", ".join(
@@ -369,6 +445,18 @@ def _render_authorised_user(
         f"add_capabilities = [{additions_text}]\n"
         f"remove_capabilities = [{removals_text}]\n"
     )
+
+
+def _read_only_capabilities() -> set[ChannelCapability]:
+    matching = tuple(
+        policy
+        for policy in default_channel_role_policies()
+        if policy.role is ChannelRole.READ_ONLY
+    )
+    if len(matching) != 1:
+        raise RuntimeError("Exactly one read-only channel policy is required.")
+
+    return set(matching[0].capabilities)
 
 
 def _channel_role(role: TelegramOnboardingRole) -> ChannelRole:
