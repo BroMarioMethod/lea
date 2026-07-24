@@ -1,5 +1,14 @@
 """Public release-candidate installer contracts."""
 
+from lea.installers.release_candidate.configuration import (
+    BaseConfigurationPlan,
+    BaseConfigurationResult,
+    ReleaseCandidateInstallationRecord,
+    create_base_configuration_plan,
+    create_installation_record,
+    install_base_configuration,
+    render_installation_record,
+)
 from lea.installers.release_candidate.contracts import (
     InstallerIssue,
     InstallerIssueCode,
@@ -32,6 +41,8 @@ from lea.installers.release_candidate.provisioning import (
 )
 
 __all__ = [
+    "BaseConfigurationPlan",
+    "BaseConfigurationResult",
     "HostFacts",
     "HostPreflightCheck",
     "HostPreflightCheckState",
@@ -49,11 +60,16 @@ __all__ = [
     "ReleaseCandidateInstallPlan",
     "ReleaseCandidateInstallRequest",
     "ReleaseCandidateInstallResult",
+    "ReleaseCandidateInstallationRecord",
     "SystemProvisioningPlan",
     "SystemProvisioningResult",
     "collect_host_facts",
+    "create_base_configuration_plan",
+    "create_installation_record",
     "create_system_provisioning_plan",
     "evaluate_host_preflight",
+    "install_base_configuration",
     "provision_system_layout",
+    "render_installation_record",
     "run_host_preflight",
 ]
