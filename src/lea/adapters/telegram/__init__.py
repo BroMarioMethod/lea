@@ -1,5 +1,12 @@
 """Telegram adapter public transport contracts."""
 
+from lea.adapters.telegram.bot_api import (
+    TelegramBotApiConfig,
+    TelegramBotApiTransport,
+    TelegramHttpResponse,
+    TelegramUrlOpener,
+    telegram_bot_api_transport,
+)
 from lea.adapters.telegram.contracts import (
     TELEGRAM_MAX_CALLBACK_DATA_BYTES,
     TELEGRAM_MAX_FETCH_LIMIT,
@@ -83,6 +90,8 @@ __all__ = [
     "FileTelegramOffsetStore",
     "TelegramAnswerCallbackCall",
     "TelegramAnswerCallbackResult",
+    "TelegramBotApiConfig",
+    "TelegramBotApiTransport",
     "TelegramCallbackAction",
     "TelegramCallbackDataResult",
     "TelegramCommandDefinition",
@@ -96,6 +105,7 @@ __all__ = [
     "TelegramFetchUpdatesCall",
     "TelegramFetchUpdatesResult",
     "TelegramFormattedResponse",
+    "TelegramHttpResponse",
     "TelegramInlineButton",
     "TelegramInlineKeyboard",
     "TelegramOffsetIssue",
@@ -118,6 +128,7 @@ __all__ = [
     "TelegramUpdateKind",
     "TelegramUpdateParseIssue",
     "TelegramUpdateParseResult",
+    "TelegramUrlOpener",
     "TelegramUtcClock",
     "TelegramWorkerConfig",
     "TelegramWorkerDependencies",
@@ -132,4 +143,5 @@ __all__ = [
     "parse_telegram_update",
     "route_telegram_update",
     "run_telegram_worker",
+    "telegram_bot_api_transport",
 ]
