@@ -121,6 +121,9 @@ def test_plan_uses_canonical_paths(tmp_path: Path) -> None:
     assert plan.taskwarrior_record_file == (
         request.state_root / "install" / "taskwarrior.json"
     )
+    assert plan.acceptance_work_directory == (
+        request.state_root / "acceptance" / "taskwarrior"
+    )
     assert plan.systemctl == Path("/usr/bin/systemctl")
 
 
@@ -247,15 +250,26 @@ def test_acceptance_runs_disposable_taskwarrior_and_telegram(
         issues=(),
     )
 
+    calls: list[tuple[Path, Path, float]] = []
+
+    def accept_taskwarrior(
+        executable: Path,
+        *,
+        temporary_parent: Path,
+        timeout_seconds: float,
+    ) -> TaskwarriorSmokeTestResult:
+        calls.append((executable, temporary_parent, timeout_seconds))
+        return TaskwarriorSmokeTestResult(
+            passed=True,
+            version="3.4.2",
+            issues=(),
+        )
+
     result = run_release_candidate_acceptance(
         plan,
         health,
         taskwarrior_record_reader=lambda _path: (record, ()),
-        taskwarrior_acceptance=lambda *args, **kwargs: TaskwarriorSmokeTestResult(
-            passed=True,
-            version="3.4.2",
-            issues=(),
-        ),
+        taskwarrior_acceptance=accept_taskwarrior,
         telegram_validation=lambda: TelegramBotValidationResult(
             success=True,
             bot=TelegramBotIdentity(
@@ -269,8 +283,105 @@ def test_acceptance_runs_disposable_taskwarrior_and_telegram(
     )
 
     assert result.accepted is True
+    assert calls == [(record.executable, plan.acceptance_work_directory, 15.0)]
+    assert plan.acceptance_work_directory != record.data.parent
     assert "acceptance: PASSED" in result.summary
     assert any(check.code == "taskwarrior_lifecycle" for check in result.checks)
+
+
+def test_acceptance_boundary_exceptions_are_structured(
+    tmp_path: Path,
+) -> None:
+    plan, _runtime = _prepare(tmp_path, telegram=True)
+    record = _record(tmp_path)
+
+    def fail_taskwarrior(
+        _executable: Path,
+        *,
+        temporary_parent: Path,
+        timeout_seconds: float,
+    ) -> TaskwarriorSmokeTestResult:
+        assert temporary_parent == plan.acceptance_work_directory
+        assert timeout_seconds == 15.0
+        raise RuntimeError("sensitive Taskwarrior detail")
+
+    failed = run_release_candidate_acceptance(
+        plan,
+        PostInstallHealthResult(healthy=True, checks=(), issues=()),
+        taskwarrior_record_reader=lambda _path: (record, ()),
+        taskwarrior_acceptance=fail_taskwarrior,
+        telegram_validation=lambda: TelegramBotValidationResult(
+            success=True,
+            bot=TelegramBotIdentity(
+                bot_id="987654321",
+                username="lea_test_bot",
+                display_name="LEA Test Bot",
+            ),
+            issues=(),
+        ),
+        notifier=lambda _message: True,
+    )
+
+    assert failed.accepted is False
+    assert failed.checks[0].state is PostInstallCheckState.FAILED
+    assert "sensitive" not in failed.summary
+
+    def fail_telegram() -> TelegramBotValidationResult:
+        raise RuntimeError("sensitive Telegram detail")
+
+    telegram_failed = run_release_candidate_acceptance(
+        plan,
+        PostInstallHealthResult(healthy=True, checks=(), issues=()),
+        taskwarrior_record_reader=lambda _path: (record, ()),
+        taskwarrior_acceptance=lambda *_args, **_kwargs: TaskwarriorSmokeTestResult(
+            passed=True,
+            version="3.4.2",
+            issues=(),
+        ),
+        telegram_validation=fail_telegram,
+        notifier=lambda _message: True,
+    )
+
+    checks = {check.code: check for check in telegram_failed.checks}
+    assert telegram_failed.accepted is False
+    assert checks["telegram_get_me"].state is PostInstallCheckState.FAILED
+    assert checks["telegram_completion_message"].state is PostInstallCheckState.WARNING
+    assert "skipped" in checks["telegram_completion_message"].message
+    assert "sensitive" not in telegram_failed.summary
+
+
+def test_optional_notification_exception_is_warning(tmp_path: Path) -> None:
+    plan, _runtime = _prepare(tmp_path, telegram=True)
+    record = _record(tmp_path)
+
+    def notify(_message: str) -> bool:
+        raise RuntimeError("sensitive notifier detail")
+
+    result = run_release_candidate_acceptance(
+        plan,
+        PostInstallHealthResult(healthy=True, checks=(), issues=()),
+        taskwarrior_record_reader=lambda _path: (record, ()),
+        taskwarrior_acceptance=lambda *_args, **_kwargs: TaskwarriorSmokeTestResult(
+            passed=True,
+            version="3.4.2",
+            issues=(),
+        ),
+        telegram_validation=lambda: TelegramBotValidationResult(
+            success=True,
+            bot=TelegramBotIdentity(
+                bot_id="987654321",
+                username="lea_test_bot",
+                display_name="LEA Test Bot",
+            ),
+            issues=(),
+        ),
+        notifier=notify,
+    )
+
+    checks = {check.code: check for check in result.checks}
+    assert result.accepted is True
+    assert checks["telegram_completion_message"].state is PostInstallCheckState.WARNING
+    assert "sensitive" not in result.summary
 
 
 def test_acceptance_requires_healthy_installation(tmp_path: Path) -> None:

@@ -90,6 +90,7 @@ class PostInstallHealthPlan:
     telegram_config_file: Path
     installation_record_file: Path
     taskwarrior_record_file: Path
+    acceptance_work_directory: Path
     systemctl: Path
     telegram_service_name: str
     telegram_enabled: bool
@@ -101,6 +102,7 @@ class PostInstallHealthPlan:
             ("telegram_config_file", self.telegram_config_file),
             ("installation_record_file", self.installation_record_file),
             ("taskwarrior_record_file", self.taskwarrior_record_file),
+            ("acceptance_work_directory", self.acceptance_work_directory),
             ("systemctl", self.systemctl),
         ):
             _validate_absolute_path(path, field_name=field_name)
@@ -171,6 +173,7 @@ def create_post_install_health_plan(
             request.state_root / "install" / "release-candidate.json"
         ),
         taskwarrior_record_file=(request.state_root / "install" / "taskwarrior.json"),
+        acceptance_work_directory=(request.state_root / "acceptance" / "taskwarrior"),
         systemctl=systemctl,
         telegram_service_name="lea-telegram.service",
         telegram_enabled=request.enable_telegram,
@@ -332,7 +335,15 @@ def run_release_candidate_acceptance(
             issues=(issue,),
         )
 
-    record, record_issues = taskwarrior_record_reader(plan.taskwarrior_record_file)
+    try:
+        record, record_issues = taskwarrior_record_reader(plan.taskwarrior_record_file)
+    except Exception:
+        return _acceptance_failure(
+            "taskwarrior_record_invalid",
+            "Taskwarrior acceptance could not load the installation record.",
+            path=plan.taskwarrior_record_file,
+        )
+
     if record is None or record_issues:
         return _acceptance_failure(
             "taskwarrior_record_invalid",
@@ -341,70 +352,25 @@ def run_release_candidate_acceptance(
         )
 
     tester = taskwarrior_acceptance or validate_taskwarrior_executable
-    smoke = tester(
-        record.executable,
-        temporary_parent=record.data.parent,
-        timeout_seconds=15.0,
-    )
     checks: list[PostInstallCheck] = [
-        PostInstallCheck(
-            code="taskwarrior_lifecycle",
-            message=(
-                "The disposable Taskwarrior lifecycle passed."
-                if smoke.passed
-                else "The disposable Taskwarrior lifecycle failed."
-            ),
-            state=(
-                PostInstallCheckState.PASSED
-                if smoke.passed
-                else PostInstallCheckState.FAILED
-            ),
-            path=record.executable,
+        _run_taskwarrior_acceptance(
+            plan,
+            record=record,
+            tester=tester,
         )
     ]
 
     if plan.telegram_enabled:
-        if telegram_validation is None:
-            checks.append(
-                PostInstallCheck(
-                    code="telegram_get_me",
-                    message=("Telegram identity validation was not supplied."),
-                    state=PostInstallCheckState.FAILED,
-                )
-            )
-        else:
-            validation = telegram_validation()
-            checks.append(
-                PostInstallCheck(
-                    code="telegram_get_me",
-                    message=(
-                        "Telegram bot identity validation passed."
-                        if validation.success
-                        else "Telegram bot identity validation failed."
-                    ),
-                    state=(
-                        PostInstallCheckState.PASSED
-                        if validation.success
-                        else PostInstallCheckState.FAILED
-                    ),
-                )
-            )
+        checks.append(_run_telegram_acceptance(telegram_validation))
 
+        required_checks_passed = not any(
+            check.state is PostInstallCheckState.FAILED for check in checks
+        )
         if notifier is not None:
-            notified = notifier("LEA release-candidate installation is complete.")
             checks.append(
-                PostInstallCheck(
-                    code="telegram_completion_message",
-                    message=(
-                        "The optional completion message was sent."
-                        if notified
-                        else "The optional completion message was not sent."
-                    ),
-                    state=(
-                        PostInstallCheckState.PASSED
-                        if notified
-                        else PostInstallCheckState.WARNING
-                    ),
+                _run_completion_notification(
+                    notifier,
+                    required_checks_passed=required_checks_passed,
                 )
             )
 
@@ -433,6 +399,98 @@ def run_release_candidate_acceptance(
         checks=tuple(checks),
         summary=summary,
         issues=acceptance_issues,
+    )
+
+
+def _run_taskwarrior_acceptance(
+    plan: PostInstallHealthPlan,
+    *,
+    record: TaskwarriorInstallationRecord,
+    tester: TaskwarriorAcceptanceTester,
+) -> PostInstallCheck:
+    """Run the disposable Taskwarrior lifecycle through a safe boundary."""
+    try:
+        smoke = tester(
+            record.executable,
+            temporary_parent=plan.acceptance_work_directory,
+            timeout_seconds=15.0,
+        )
+        passed = smoke.passed
+    except Exception:
+        passed = False
+
+    return PostInstallCheck(
+        code="taskwarrior_lifecycle",
+        message=(
+            "The disposable Taskwarrior lifecycle passed."
+            if passed
+            else "The disposable Taskwarrior lifecycle failed."
+        ),
+        state=(
+            PostInstallCheckState.PASSED if passed else PostInstallCheckState.FAILED
+        ),
+        path=record.executable,
+    )
+
+
+def _run_telegram_acceptance(
+    validator: TelegramAcceptanceValidator | None,
+) -> PostInstallCheck:
+    """Validate the Telegram identity without exposing boundary errors."""
+    if validator is None:
+        passed = False
+        message = "Telegram identity validation was not supplied."
+    else:
+        try:
+            passed = validator().success
+        except Exception:
+            passed = False
+        message = (
+            "Telegram bot identity validation passed."
+            if passed
+            else "Telegram bot identity validation failed."
+        )
+
+    return PostInstallCheck(
+        code="telegram_get_me",
+        message=message,
+        state=(
+            PostInstallCheckState.PASSED if passed else PostInstallCheckState.FAILED
+        ),
+    )
+
+
+def _run_completion_notification(
+    notifier: AcceptanceNotifier,
+    *,
+    required_checks_passed: bool,
+) -> PostInstallCheck:
+    """Send an optional completion notice after required checks pass."""
+    if not required_checks_passed:
+        return PostInstallCheck(
+            code="telegram_completion_message",
+            message=(
+                "The optional completion message was skipped because "
+                "required acceptance checks failed."
+            ),
+            state=PostInstallCheckState.WARNING,
+        )
+
+    try:
+        notified = notifier("LEA release-candidate installation is complete.")
+    except Exception:
+        notified = False
+
+    return PostInstallCheck(
+        code="telegram_completion_message",
+        message=(
+            "The optional completion message was sent."
+            if notified
+            else "The optional completion message was not sent."
+        ),
+        state=(
+            PostInstallCheckState.PASSED if notified else PostInstallCheckState.WARNING
+        ),
     )
 
 
