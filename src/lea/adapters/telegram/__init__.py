@@ -31,6 +31,12 @@ from lea.adapters.telegram.fakes import (
     TelegramFetchUpdatesCall,
     TelegramSendMessageCall,
 )
+from lea.adapters.telegram.formatting import (
+    TelegramFormattedResponse,
+    TelegramResponseFormattingIssue,
+    TelegramResponseFormattingResult,
+    format_telegram_response,
+)
 from lea.adapters.telegram.parser import (
     TelegramParsedCallback,
     TelegramParsedMessage,
@@ -69,12 +75,15 @@ __all__ = [
     "TelegramEditMessageResult",
     "TelegramFetchUpdatesCall",
     "TelegramFetchUpdatesResult",
+    "TelegramFormattedResponse",
     "TelegramInlineButton",
     "TelegramInlineKeyboard",
     "TelegramParsedCallback",
     "TelegramParsedCallbackData",
     "TelegramParsedMessage",
     "TelegramRequestIdSource",
+    "TelegramResponseFormattingIssue",
+    "TelegramResponseFormattingResult",
     "TelegramSendMessageCall",
     "TelegramSendMessageResult",
     "TelegramSentMessage",
@@ -87,6 +96,7 @@ __all__ = [
     "TelegramUtcClock",
     "build_telegram_controls",
     "default_telegram_command_definitions",
+    "format_telegram_response",
     "parse_telegram_callback_data",
     "parse_telegram_update",
     "route_telegram_update",
