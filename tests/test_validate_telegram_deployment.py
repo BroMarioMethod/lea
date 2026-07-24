@@ -54,6 +54,8 @@ Type=simple
 User=lea
 Group=lea
 WorkingDirectory=/opt/lea
+RuntimeDirectory=lea
+RuntimeDirectoryMode=0750
 EnvironmentFile=/etc/lea/telegram/worker.env
 ExecStart=/opt/lea/.venv/bin/lea-telegram
 Restart=on-failure
@@ -136,6 +138,32 @@ def test_missing_hardening_directive_fails(tmp_path: Path) -> None:
     )
 
     assert any(issue.code == "service_directive_missing" for issue in issues)
+
+
+def test_missing_runtime_directory_directive_fails(
+    tmp_path: Path,
+) -> None:
+    service, environment, telegram, users = _valid_assets(tmp_path)
+    service.write_text(
+        service.read_text(encoding="utf-8").replace(
+            "RuntimeDirectory=lea\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    issues = validate_telegram_deployment(
+        service_path=service,
+        environment_example_path=environment,
+        telegram_example_path=telegram,
+        authorised_users_example_path=users,
+    )
+
+    assert any(
+        issue.code == "service_directive_missing"
+        and "RuntimeDirectory=lea" in issue.message
+        for issue in issues
+    )
 
 
 def test_secret_pattern_in_example_fails(tmp_path: Path) -> None:
