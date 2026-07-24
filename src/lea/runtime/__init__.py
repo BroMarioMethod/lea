@@ -52,6 +52,14 @@ from lea.runtime.serialisation import (
     write_runtime_config,
 )
 from lea.runtime.setup import setup_runtime
+from lea.runtime.telegram import (
+    TelegramRuntimeConfig,
+    TelegramRuntimeDependencies,
+    TelegramRuntimeIssue,
+    TelegramRuntimeResult,
+    TelegramTransportFactory,
+    build_telegram_runtime,
+)
 from lea.runtime.templates import (
     development_runtime_config,
     isolated_test_runtime_config,
@@ -82,8 +90,14 @@ __all__ = [
     "RuntimeSetupResult",
     "RuntimeSetupVerificationResult",
     "SecretPaths",
+    "TelegramRuntimeConfig",
+    "TelegramRuntimeDependencies",
+    "TelegramRuntimeIssue",
+    "TelegramRuntimeResult",
+    "TelegramTransportFactory",
     "bootstrap_runtime",
     "build_knowledge_runtime",
+    "build_telegram_runtime",
     "check_runtime_health",
     "development_runtime_config",
     "development_runtime_paths",

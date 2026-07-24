@@ -1,0 +1,15 @@
+# Example Telegram runtime settings.
+# Keep real identifiers and secrets outside the repository.
+
+[telegram]
+enabled = false
+bot_username = "lea_example_bot"
+authorised_users_file = "/etc/lea/telegram/authorised-users.toml"
+offset_file = "/var/lib/lea/telegram/offset.json"
+poll_timeout_seconds = 30
+fetch_limit = 100
+
+# The bot token is referenced by the main LEA runtime configuration:
+#
+# [secrets]
+# telegram_token_file = "/etc/lea/secrets/telegram-bot-token"
