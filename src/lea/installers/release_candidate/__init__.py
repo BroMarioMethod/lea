@@ -31,6 +31,11 @@ from lea.installers.release_candidate.orchestration import (
     ReleaseCandidateOrchestrationResult,
     ReleaseCandidateOrchestrationState,
 )
+from lea.installers.release_candidate.orchestration_engine import (
+    ReleaseCandidateOrchestrationDependencies,
+    create_release_candidate_orchestration_dependencies,
+    run_release_candidate_orchestration,
+)
 from lea.installers.release_candidate.post_install import (
     PostInstallCheck,
     PostInstallCheckState,
@@ -124,6 +129,7 @@ __all__ = [
     "ReleaseCandidateInstallRequest",
     "ReleaseCandidateInstallResult",
     "ReleaseCandidateInstallationRecord",
+    "ReleaseCandidateOrchestrationDependencies",
     "ReleaseCandidateOrchestrationRequest",
     "ReleaseCandidateOrchestrationResult",
     "ReleaseCandidateOrchestrationState",
@@ -151,6 +157,7 @@ __all__ = [
     "create_base_configuration_plan",
     "create_installation_record",
     "create_post_install_health_plan",
+    "create_release_candidate_orchestration_dependencies",
     "create_system_provisioning_plan",
     "create_taskwarrior_installation_plan",
     "create_telegram_configuration_plan",
@@ -170,6 +177,7 @@ __all__ = [
     "run_host_preflight",
     "run_post_install_health",
     "run_release_candidate_acceptance",
+    "run_release_candidate_orchestration",
     "validate_bot_token_shape",
     "validate_bot_with_telegram",
 ]
