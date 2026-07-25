@@ -36,6 +36,10 @@ from lea.installers.release_candidate.orchestration_engine import (
     create_release_candidate_orchestration_dependencies,
     run_release_candidate_orchestration,
 )
+from lea.installers.release_candidate.planning import (
+    create_release_candidate_install_plan,
+    render_release_candidate_install_plan,
+)
 from lea.installers.release_candidate.post_install import (
     PostInstallCheck,
     PostInstallCheckState,
@@ -157,6 +161,7 @@ __all__ = [
     "create_base_configuration_plan",
     "create_installation_record",
     "create_post_install_health_plan",
+    "create_release_candidate_install_plan",
     "create_release_candidate_orchestration_dependencies",
     "create_system_provisioning_plan",
     "create_taskwarrior_installation_plan",
@@ -174,6 +179,7 @@ __all__ = [
     "read_hidden_bot_token",
     "read_installation_record",
     "render_installation_record",
+    "render_release_candidate_install_plan",
     "run_host_preflight",
     "run_post_install_health",
     "run_release_candidate_acceptance",
