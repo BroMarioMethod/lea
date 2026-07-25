@@ -41,6 +41,45 @@ def _failed_configuration(path: Path) -> ConfigurationResult:
     )
 
 
+def test_base_plan_includes_telegram_token_file_when_enabled(
+    tmp_path: Path,
+) -> None:
+    """Telegram-enabled installs must create the final runtime configuration."""
+    request = ReleaseCandidateInstallRequest(
+        mode=ReleaseCandidateInstallMode.FRESH_INSTALL,
+        display_timezone="Africa/Gaborone",
+        enable_telegram=True,
+        configuration_root=tmp_path / "etc" / "lea",
+        state_root=tmp_path / "var" / "lib" / "lea",
+        log_root=tmp_path / "var" / "log" / "lea",
+    )
+
+    plan = create_base_configuration_plan(request)
+
+    assert (
+        str(request.configuration_root / "secrets" / "telegram-bot-token")
+        in plan.rendered_configuration
+    )
+
+
+def test_base_plan_omits_telegram_token_file_when_disabled(
+    tmp_path: Path,
+) -> None:
+    """Non-Telegram installs must not reference a Telegram secret."""
+    request = ReleaseCandidateInstallRequest(
+        mode=ReleaseCandidateInstallMode.FRESH_INSTALL,
+        display_timezone="Africa/Gaborone",
+        enable_telegram=False,
+        configuration_root=tmp_path / "etc" / "lea",
+        state_root=tmp_path / "var" / "lib" / "lea",
+        log_root=tmp_path / "var" / "log" / "lea",
+    )
+
+    plan = create_base_configuration_plan(request)
+
+    assert "telegram-bot-token" not in plan.rendered_configuration
+
+
 def test_plan_uses_canonical_paths_and_metadata(tmp_path: Path) -> None:
     """Base configuration plans should use canonical managed paths."""
     request = _request(tmp_path)

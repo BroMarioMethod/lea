@@ -173,8 +173,14 @@ def create_base_configuration_plan(
         raise TypeError("request must be a ReleaseCandidateInstallRequest value.")
 
     config_file = request.configuration_root / "lea.toml"
+    telegram_token_file = (
+        request.configuration_root / "secrets" / "telegram-bot-token"
+        if request.enable_telegram
+        else None
+    )
     runtime_config = system_runtime_config(
         display_timezone=request.display_timezone,
+        telegram_token_file=telegram_token_file,
     )
 
     return BaseConfigurationPlan(

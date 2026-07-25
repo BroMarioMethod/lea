@@ -15,7 +15,10 @@ from lea.installers.release_candidate import (
     TelegramOnboardingConfirmation,
     TelegramOnboardingIdentity,
     TelegramOnboardingRole,
+    create_base_configuration_plan,
+    create_installation_record,
     create_telegram_configuration_plan,
+    install_base_configuration,
     persist_telegram_configuration,
 )
 
@@ -87,8 +90,16 @@ def test_plan_uses_required_paths_and_modes(tmp_path: Path) -> None:
 
 
 def test_persistence_writes_and_validates_all_files(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    base_result = install_base_configuration(
+        create_base_configuration_plan(request),
+        create_installation_record(
+            request=request,
+            lea_version="0.1.0",
+        ),
+    )
     plan = create_telegram_configuration_plan(
-        _request(tmp_path),
+        request,
         _confirmation(),
     )
     ownership: list[tuple[Path, str, str]] = []
@@ -102,9 +113,9 @@ def test_persistence_writes_and_validates_all_files(tmp_path: Path) -> None:
         ),
     )
 
+    assert base_result.success is True
     assert result.success is True
     assert set(result.changed_files) == {
-        plan.runtime_config_file,
         plan.telegram_config_file,
         plan.authorised_users_file,
         plan.worker_environment_file,
@@ -113,6 +124,37 @@ def test_persistence_writes_and_validates_all_files(tmp_path: Path) -> None:
     assert plan.token_file.read_text(encoding="utf-8") == TOKEN + "\n"
     assert TOKEN not in plan.telegram_config_file.read_text(encoding="utf-8")
     assert len(ownership) == 5
+
+
+def test_fresh_base_configuration_does_not_require_telegram_replacement(
+    tmp_path: Path,
+) -> None:
+    """Telegram persistence must accept the base file from the same install."""
+    request = _request(tmp_path)
+    base = install_base_configuration(
+        create_base_configuration_plan(request),
+        create_installation_record(
+            request=request,
+            lea_version="0.1.0",
+        ),
+    )
+    plan = create_telegram_configuration_plan(
+        request,
+        _confirmation(),
+    )
+
+    result = persist_telegram_configuration(
+        plan,
+        token=TOKEN,
+        approve_replacement=False,
+    )
+
+    assert base.success is True
+    assert result.success is True
+    assert plan.runtime_config_file not in result.changed_files
+    assert plan.runtime_config_file.read_text(encoding="utf-8") == (
+        plan.runtime_contents
+    )
 
 
 def test_second_run_is_idempotent(tmp_path: Path) -> None:
