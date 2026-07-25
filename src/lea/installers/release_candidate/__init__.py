@@ -24,6 +24,13 @@ from lea.installers.release_candidate.contracts import (
     ReleaseCandidateInstallRequest,
     ReleaseCandidateInstallResult,
 )
+from lea.installers.release_candidate.orchestration import (
+    InstallerInteraction,
+    InstallerInteractionKind,
+    ReleaseCandidateOrchestrationRequest,
+    ReleaseCandidateOrchestrationResult,
+    ReleaseCandidateOrchestrationState,
+)
 from lea.installers.release_candidate.post_install import (
     PostInstallCheck,
     PostInstallCheckState,
@@ -96,6 +103,8 @@ __all__ = [
     "HostPreflightCheck",
     "HostPreflightCheckState",
     "HostPreflightResult",
+    "InstallerInteraction",
+    "InstallerInteractionKind",
     "InstallerIssue",
     "InstallerIssueCode",
     "InstallerMutation",
@@ -115,6 +124,9 @@ __all__ = [
     "ReleaseCandidateInstallRequest",
     "ReleaseCandidateInstallResult",
     "ReleaseCandidateInstallationRecord",
+    "ReleaseCandidateOrchestrationRequest",
+    "ReleaseCandidateOrchestrationResult",
+    "ReleaseCandidateOrchestrationState",
     "ReleaseCandidateTaskwarriorInputs",
     "ReleaseCandidateTaskwarriorPlan",
     "ReleaseCandidateTaskwarriorResult",
