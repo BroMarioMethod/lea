@@ -275,6 +275,8 @@ def discover_telegram_start_identity(
         raise ValueError("maximum_attempts must be greater than zero.")
 
     next_offset = offset
+    successful_fetch_observed = False
+    fetch_failure_observed = False
 
     for _attempt in range(maximum_attempts):
         if cancelled():
@@ -297,21 +299,10 @@ def discover_telegram_start_identity(
             fetched = None
 
         if fetched is None or not fetched.success:
-            return TelegramIdentityDiscoveryResult(
-                success=False,
-                cancelled=False,
-                identity=None,
-                next_offset=next_offset,
-                issues=(
-                    TelegramOnboardingIssue(
-                        code="telegram_onboarding_fetch_failed",
-                        message=(
-                            "Telegram updates could not be fetched during onboarding."
-                        ),
-                        operation="get_updates",
-                    ),
-                ),
-            )
+            fetch_failure_observed = True
+            continue
+
+        successful_fetch_observed = True
 
         for update in fetched.updates:
             next_offset = update.update_id + 1
@@ -325,21 +316,28 @@ def discover_telegram_start_identity(
                     issues=(),
                 )
 
+    if fetch_failure_observed and not successful_fetch_observed:
+        issue = TelegramOnboardingIssue(
+            code="telegram_onboarding_fetch_failed",
+            message=("Telegram updates could not be fetched during onboarding."),
+            operation="get_updates",
+        )
+    else:
+        issue = TelegramOnboardingIssue(
+            code="telegram_start_timeout",
+            message=(
+                "No private /start message was received within the "
+                "configured onboarding attempts."
+            ),
+            operation="get_updates",
+        )
+
     return TelegramIdentityDiscoveryResult(
         success=False,
         cancelled=False,
         identity=None,
         next_offset=next_offset,
-        issues=(
-            TelegramOnboardingIssue(
-                code="telegram_start_timeout",
-                message=(
-                    "No private /start message was received within the "
-                    "configured onboarding attempts."
-                ),
-                operation="get_updates",
-            ),
-        ),
+        issues=(issue,),
     )
 
 

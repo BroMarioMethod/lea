@@ -259,6 +259,104 @@ def test_discovery_timeout_is_structured() -> None:
     assert result.issues[0].code == "telegram_start_timeout"
 
 
+def test_discovery_retries_transient_fetch_failure_then_succeeds() -> None:
+    """A temporary fetch failure must not abort Telegram onboarding."""
+    client = FakeOnboardingClient()
+    client.fetch_results.extend(
+        (
+            TelegramFetchUpdatesResult(
+                success=False,
+                updates=(),
+                issues=(
+                    TelegramTransportIssue(
+                        code="network",
+                        message="Temporary transport failure.",
+                        operation="fetch_updates",
+                    ),
+                ),
+            ),
+            TelegramFetchUpdatesResult(
+                success=True,
+                updates=(_start(),),
+                issues=(),
+            ),
+        )
+    )
+
+    result = discover_telegram_start_identity(
+        TOKEN,
+        client,
+        maximum_attempts=2,
+    )
+
+    assert result.success is True
+    assert result.identity is not None
+    assert result.identity.update_id == 42
+    assert len(client.tokens) == 2
+
+
+def test_discovery_timeout_after_failure_and_successful_empty_fetch() -> None:
+    """One successful fetch means exhaustion is a /start timeout."""
+    client = FakeOnboardingClient()
+    client.fetch_results.extend(
+        (
+            TelegramFetchUpdatesResult(
+                success=False,
+                updates=(),
+                issues=(
+                    TelegramTransportIssue(
+                        code="network",
+                        message="Temporary transport failure.",
+                        operation="fetch_updates",
+                    ),
+                ),
+            ),
+            TelegramFetchUpdatesResult(
+                success=True,
+                updates=(),
+                issues=(),
+            ),
+        )
+    )
+
+    result = discover_telegram_start_identity(
+        TOKEN,
+        client,
+        maximum_attempts=2,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code == "telegram_start_timeout"
+    assert len(client.tokens) == 2
+
+
+def test_discovery_reports_fetch_failure_when_every_attempt_fails() -> None:
+    """Exhausted transport failures must retain the fetch-failure outcome."""
+    client = FakeOnboardingClient()
+    failure = TelegramFetchUpdatesResult(
+        success=False,
+        updates=(),
+        issues=(
+            TelegramTransportIssue(
+                code="network",
+                message="Temporary transport failure.",
+                operation="fetch_updates",
+            ),
+        ),
+    )
+    client.fetch_results.extend((failure, failure))
+
+    result = discover_telegram_start_identity(
+        TOKEN,
+        client,
+        maximum_attempts=2,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code == "telegram_onboarding_fetch_failed"
+    assert len(client.tokens) == 2
+
+
 def test_discovery_fetch_failure_is_redacted() -> None:
     """Transport failures should become safe onboarding issues."""
     client = FakeOnboardingClient()
@@ -276,9 +374,14 @@ def test_discovery_fetch_failure_is_redacted() -> None:
         )
     )
 
-    result = discover_telegram_start_identity(TOKEN, client)
+    result = discover_telegram_start_identity(
+        TOKEN,
+        client,
+        maximum_attempts=1,
+    )
 
     assert result.success is False
+    assert result.issues[0].code == "telegram_onboarding_fetch_failed"
     assert TOKEN not in result.issues[0].message
 
 
