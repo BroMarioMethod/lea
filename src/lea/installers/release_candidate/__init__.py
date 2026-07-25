@@ -1,5 +1,12 @@
 """Public release-candidate installer contracts."""
 
+from lea.installers.release_candidate.acceptance_record import (
+    AcceptanceRecordWriteResult,
+    ReleaseCandidateAcceptanceRecord,
+    create_release_candidate_acceptance_record,
+    render_release_candidate_acceptance_record,
+    write_release_candidate_acceptance_record,
+)
 from lea.installers.release_candidate.configuration import (
     BaseConfigurationPlan,
     BaseConfigurationResult,
@@ -109,6 +116,7 @@ from lea.installers.release_candidate.telegram_onboarding_client import (
 )
 
 __all__ = [
+    "AcceptanceRecordWriteResult",
     "BaseConfigurationPlan",
     "BaseConfigurationResult",
     "BotApiTelegramOnboardingClient",
@@ -131,6 +139,7 @@ __all__ = [
     "PostInstallCheckState",
     "PostInstallHealthPlan",
     "PostInstallHealthResult",
+    "ReleaseCandidateAcceptanceRecord",
     "ReleaseCandidateAcceptanceResult",
     "ReleaseCandidateInstallMode",
     "ReleaseCandidateInstallPlan",
@@ -165,6 +174,7 @@ __all__ = [
     "create_base_configuration_plan",
     "create_installation_record",
     "create_post_install_health_plan",
+    "create_release_candidate_acceptance_record",
     "create_release_candidate_install_plan",
     "create_release_candidate_orchestration_dependencies",
     "create_system_provisioning_plan",
@@ -183,6 +193,7 @@ __all__ = [
     "read_hidden_bot_token",
     "read_installation_record",
     "render_installation_record",
+    "render_release_candidate_acceptance_record",
     "render_release_candidate_install_plan",
     "run_host_preflight",
     "run_post_install_health",
@@ -190,4 +201,5 @@ __all__ = [
     "run_release_candidate_orchestration",
     "validate_bot_token_shape",
     "validate_bot_with_telegram",
+    "write_release_candidate_acceptance_record",
 ]
