@@ -1,5 +1,12 @@
 """Public release-candidate installer contracts."""
 
+from lea.installers.release_candidate.acceptance_harness import (
+    ReleaseCandidateAcceptanceHarnessDependencies,
+    ReleaseCandidateAcceptanceHarnessPlan,
+    ReleaseCandidateAcceptanceHarnessResult,
+    create_release_candidate_acceptance_harness_plan,
+    run_release_candidate_acceptance_harness,
+)
 from lea.installers.release_candidate.acceptance_record import (
     AcceptanceRecordWriteResult,
     ReleaseCandidateAcceptanceRecord,
@@ -139,6 +146,9 @@ __all__ = [
     "PostInstallCheckState",
     "PostInstallHealthPlan",
     "PostInstallHealthResult",
+    "ReleaseCandidateAcceptanceHarnessDependencies",
+    "ReleaseCandidateAcceptanceHarnessPlan",
+    "ReleaseCandidateAcceptanceHarnessResult",
     "ReleaseCandidateAcceptanceRecord",
     "ReleaseCandidateAcceptanceResult",
     "ReleaseCandidateInstallMode",
@@ -174,6 +184,7 @@ __all__ = [
     "create_base_configuration_plan",
     "create_installation_record",
     "create_post_install_health_plan",
+    "create_release_candidate_acceptance_harness_plan",
     "create_release_candidate_acceptance_record",
     "create_release_candidate_install_plan",
     "create_release_candidate_orchestration_dependencies",
@@ -198,6 +209,7 @@ __all__ = [
     "run_host_preflight",
     "run_post_install_health",
     "run_release_candidate_acceptance",
+    "run_release_candidate_acceptance_harness",
     "run_release_candidate_orchestration",
     "validate_bot_token_shape",
     "validate_bot_with_telegram",
