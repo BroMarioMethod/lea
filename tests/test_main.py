@@ -102,6 +102,19 @@ def successful_local_cli_runner(
     return EXIT_SUCCESS
 
 
+def successful_release_candidate_acceptance_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Record one successful acceptance CLI invocation."""
+    assert tuple(arguments) == ("--no-telegram",)
+    stdout.write("Acceptance command completed.\n")
+    assert stderr.write("") == 0
+    return EXIT_SUCCESS
+
+
 @pytest.fixture
 def test_environment() -> Mapping[str, str]:
     """Return valid test configuration."""
@@ -339,3 +352,61 @@ def test_non_runtime_arguments_preserve_existing_application_path(
     )
 
     assert exit_code == EXIT_SUCCESS
+
+
+def test_dispatch_acceptance_command_uses_acceptance_boundary() -> None:
+    """Acceptance arguments should avoid legacy application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "accept-release-candidate",
+            "--no-telegram",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_acceptance_cli_runner=(
+            successful_release_candidate_acceptance_runner
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Acceptance command completed.\n"
+    assert stderr.getvalue() == ""
+
+
+def test_dispatch_preserves_acceptance_exit_code() -> None:
+    """Acceptance failures should preserve their exit status."""
+
+    def failing_acceptance_runner(
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        assert tuple(arguments) == ("--telegram",)
+        stdout.write("Acceptance checks failed.\n")
+        assert stderr.write("") == 0
+        return EXIT_APPLICATION_ERROR
+
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "accept-release-candidate",
+            "--telegram",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_acceptance_cli_runner=failing_acceptance_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_APPLICATION_ERROR
+    assert stdout.getvalue() == "Acceptance checks failed.\n"
+    assert stderr.getvalue() == ""

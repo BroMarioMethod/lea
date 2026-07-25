@@ -11,6 +11,9 @@ from lea.cli import execute_local_cli
 from lea.config import AppConfig, load_config
 from lea.errors import ConfigurationError, LeaError
 from lea.logging import configure_logging
+from lea.release_candidate_acceptance_cli import (
+    execute_release_candidate_acceptance_cli,
+)
 from lea.release_candidate_cli import execute_release_candidate_cli
 from lea.runtime_cli import execute_runtime_cli
 
@@ -77,6 +80,20 @@ def execute(
     return EXIT_SUCCESS
 
 
+class ReleaseCandidateAcceptanceCliRunner(Protocol):
+    """Callable boundary for release-candidate acceptance CLI execution."""
+
+    def __call__(
+        self,
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        """Execute release-candidate acceptance arguments."""
+        ...
+
+
 def dispatch(
     arguments: Sequence[str],
     environment: Mapping[str, str],
@@ -85,6 +102,9 @@ def dispatch(
     runtime_cli_runner: RuntimeCliRunner = execute_runtime_cli,
     release_candidate_cli_runner: ReleaseCandidateCliRunner = (
         execute_release_candidate_cli
+    ),
+    release_candidate_acceptance_cli_runner: ReleaseCandidateAcceptanceCliRunner = (
+        execute_release_candidate_acceptance_cli
     ),
     local_cli_runner: LocalCliRunner = execute_local_cli,
     stdout: TextIO = sys.stdout,
@@ -95,6 +115,12 @@ def dispatch(
         return runtime_cli_runner(arguments[1:], stdout=stdout, stderr=stderr)
     if arguments and arguments[0] == "install-release-candidate":
         return release_candidate_cli_runner(
+            arguments[1:],
+            stdout=stdout,
+            stderr=stderr,
+        )
+    if arguments and arguments[0] == "accept-release-candidate":
+        return release_candidate_acceptance_cli_runner(
             arguments[1:],
             stdout=stdout,
             stderr=stderr,
