@@ -639,7 +639,10 @@ def run_release_candidate_orchestration(
             completed,
             _failed_step(
                 InstallerStepId.ACCEPTANCE,
-                "Release-candidate functional acceptance failed.",
+                (
+                    acceptance.summary.strip()
+                    or "Release-candidate functional acceptance failed."
+                ),
                 acceptance.issues,
             ),
         )
@@ -647,7 +650,10 @@ def run_release_candidate_orchestration(
     completed.append(
         _completed_step(
             InstallerStepId.ACCEPTANCE,
-            "Release-candidate functional acceptance passed.",
+            (
+                acceptance.summary.strip()
+                or "Release-candidate functional acceptance passed."
+            ),
         )
     )
 

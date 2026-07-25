@@ -73,6 +73,22 @@ def failing_runtime_runner(
     return EXIT_APPLICATION_ERROR
 
 
+def successful_release_candidate_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Record one successful installer CLI invocation."""
+    assert tuple(arguments) == (
+        "--mode",
+        "repair",
+    )
+    stdout.write("Installer command completed.\n")
+    assert stderr.write("") == 0
+    return EXIT_SUCCESS
+
+
 def successful_local_cli_runner(
     arguments: Sequence[str],
     *,
@@ -215,6 +231,29 @@ def test_dispatch_runtime_does_not_require_application_config() -> None:
     )
 
     assert exit_code == EXIT_SUCCESS
+
+
+def test_dispatch_release_candidate_command_uses_installer_boundary() -> None:
+    """Installer arguments should avoid legacy application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "install-release-candidate",
+            "--mode",
+            "repair",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_cli_runner=successful_release_candidate_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Installer command completed.\n"
+    assert stderr.getvalue() == ""
 
 
 def test_dispatch_local_cli_command_uses_local_boundary() -> None:
