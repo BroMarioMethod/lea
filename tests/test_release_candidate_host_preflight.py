@@ -129,6 +129,33 @@ def test_executable_elsewhere_in_path_does_not_satisfy_exact_path(
     assert facts.missing_executables == (missing,)
 
 
+def test_source_checkout_is_not_a_managed_installation_marker() -> None:
+    """The installer checkout must remain separate from installed state."""
+    from lea.installers.release_candidate import preflight
+
+    assert Path("/opt/lea") not in preflight._MANAGED_PATHS
+
+
+def test_fresh_install_allows_source_checkout_without_installation_markers() -> None:
+    """A repository checkout must not count as an installed LEA system."""
+    result = evaluate_host_preflight(
+        _request(),
+        _facts(
+            managed_paths_present=(),
+            service_user_exists=False,
+            service_group_exists=False,
+        ),
+    )
+
+    assert result.supported is True
+    assert result.issues == ()
+    assert any(
+        check.name == "existing_installation"
+        and check.state is HostPreflightCheckState.PASSED
+        for check in result.checks
+    )
+
+
 def test_fresh_install_rejects_existing_markers() -> None:
     """Fresh-install mode must not overwrite an existing LEA installation."""
     result = evaluate_host_preflight(

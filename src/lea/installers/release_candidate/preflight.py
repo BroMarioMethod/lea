@@ -148,7 +148,6 @@ _REQUIRED_EXECUTABLES = (
 )
 
 _MANAGED_PATHS = (
-    Path("/opt/lea"),
     Path("/etc/lea"),
     Path("/var/lib/lea"),
     Path("/var/log/lea"),
