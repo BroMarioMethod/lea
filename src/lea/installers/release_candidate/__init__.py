@@ -104,10 +104,14 @@ from lea.installers.release_candidate.telegram_onboarding import (
     validate_bot_token_shape,
     validate_bot_with_telegram,
 )
+from lea.installers.release_candidate.telegram_onboarding_client import (
+    BotApiTelegramOnboardingClient,
+)
 
 __all__ = [
     "BaseConfigurationPlan",
     "BaseConfigurationResult",
+    "BotApiTelegramOnboardingClient",
     "HostFacts",
     "HostPreflightCheck",
     "HostPreflightCheckState",
