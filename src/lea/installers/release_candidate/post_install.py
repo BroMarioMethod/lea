@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,6 +10,9 @@ from pathlib import Path
 
 from lea.adapters.taskwarrior import TaskwarriorConfig, inspect_taskwarrior
 from lea.channels import load_authorised_channel_users
+from lea.installers.release_candidate.configuration import (
+    read_installation_record,
+)
 from lea.installers.release_candidate.contracts import (
     InstallerIssue,
     InstallerIssueCode,
@@ -522,18 +524,9 @@ def _check_installation_record(
     *,
     checks: list[PostInstallCheck],
 ) -> None:
-    """Validate the minimal strict release-candidate record shape."""
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        payload = None
+    """Validate the canonical release-candidate installation record."""
+    valid = read_installation_record(path) is not None
 
-    valid = (
-        isinstance(payload, dict)
-        and payload.get("schema_version") == 1
-        and payload.get("component") == "lea"
-        and isinstance(payload.get("installed_at"), str)
-    )
     checks.append(
         PostInstallCheck(
             code="installation_record",

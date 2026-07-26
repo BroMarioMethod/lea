@@ -1,20 +1,25 @@
 """Tests for release-candidate post-install health and acceptance."""
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from lea.installers.release_candidate import (
+    PostInstallCheck,
     PostInstallCheckState,
     PostInstallHealthPlan,
     PostInstallHealthResult,
     ReleaseCandidateInstallMode,
     ReleaseCandidateInstallRequest,
     SystemCommandResult,
+    create_installation_record,
     create_post_install_health_plan,
+    render_installation_record,
     run_post_install_health,
     run_release_candidate_acceptance,
+)
+from lea.installers.release_candidate.post_install import (
+    _check_installation_record,
 )
 from lea.installers.release_candidate.telegram_onboarding import (
     TelegramBotIdentity,
@@ -86,12 +91,11 @@ def _prepare(
     )
     plan.installation_record_file.parent.mkdir(parents=True)
     plan.installation_record_file.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "component": "lea",
-                "installed_at": "2026-07-24T12:00:00Z",
-            }
+        render_installation_record(
+            create_installation_record(
+                request=request,
+                lea_version="0.1.0",
+            )
         ),
         encoding="utf-8",
     )
@@ -111,6 +115,62 @@ def _failed_configuration(path: Path) -> ConfigurationResult:
             ),
         ),
     )
+
+
+def test_health_accepts_canonical_release_candidate_record(
+    tmp_path: Path,
+) -> None:
+    """Health must accept the record produced by the installer writer."""
+    request = ReleaseCandidateInstallRequest(
+        mode=ReleaseCandidateInstallMode.REPAIR,
+        display_timezone="Africa/Gaborone",
+        enable_telegram=False,
+        configuration_root=tmp_path / "etc" / "lea",
+        state_root=tmp_path / "var" / "lib" / "lea",
+        log_root=tmp_path / "var" / "log" / "lea",
+    )
+    record_path = request.state_root / "install" / "release-candidate.json"
+    record_path.parent.mkdir(parents=True)
+    record_path.write_text(
+        render_installation_record(
+            create_installation_record(
+                request=request,
+                lea_version="0.1.0",
+            )
+        ),
+        encoding="utf-8",
+    )
+    checks: list[PostInstallCheck] = []
+
+    _check_installation_record(
+        record_path,
+        checks=checks,
+    )
+
+    assert len(checks) == 1
+    assert checks[0].code == "installation_record"
+    assert checks[0].state is PostInstallCheckState.PASSED
+
+
+def test_health_rejects_invalid_release_candidate_record(
+    tmp_path: Path,
+) -> None:
+    """Health must reject malformed or incompatible record documents."""
+    record_path = tmp_path / "release-candidate.json"
+    record_path.write_text(
+        '{"schema_version": 1, "component": "lea"}\n',
+        encoding="utf-8",
+    )
+    checks: list[PostInstallCheck] = []
+
+    _check_installation_record(
+        record_path,
+        checks=checks,
+    )
+
+    assert len(checks) == 1
+    assert checks[0].code == "installation_record"
+    assert checks[0].state is PostInstallCheckState.FAILED
 
 
 def test_plan_uses_canonical_paths(tmp_path: Path) -> None:
