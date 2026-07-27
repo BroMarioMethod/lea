@@ -15,6 +15,9 @@ from lea.release_candidate_acceptance_cli import (
     execute_release_candidate_acceptance_cli,
 )
 from lea.release_candidate_cli import execute_release_candidate_cli
+from lea.release_candidate_uninstall_cli import (
+    execute_release_candidate_uninstall_cli,
+)
 from lea.runtime_cli import execute_runtime_cli
 
 EXIT_SUCCESS = 0
@@ -42,6 +45,20 @@ class ReleaseCandidateCliRunner(Protocol):
         self, arguments: Sequence[str], *, stdout: TextIO, stderr: TextIO
     ) -> int:
         """Execute release-candidate installer arguments."""
+        ...
+
+
+class ReleaseCandidateUninstallCliRunner(Protocol):
+    """Callable boundary for release-candidate uninstall execution."""
+
+    def __call__(
+        self,
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        """Execute release-candidate uninstall arguments."""
         ...
 
 
@@ -106,6 +123,9 @@ def dispatch(
     release_candidate_acceptance_cli_runner: ReleaseCandidateAcceptanceCliRunner = (
         execute_release_candidate_acceptance_cli
     ),
+    release_candidate_uninstall_cli_runner: ReleaseCandidateUninstallCliRunner = (
+        execute_release_candidate_uninstall_cli
+    ),
     local_cli_runner: LocalCliRunner = execute_local_cli,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
@@ -121,6 +141,12 @@ def dispatch(
         )
     if arguments and arguments[0] == "accept-release-candidate":
         return release_candidate_acceptance_cli_runner(
+            arguments[1:],
+            stdout=stdout,
+            stderr=stderr,
+        )
+    if arguments and arguments[0] == "uninstall-release-candidate":
+        return release_candidate_uninstall_cli_runner(
             arguments[1:],
             stdout=stdout,
             stderr=stderr,

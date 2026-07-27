@@ -410,3 +410,37 @@ def test_dispatch_preserves_acceptance_exit_code() -> None:
     assert exit_code == EXIT_APPLICATION_ERROR
     assert stdout.getvalue() == "Acceptance checks failed.\n"
     assert stderr.getvalue() == ""
+
+
+def test_dispatch_uninstall_command_uses_uninstall_boundary() -> None:
+    """Uninstall arguments should avoid legacy application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    def successful_uninstall_runner(
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        assert tuple(arguments) == ("--purge", "--yes")
+        stdout.write("Uninstall command completed.\n")
+        assert stderr.write("") == 0
+        return EXIT_SUCCESS
+
+    exit_code = dispatch(
+        [
+            "uninstall-release-candidate",
+            "--purge",
+            "--yes",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_uninstall_cli_runner=(successful_uninstall_runner),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Uninstall command completed.\n"
+    assert stderr.getvalue() == ""

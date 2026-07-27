@@ -126,6 +126,25 @@ from lea.installers.release_candidate.telegram_onboarding import (
 from lea.installers.release_candidate.telegram_onboarding_client import (
     BotApiTelegramOnboardingClient,
 )
+from lea.installers.release_candidate.uninstall_contracts import (
+    ReleaseCandidateUninstallIssue,
+    ReleaseCandidateUninstallIssueCode,
+    ReleaseCandidateUninstallMutation,
+    ReleaseCandidateUninstallMutationKind,
+    ReleaseCandidateUninstallPlan,
+    ReleaseCandidateUninstallRequest,
+    ReleaseCandidateUninstallResult,
+    ReleaseCandidateUninstallStepId,
+    ReleaseCandidateUninstallStepPlan,
+    ReleaseCandidateUninstallStepResult,
+    ReleaseCandidateUninstallStepState,
+)
+from lea.installers.release_candidate.uninstall_executor import (
+    execute_release_candidate_uninstall,
+)
+from lea.installers.release_candidate.uninstall_planning import (
+    create_release_candidate_uninstall_plan,
+)
 
 __all__ = [
     "AcceptanceRecordWriteResult",
@@ -171,6 +190,17 @@ __all__ = [
     "ReleaseCandidateTaskwarriorInputs",
     "ReleaseCandidateTaskwarriorPlan",
     "ReleaseCandidateTaskwarriorResult",
+    "ReleaseCandidateUninstallIssue",
+    "ReleaseCandidateUninstallIssueCode",
+    "ReleaseCandidateUninstallMutation",
+    "ReleaseCandidateUninstallMutationKind",
+    "ReleaseCandidateUninstallPlan",
+    "ReleaseCandidateUninstallRequest",
+    "ReleaseCandidateUninstallResult",
+    "ReleaseCandidateUninstallStepId",
+    "ReleaseCandidateUninstallStepPlan",
+    "ReleaseCandidateUninstallStepResult",
+    "ReleaseCandidateUninstallStepState",
     "SystemCommandResult",
     "SystemProvisioningPlan",
     "SystemProvisioningResult",
@@ -196,6 +226,7 @@ __all__ = [
     "create_release_candidate_acceptance_record",
     "create_release_candidate_install_plan",
     "create_release_candidate_orchestration_dependencies",
+    "create_release_candidate_uninstall_plan",
     "create_system_provisioning_plan",
     "create_taskwarrior_installation_plan",
     "create_telegram_configuration_plan",
@@ -203,6 +234,7 @@ __all__ = [
     "deploy_telegram_systemd_service",
     "discover_telegram_start_identity",
     "evaluate_host_preflight",
+    "execute_release_candidate_uninstall",
     "extract_start_identity",
     "format_release_candidate_summary",
     "install_base_configuration",

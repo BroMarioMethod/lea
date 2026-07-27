@@ -144,3 +144,40 @@ def test_acceptance_module_rejects_relative_state_root() -> None:
     assert result.returncode == 2
     assert result.stdout == ""
     assert "state_root must be absolute" in result.stderr
+
+
+def test_uninstall_console_help_returns_success() -> None:
+    """The installed lea command should expose uninstall help."""
+    result = run_command(
+        [
+            "uv",
+            "run",
+            "lea",
+            "uninstall-release-candidate",
+            "--help",
+        ]
+    )
+
+    assert result.returncode == 0
+    assert "usage: lea uninstall-release-candidate" in result.stdout
+    assert "--purge" in result.stdout
+    assert "--yes" in result.stdout
+    assert result.stderr == ""
+
+
+def test_uninstall_module_requires_purge() -> None:
+    """Module execution should require explicit destructive intent."""
+    result = run_command(
+        [
+            "uv",
+            "run",
+            sys.executable,
+            "-m",
+            "lea",
+            "uninstall-release-candidate",
+        ]
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "--purge" in result.stderr
