@@ -261,7 +261,7 @@ def run_post_install_health(
                 message=(
                     "The managed Taskwarrior executable is available."
                     if inspection.available
-                    else "The managed Taskwarrior executable is unavailable."
+                    else _render_taskwarrior_inspection_failure(inspection)
                 ),
                 state=(
                     PostInstallCheckState.PASSED
@@ -302,6 +302,22 @@ def run_post_install_health(
         checks=tuple(checks),
         issues=tuple(issues),
     )
+
+
+def _render_taskwarrior_inspection_failure(
+    inspection: TaskProviderInspectionResult,
+) -> str:
+    """Render bounded structured Taskwarrior inspection diagnostics."""
+    details = "; ".join(
+        f"[{issue.code}] {issue.message}" for issue in inspection.issues
+    )
+
+    message = "The managed Taskwarrior inspection failed."
+
+    if details:
+        return f"{message} {details}"
+
+    return message
 
 
 def run_release_candidate_acceptance(

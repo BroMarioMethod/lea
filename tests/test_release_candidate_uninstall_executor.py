@@ -439,3 +439,58 @@ def test_retry_removes_remaining_group_only(
         "/usr/sbin/groupdel",
         "lea",
     )
+
+
+def test_user_removal_may_also_remove_private_group(
+    tmp_path: Path,
+) -> None:
+    """The group must be re-checked after deleting its matching user."""
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    user_present = True
+    group_present = True
+
+    def user_exists(_name: str) -> bool:
+        return user_present
+
+    def group_exists(_name: str) -> bool:
+        return group_present
+
+    def run(
+        command: tuple[str, ...],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal user_present, group_present
+        runner.commands.append(command)
+
+        if command == ("/usr/sbin/userdel", "lea"):
+            user_present = False
+            group_present = False
+
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+    result = execute_release_candidate_uninstall(
+        create_release_candidate_uninstall_plan(request),
+        command_runner=run,
+        user_exists=user_exists,
+        group_exists=group_exists,
+    )
+
+    assert result.success is True
+    assert runner.commands[-1] == (
+        "/usr/sbin/userdel",
+        "lea",
+    )
+    assert (
+        "/usr/sbin/groupdel",
+        "lea",
+    ) not in runner.commands
+
+    account_result = result.steps[-1]
+    assert account_result.state is ReleaseCandidateUninstallStepState.COMPLETED
+    assert account_result.message == "Removed managed user lea."

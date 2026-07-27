@@ -171,6 +171,12 @@ def create_system_provisioning_plan(
             mode=0o750,
         ),
         ManagedDirectory(
+            path=Path("/run/lea"),
+            owner=request.service_user,
+            group=request.service_group,
+            mode=0o750,
+        ),
+        ManagedDirectory(
             path=request.log_root,
             owner=request.service_user,
             group=request.service_group,

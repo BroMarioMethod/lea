@@ -44,6 +44,7 @@ def test_plan_uses_canonical_directory_layout(tmp_path: Path) -> None:
     assert request.state_root / "adapters" in paths
     assert request.state_root / "backups" in paths
     assert request.state_root / "telegram" in paths
+    assert Path("/run/lea") in paths
     assert request.log_root in paths
 
 
@@ -56,6 +57,15 @@ def test_plan_uses_expected_modes(tmp_path: Path) -> None:
     assert modes["telegram"] in {0o750}
     assert modes["audit"] == 0o775
     assert modes["backups"] == 0o775
+
+    run_directory = next(
+        directory
+        for directory in plan.directories
+        if directory.path == Path("/run/lea")
+    )
+    assert run_directory.owner == "lea"
+    assert run_directory.group == "lea"
+    assert run_directory.mode == 0o750
 
 
 def test_managed_directory_requires_absolute_path() -> None:

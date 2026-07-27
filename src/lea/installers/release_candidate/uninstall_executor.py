@@ -298,17 +298,17 @@ def _remove_system_account(
             ),
         )
 
-    user_present = user_exists(plan.request.service_user)
-    group_present = group_exists(plan.request.service_group)
     user_removed = False
     group_removed = False
 
     try:
-        if user_present:
+        if user_exists(plan.request.service_user):
             _run_checked(command_runner, commands[0])
             user_removed = True
 
-        if group_present:
+        # userdel may also remove a matching private group. Re-query after
+        # user removal instead of relying on group state captured earlier.
+        if group_exists(plan.request.service_group):
             _run_checked(command_runner, commands[1])
             group_removed = True
 
@@ -338,7 +338,7 @@ def _remove_system_account(
         return ReleaseCandidateUninstallStepResult(
             step=step.step,
             state=ReleaseCandidateUninstallStepState.SKIPPED,
-            message=("The managed service user and group were already absent."),
+            message="The managed service user and group were already absent.",
         )
 
     removed: list[str] = []

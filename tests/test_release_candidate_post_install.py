@@ -37,7 +37,10 @@ from lea.runtime import (
 )
 from lea.runtime.telegram import TelegramRuntimeConfig
 from lea.runtime.templates import isolated_test_runtime_config
-from lea.tasks import TaskProviderInspectionResult
+from lea.tasks import (
+    TaskProviderInspectionResult,
+    TaskProviderIssue,
+)
 
 
 def _request(
@@ -455,3 +458,44 @@ def test_acceptance_requires_healthy_installation(tmp_path: Path) -> None:
 
     assert result.accepted is False
     assert result.issues[0].step is not None
+
+
+def test_health_preserves_taskwarrior_inspection_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """Health output should expose the structured inspection reason."""
+    plan, runtime = _prepare(tmp_path)
+    record = _record(tmp_path)
+
+    result = run_post_install_health(
+        plan,
+        runtime_loader=lambda _path: ConfigurationResult(
+            success=True,
+            config=runtime,
+            issues=(),
+        ),
+        runtime_health_checker=lambda _config: RuntimeHealthResult(
+            healthy=True,
+            issues=(),
+        ),
+        taskwarrior_record_reader=lambda _path: (record, ()),
+        taskwarrior_inspector=lambda _config: TaskProviderInspectionResult(
+            available=False,
+            provider="taskwarrior",
+            version=None,
+            issues=(
+                TaskProviderIssue(
+                    code="taskwarrior_working_directory_unavailable",
+                    message="The configured working directory is unavailable.",
+                ),
+            ),
+        ),
+    )
+
+    inspection = next(
+        check for check in result.checks if check.code == "taskwarrior_inspection"
+    )
+
+    assert inspection.state is PostInstallCheckState.FAILED
+    assert "taskwarrior_working_directory_unavailable" in inspection.message
+    assert "working directory is unavailable" in inspection.message
