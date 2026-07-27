@@ -63,7 +63,7 @@ from lea.installers.taskwarrior.validation import (
 )
 
 _DEFAULT_BUILD_TIMEOUT_SECONDS = 7200.0
-_DEFAULT_SMOKE_TIMEOUT_SECONDS = 15.0
+_DEFAULT_SMOKE_TIMEOUT_SECONDS = 60.0
 
 
 @dataclass(frozen=True, slots=True)
