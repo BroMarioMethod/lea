@@ -39,6 +39,10 @@ from lea.installers.release_candidate.preflight import (
     HostPreflightResult,
     run_host_preflight,
 )
+from lea.installers.release_candidate.progress import (
+    InstallerProgressReporter,
+    NullInstallerProgressReporter,
+)
 from lea.installers.release_candidate.provisioning import (
     SystemProvisioningResult,
     create_system_provisioning_plan,
@@ -83,7 +87,11 @@ BaseConfigurationRunner = Callable[
     BaseConfigurationResult,
 ]
 TaskwarriorRunner = Callable[
-    [ReleaseCandidateInstallRequest, ReleaseCandidateTaskwarriorInputs],
+    [
+        ReleaseCandidateInstallRequest,
+        ReleaseCandidateTaskwarriorInputs,
+        InstallerProgressReporter,
+    ],
     ReleaseCandidateTaskwarriorResult,
 ]
 TelegramOnboardingVerifier = Callable[
@@ -152,12 +160,14 @@ def create_release_candidate_orchestration_dependencies(
     def install_taskwarrior(
         request: ReleaseCandidateInstallRequest,
         inputs: ReleaseCandidateTaskwarriorInputs,
+        progress: InstallerProgressReporter,
     ) -> ReleaseCandidateTaskwarriorResult:
         return install_release_candidate_taskwarrior(
             create_taskwarrior_installation_plan(
                 request,
                 inputs,
-            )
+            ),
+            progress=progress,
         )
 
     def verify_onboarding(
@@ -250,6 +260,7 @@ def run_release_candidate_orchestration(
     telegram_confirmation: TelegramOnboardingConfirmation | None = None,
     dependencies: ReleaseCandidateOrchestrationDependencies | None = None,
     cancelled: CancellationSignal = lambda: False,
+    progress: InstallerProgressReporter | None = None,
 ) -> ReleaseCandidateOrchestrationResult:
     """Run one deterministic installation attempt through injected boundaries."""
     if not isinstance(request, ReleaseCandidateOrchestrationRequest):
@@ -258,6 +269,8 @@ def run_release_candidate_orchestration(
     selected = request.installation.enable_telegram
     completed: list[InstallerStepResult] = []
     runners = dependencies or create_release_candidate_orchestration_dependencies()
+    reporter = progress or NullInstallerProgressReporter()
+    _report_detail(reporter, "Release-candidate orchestration initialised.")
 
     if not request.plan_approved:
         return _interaction_required(
@@ -275,6 +288,11 @@ def run_release_candidate_orchestration(
     if cancelled_result is not None:
         return cancelled_result
 
+    _report_step_started(
+        reporter,
+        InstallerStepId.PREFLIGHT,
+        "Checking host compatibility and prerequisites.",
+    )
     preflight, failure = _call_boundary(
         InstallerStepId.PREFLIGHT,
         lambda: runners.preflight(request.installation),
@@ -294,11 +312,11 @@ def run_release_candidate_orchestration(
             ),
         )
 
-    completed.append(
-        _completed_step(
-            InstallerStepId.PREFLIGHT,
-            "Host preflight completed.",
-        )
+    _append_completed_step(
+        completed,
+        reporter,
+        InstallerStepId.PREFLIGHT,
+        "Host preflight completed.",
     )
 
     if (
@@ -342,6 +360,11 @@ def run_release_candidate_orchestration(
     if cancelled_result is not None:
         return cancelled_result
 
+    _report_step_started(
+        reporter,
+        InstallerStepId.FILESYSTEM,
+        "Provisioning the LEA service account and managed filesystem.",
+    )
     provisioning, failure = _call_boundary(
         InstallerStepId.FILESYSTEM,
         lambda: runners.provisioning(request.installation),
@@ -366,27 +389,32 @@ def run_release_candidate_orchestration(
         if provisioning.user_created or provisioning.group_created
         else "The LEA service account already existed."
     )
-    completed.extend(
+    _append_completed_step(
+        completed,
+        reporter,
+        InstallerStepId.SYSTEM_ACCOUNT,
+        account_message,
+    )
+    _append_completed_step(
+        completed,
+        reporter,
+        InstallerStepId.FILESYSTEM,
         (
-            _completed_step(
-                InstallerStepId.SYSTEM_ACCOUNT,
-                account_message,
-            ),
-            _completed_step(
-                InstallerStepId.FILESYSTEM,
-                (
-                    "The managed filesystem layout was created or repaired."
-                    if provisioning.directories_changed
-                    else "The managed filesystem layout was already correct."
-                ),
-            ),
-        )
+            "The managed filesystem layout was created or repaired."
+            if provisioning.directories_changed
+            else "The managed filesystem layout was already correct."
+        ),
     )
 
     cancelled_result = _check_cancellation(request, completed, cancelled)
     if cancelled_result is not None:
         return cancelled_result
 
+    _report_step_started(
+        reporter,
+        InstallerStepId.BASE_CONFIGURATION,
+        "Installing the base LEA configuration.",
+    )
     base_configuration, failure = _call_boundary(
         InstallerStepId.BASE_CONFIGURATION,
         lambda: runners.base_configuration(
@@ -409,29 +437,35 @@ def run_release_candidate_orchestration(
             ),
         )
 
-    completed.append(
-        _completed_step(
-            InstallerStepId.BASE_CONFIGURATION,
-            (
-                "Base configuration was installed or updated."
-                if (
-                    base_configuration.configuration_changed
-                    or base_configuration.record_changed
-                )
-                else "Base configuration was already current."
-            ),
-        )
+    _append_completed_step(
+        completed,
+        reporter,
+        InstallerStepId.BASE_CONFIGURATION,
+        (
+            "Base configuration was installed or updated."
+            if (
+                base_configuration.configuration_changed
+                or base_configuration.record_changed
+            )
+            else "Base configuration was already current."
+        ),
     )
 
     cancelled_result = _check_cancellation(request, completed, cancelled)
     if cancelled_result is not None:
         return cancelled_result
 
+    _report_step_started(
+        reporter,
+        InstallerStepId.TASKWARRIOR,
+        "Building and installing the managed Taskwarrior runtime.",
+    )
     taskwarrior, failure = _call_boundary(
         InstallerStepId.TASKWARRIOR,
         lambda: runners.taskwarrior(
             request.installation,
             request.taskwarrior,
+            reporter,
         ),
     )
     if failure is not None:
@@ -449,15 +483,15 @@ def run_release_candidate_orchestration(
             ),
         )
 
-    completed.append(
-        _completed_step(
-            InstallerStepId.TASKWARRIOR,
-            (
-                "The managed Taskwarrior installation was already current."
-                if taskwarrior.already_installed
-                else "The managed Taskwarrior installation completed."
-            ),
-        )
+    _append_completed_step(
+        completed,
+        reporter,
+        InstallerStepId.TASKWARRIOR,
+        (
+            "The managed Taskwarrior installation was already current."
+            if taskwarrior.already_installed
+            else "The managed Taskwarrior installation completed."
+        ),
     )
 
     if selected:
@@ -480,6 +514,11 @@ def run_release_candidate_orchestration(
         if cancelled_result is not None:
             return cancelled_result
 
+        _report_step_started(
+            reporter,
+            InstallerStepId.TELEGRAM_ONBOARDING,
+            "Validating the confirmed Telegram onboarding identity.",
+        )
         onboarding_issues, failure = _call_boundary(
             InstallerStepId.TELEGRAM_ONBOARDING,
             lambda: runners.telegram_onboarding(
@@ -502,17 +541,22 @@ def run_release_candidate_orchestration(
                 ),
             )
 
-        completed.append(
-            _completed_step(
-                InstallerStepId.TELEGRAM_ONBOARDING,
-                "Telegram onboarding was confirmed.",
-            )
+        _append_completed_step(
+            completed,
+            reporter,
+            InstallerStepId.TELEGRAM_ONBOARDING,
+            "Telegram onboarding was confirmed.",
         )
 
         cancelled_result = _check_cancellation(request, completed, cancelled)
         if cancelled_result is not None:
             return cancelled_result
 
+        _report_step_started(
+            reporter,
+            InstallerStepId.TELEGRAM_CONFIGURATION,
+            "Persisting the private Telegram configuration.",
+        )
         telegram_configuration, failure = _call_boundary(
             InstallerStepId.TELEGRAM_CONFIGURATION,
             lambda: runners.telegram_configuration(
@@ -540,21 +584,26 @@ def run_release_candidate_orchestration(
                 ),
             )
 
-        completed.append(
-            _completed_step(
-                InstallerStepId.TELEGRAM_CONFIGURATION,
-                (
-                    "Telegram configuration was installed or updated."
-                    if telegram_configuration.changed_files
-                    else "Telegram configuration was already current."
-                ),
-            )
+        _append_completed_step(
+            completed,
+            reporter,
+            InstallerStepId.TELEGRAM_CONFIGURATION,
+            (
+                "Telegram configuration was installed or updated."
+                if telegram_configuration.changed_files
+                else "Telegram configuration was already current."
+            ),
         )
 
         cancelled_result = _check_cancellation(request, completed, cancelled)
         if cancelled_result is not None:
             return cancelled_result
 
+        _report_step_started(
+            reporter,
+            InstallerStepId.SYSTEMD_SERVICE,
+            "Deploying the Telegram systemd service.",
+        )
         service, failure = _call_boundary(
             InstallerStepId.SYSTEMD_SERVICE,
             lambda: runners.systemd_service(
@@ -577,21 +626,26 @@ def run_release_candidate_orchestration(
                 ),
             )
 
-        completed.append(
-            _completed_step(
-                InstallerStepId.SYSTEMD_SERVICE,
-                (
-                    "The Telegram systemd service was installed or updated."
-                    if service.unit_changed
-                    else "The Telegram systemd service was already current."
-                ),
-            )
+        _append_completed_step(
+            completed,
+            reporter,
+            InstallerStepId.SYSTEMD_SERVICE,
+            (
+                "The Telegram systemd service was installed or updated."
+                if service.unit_changed
+                else "The Telegram systemd service was already current."
+            ),
         )
 
     cancelled_result = _check_cancellation(request, completed, cancelled)
     if cancelled_result is not None:
         return cancelled_result
 
+    _report_step_started(
+        reporter,
+        InstallerStepId.HEALTH,
+        "Running post-install health verification.",
+    )
     health, failure = _call_boundary(
         InstallerStepId.HEALTH,
         lambda: runners.health(request.installation),
@@ -611,17 +665,22 @@ def run_release_candidate_orchestration(
             ),
         )
 
-    completed.append(
-        _completed_step(
-            InstallerStepId.HEALTH,
-            "Post-install health verification passed.",
-        )
+    _append_completed_step(
+        completed,
+        reporter,
+        InstallerStepId.HEALTH,
+        "Post-install health verification passed.",
     )
 
     cancelled_result = _check_cancellation(request, completed, cancelled)
     if cancelled_result is not None:
         return cancelled_result
 
+    _report_step_started(
+        reporter,
+        InstallerStepId.ACCEPTANCE,
+        "Running release-candidate functional acceptance.",
+    )
     acceptance, failure = _call_boundary(
         InstallerStepId.ACCEPTANCE,
         lambda: runners.acceptance(
@@ -647,14 +706,14 @@ def run_release_candidate_orchestration(
             ),
         )
 
-    completed.append(
-        _completed_step(
-            InstallerStepId.ACCEPTANCE,
-            (
-                acceptance.summary.strip()
-                or "Release-candidate functional acceptance passed."
-            ),
-        )
+    _append_completed_step(
+        completed,
+        reporter,
+        InstallerStepId.ACCEPTANCE,
+        (
+            acceptance.summary.strip()
+            or "Release-candidate functional acceptance passed."
+        ),
     )
 
     return ReleaseCandidateOrchestrationResult(
@@ -786,6 +845,52 @@ def _check_cancellation(
         return _cancelled_orchestration(request, completed)
 
     return None
+
+
+def _report_detail(
+    reporter: InstallerProgressReporter,
+    message: str,
+) -> None:
+    """Report verbose detail without affecting orchestration."""
+    try:
+        reporter.detail(message)
+    except Exception:
+        return
+
+
+def _report_step_started(
+    reporter: InstallerProgressReporter,
+    step: InstallerStepId,
+    message: str,
+) -> None:
+    """Report one step start without affecting orchestration."""
+    try:
+        reporter.step_started(step, message)
+    except Exception:
+        return
+
+
+def _report_step_completed(
+    reporter: InstallerProgressReporter,
+    step: InstallerStepId,
+    message: str,
+) -> None:
+    """Report one step completion without affecting orchestration."""
+    try:
+        reporter.step_completed(step, message)
+    except Exception:
+        return
+
+
+def _append_completed_step(
+    completed: list[InstallerStepResult],
+    reporter: InstallerProgressReporter,
+    step: InstallerStepId,
+    message: str,
+) -> None:
+    """Append and report one completed installer step."""
+    completed.append(_completed_step(step, message))
+    _report_step_completed(reporter, step, message)
 
 
 def _completed_step(

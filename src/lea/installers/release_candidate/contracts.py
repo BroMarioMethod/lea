@@ -13,6 +13,14 @@ class ReleaseCandidateInstallMode(StrEnum):
     REPAIR = "repair"
 
 
+class InstallerOutputMode(StrEnum):
+    """Supported release-candidate installer output modes."""
+
+    QUIET = "quiet"
+    NORMAL = "normal"
+    VERBOSE = "verbose"
+
+
 class InstallerStepId(StrEnum):
     """Stable identifiers for release-candidate installer steps."""
 

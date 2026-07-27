@@ -14,6 +14,9 @@ from typing import Protocol, TextIO
 from lea.channels import ChannelCapability
 from lea.installers.release_candidate import (
     BotApiTelegramOnboardingClient,
+    InstallerOutputMode,
+    InstallerProgressReporter,
+    InstallerStepId,
     ReleaseCandidateInstallMode,
     ReleaseCandidateInstallRequest,
     ReleaseCandidateOrchestrationRequest,
@@ -57,6 +60,7 @@ class OrchestrationRunner(Protocol):
         *,
         telegram_token: str | None = None,
         telegram_confirmation: TelegramOnboardingConfirmation | None = None,
+        progress: InstallerProgressReporter | None = None,
     ) -> ReleaseCandidateOrchestrationResult:
         """Execute one resolved installation attempt."""
         ...
@@ -67,6 +71,7 @@ def _run_production_orchestration(
     *,
     telegram_token: str | None = None,
     telegram_confirmation: TelegramOnboardingConfirmation | None = None,
+    progress: InstallerProgressReporter | None = None,
 ) -> ReleaseCandidateOrchestrationResult:
     """Compose production dependencies, including Telegram revalidation."""
     if telegram_token is None:
@@ -87,6 +92,7 @@ def _run_production_orchestration(
         telegram_token=telegram_token,
         telegram_confirmation=telegram_confirmation,
         dependencies=dependencies,
+        progress=progress,
     )
 
 
@@ -107,6 +113,74 @@ class _UserCancelled(Exception):
     """Internal signal for an explicit guided cancellation."""
 
 
+@dataclass(slots=True)
+class TerminalInstallerProgressReporter:
+    """Render installer progress according to the selected output mode."""
+
+    mode: InstallerOutputMode
+    stream: TextIO
+
+    def step_started(
+        self,
+        step: InstallerStepId,
+        message: str,
+    ) -> None:
+        """Render one step-started event in normal and verbose modes."""
+        if self.mode is InstallerOutputMode.QUIET:
+            return
+
+        self.stream.write(f"[start] {step.value}: {message}\n")
+        self.stream.flush()
+
+    def step_completed(
+        self,
+        step: InstallerStepId,
+        message: str,
+    ) -> None:
+        """Render one step-completed event in normal and verbose modes."""
+        if self.mode is InstallerOutputMode.QUIET:
+            return
+
+        self.stream.write(f"[done] {step.value}: {message}\n")
+        self.stream.flush()
+
+    def heartbeat(
+        self,
+        message: str,
+        *,
+        elapsed_seconds: float,
+    ) -> None:
+        """Render a long-running heartbeat in normal and verbose modes."""
+        if self.mode is InstallerOutputMode.QUIET:
+            return
+
+        elapsed = round(elapsed_seconds)
+        self.stream.write(f"[working] {message} ({elapsed} s elapsed)\n")
+        self.stream.flush()
+
+    def detail(
+        self,
+        message: str,
+    ) -> None:
+        """Render one verbose operational detail."""
+        if self.mode is not InstallerOutputMode.VERBOSE:
+            return
+
+        self.stream.write(f"[detail] {message}\n")
+        self.stream.flush()
+
+    def output(
+        self,
+        text: str,
+    ) -> None:
+        """Stream raw subprocess output only in verbose mode."""
+        if self.mode is not InstallerOutputMode.VERBOSE or not text:
+            return
+
+        self.stream.write(text)
+        self.stream.flush()
+
+
 def create_release_candidate_parser() -> argparse.ArgumentParser:
     """Create the dedicated release-candidate installer parser."""
     parser = argparse.ArgumentParser(
@@ -123,6 +197,30 @@ def create_release_candidate_parser() -> argparse.ArgumentParser:
         metavar="ZONE",
         help="IANA timezone used for human-readable presentation.",
     )
+
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--quiet",
+        dest="output_mode",
+        action="store_const",
+        const=InstallerOutputMode.QUIET.value,
+        help="Suppress progress output and render only prompts, errors and result.",
+    )
+    output_group.add_argument(
+        "--normal",
+        dest="output_mode",
+        action="store_const",
+        const=InstallerOutputMode.NORMAL.value,
+        help="Show ordinary installation progress. This is the default.",
+    )
+    output_group.add_argument(
+        "--verbose",
+        dest="output_mode",
+        action="store_const",
+        const=InstallerOutputMode.VERBOSE.value,
+        help="Show detailed installation and build diagnostics.",
+    )
+    parser.set_defaults(output_mode=InstallerOutputMode.NORMAL.value)
 
     telegram_group = parser.add_mutually_exclusive_group()
     telegram_group.add_argument(
@@ -211,6 +309,7 @@ def execute_release_candidate_cli(
         return _normalise_argparse_exit(error)
 
     resolved = dependencies or ReleaseCandidateCliDependencies()
+    output_mode = InstallerOutputMode(namespace.output_mode)
 
     try:
         mode = _resolve_mode(
@@ -258,8 +357,9 @@ def execute_release_candidate_cli(
             install_request,
             taskwarrior,
         )
-        stdout.write(render_release_candidate_install_plan(plan))
-        stdout.write("\n")
+        if output_mode is not InstallerOutputMode.QUIET:
+            stdout.write(render_release_candidate_install_plan(plan))
+            stdout.write("\n")
 
         plan_approved = bool(namespace.approve)
         if not plan_approved:
@@ -311,10 +411,15 @@ def execute_release_candidate_cli(
             plan_approved=True,
             replacement_approved=replacement_approved,
         )
+        progress = TerminalInstallerProgressReporter(
+            mode=output_mode,
+            stream=stdout,
+        )
         result = resolved.orchestrator(
             orchestration_request,
             telegram_token=token,
             telegram_confirmation=confirmation,
+            progress=progress,
         )
     except _UserCancelled:
         stdout.write("Installation cancelled.\n")

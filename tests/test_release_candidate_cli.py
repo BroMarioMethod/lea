@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from lea.adapters.telegram import (
     TelegramUpdate,
 )
 from lea.installers.release_candidate import (
+    InstallerProgressReporter,
     InstallerStepId,
     InstallerStepResult,
     InstallerStepState,
@@ -25,6 +27,7 @@ from lea.release_candidate_cli import (
     EXIT_SUCCESS,
     EXIT_USAGE_ERROR,
     ReleaseCandidateCliDependencies,
+    create_release_candidate_parser,
     execute_release_candidate_cli,
 )
 
@@ -117,6 +120,7 @@ class RecordingOrchestrator:
         *,
         telegram_token: str | None = None,
         telegram_confirmation: TelegramOnboardingConfirmation | None = None,
+        progress: InstallerProgressReporter | None = None,
     ) -> ReleaseCandidateOrchestrationResult:
         self.calls.append(
             (
@@ -125,6 +129,9 @@ class RecordingOrchestrator:
                 telegram_confirmation,
             )
         )
+
+        if progress is not None:
+            progress.detail("Recording orchestrator invoked.")
         return ReleaseCandidateOrchestrationResult(
             state=ReleaseCandidateOrchestrationState.SUCCEEDED,
             request=request,
@@ -288,3 +295,177 @@ def test_non_interactive_telegram_is_rejected(tmp_path: Path) -> None:
 
     assert exit_code == EXIT_USAGE_ERROR
     assert "non-interactive Telegram onboarding" in stderr.getvalue()
+
+
+def test_output_mode_defaults_to_normal() -> None:
+    """Installer output should default to normal mode."""
+    parser = create_release_candidate_parser()
+
+    namespace = parser.parse_args(
+        [
+            "--taskwarrior-source-archive",
+            "/tmp/task-3.4.2.tar.gz",
+            "--taskwarrior-sha256",
+            "a" * 64,
+        ]
+    )
+
+    assert namespace.output_mode == "normal"
+
+
+def test_output_modes_are_mutually_exclusive() -> None:
+    """Only one installer output mode may be selected."""
+    parser = create_release_candidate_parser()
+    stderr = StringIO()
+
+    try:
+        with redirect_stderr(stderr):
+            parser.parse_args(
+                [
+                    "--quiet",
+                    "--verbose",
+                    "--taskwarrior-source-archive",
+                    "/tmp/task-3.4.2.tar.gz",
+                    "--taskwarrior-sha256",
+                    "a" * 64,
+                ]
+            )
+    except SystemExit as error:
+        assert error.code == 2
+    else:
+        raise AssertionError("Expected mutually exclusive output-mode rejection.")
+
+    assert "not allowed with argument" in stderr.getvalue()
+
+
+def test_quiet_mode_suppresses_plan_but_keeps_final_result(
+    tmp_path: Path,
+) -> None:
+    """Quiet mode should omit the plan and retain the final result."""
+    orchestrator = RecordingOrchestrator()
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = execute_release_candidate_cli(
+        [
+            *_base_arguments(tmp_path, telegram=False),
+            "--quiet",
+        ],
+        stdout=stdout,
+        stderr=stderr,
+        dependencies=ReleaseCandidateCliDependencies(
+            text_input=Inputs(()),
+            hidden_input=lambda _prompt: "",
+            onboarding_client_factory=FakeOnboardingClient,
+            version_reader=lambda: "0.1.0",
+            orchestrator=orchestrator,
+        ),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert "LEA release-candidate installation plan" not in stdout.getvalue()
+    assert "LEA release-candidate installation" in stdout.getvalue()
+    assert "State: succeeded" in stdout.getvalue()
+    assert stderr.getvalue() == ""
+
+
+def test_verbose_mode_retains_current_normal_output(
+    tmp_path: Path,
+) -> None:
+    """Verbose mode should retain ordinary output before streaming is added."""
+    stdout = StringIO()
+
+    exit_code = execute_release_candidate_cli(
+        [
+            *_base_arguments(tmp_path, telegram=False),
+            "--verbose",
+        ],
+        stdout=stdout,
+        stderr=StringIO(),
+        dependencies=ReleaseCandidateCliDependencies(
+            text_input=Inputs(()),
+            hidden_input=lambda _prompt: "",
+            onboarding_client_factory=FakeOnboardingClient,
+            version_reader=lambda: "0.1.0",
+            orchestrator=RecordingOrchestrator(),
+        ),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert "LEA release-candidate installation plan" in stdout.getvalue()
+    assert "State: succeeded" in stdout.getvalue()
+
+
+def test_normal_mode_suppresses_verbose_details(
+    tmp_path: Path,
+) -> None:
+    """Normal output should omit reporter detail events."""
+    stdout = StringIO()
+
+    exit_code = execute_release_candidate_cli(
+        _base_arguments(tmp_path, telegram=False),
+        stdout=stdout,
+        stderr=StringIO(),
+        dependencies=ReleaseCandidateCliDependencies(
+            text_input=Inputs(()),
+            hidden_input=lambda _prompt: "",
+            onboarding_client_factory=FakeOnboardingClient,
+            version_reader=lambda: "0.1.0",
+            orchestrator=RecordingOrchestrator(),
+        ),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert "Recording orchestrator invoked." not in stdout.getvalue()
+
+
+def test_verbose_mode_renders_reporter_details(
+    tmp_path: Path,
+) -> None:
+    """Verbose output should render operational detail events."""
+    stdout = StringIO()
+
+    exit_code = execute_release_candidate_cli(
+        [
+            *_base_arguments(tmp_path, telegram=False),
+            "--verbose",
+        ],
+        stdout=stdout,
+        stderr=StringIO(),
+        dependencies=ReleaseCandidateCliDependencies(
+            text_input=Inputs(()),
+            hidden_input=lambda _prompt: "",
+            onboarding_client_factory=FakeOnboardingClient,
+            version_reader=lambda: "0.1.0",
+            orchestrator=RecordingOrchestrator(),
+        ),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert "[detail] Recording orchestrator invoked." in stdout.getvalue()
+
+
+def test_quiet_mode_suppresses_reporter_details(
+    tmp_path: Path,
+) -> None:
+    """Quiet output should suppress operational detail events."""
+    stdout = StringIO()
+
+    exit_code = execute_release_candidate_cli(
+        [
+            *_base_arguments(tmp_path, telegram=False),
+            "--quiet",
+        ],
+        stdout=stdout,
+        stderr=StringIO(),
+        dependencies=ReleaseCandidateCliDependencies(
+            text_input=Inputs(()),
+            hidden_input=lambda _prompt: "",
+            onboarding_client_factory=FakeOnboardingClient,
+            version_reader=lambda: "0.1.0",
+            orchestrator=RecordingOrchestrator(),
+        ),
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert "Recording orchestrator invoked." not in stdout.getvalue()

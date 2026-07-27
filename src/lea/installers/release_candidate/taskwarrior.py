@@ -13,6 +13,7 @@ from lea.installers.release_candidate.contracts import (
     ReleaseCandidateInstallRequest,
 )
 from lea.installers.taskwarrior import (
+    TaskwarriorBuildProgressReporter,
     TaskwarriorInstallationRecord,
     TaskwarriorInstallerConfig,
     TaskwarriorInstallMode,
@@ -156,12 +157,17 @@ def install_release_candidate_taskwarrior(
     *,
     installer: TaskwarriorInstaller = install_taskwarrior,
     fsync: bool = True,
+    progress: TaskwarriorBuildProgressReporter | None = None,
 ) -> ReleaseCandidateTaskwarriorResult:
     """Install Taskwarrior through the existing installer dispatcher."""
     if not isinstance(plan, ReleaseCandidateTaskwarriorPlan):
         raise TypeError("plan must be a ReleaseCandidateTaskwarriorPlan value.")
 
-    result = installer(plan.config, fsync=fsync)
+    result = installer(
+        plan.config,
+        fsync=fsync,
+        progress=progress,
+    )
 
     if not result.success or result.record is None:
         issues = tuple(

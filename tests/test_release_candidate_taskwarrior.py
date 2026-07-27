@@ -96,7 +96,12 @@ def test_installation_delegates_to_existing_dispatcher(
     record = _record(plan)
     calls: list[tuple[Any, bool]] = []
 
-    def installer(config: Any, *, fsync: bool) -> TaskwarriorInstallResult:
+    def installer(
+        config: Any,
+        *,
+        fsync: bool,
+        progress: Any,
+    ) -> TaskwarriorInstallResult:
         calls.append((config, fsync))
         return TaskwarriorInstallResult(
             success=True,
@@ -126,7 +131,12 @@ def test_already_installed_state_is_preserved(
     )
     record = _record(plan)
 
-    def installer(config: Any, *, fsync: bool) -> TaskwarriorInstallResult:
+    def installer(
+        config: Any,
+        *,
+        fsync: bool,
+        progress: Any,
+    ) -> TaskwarriorInstallResult:
         return TaskwarriorInstallResult(
             success=True,
             already_installed=True,
@@ -158,7 +168,12 @@ def test_component_issues_are_translated(
         path=plan.config.build_directory,
     )
 
-    def installer(config: Any, *, fsync: bool) -> TaskwarriorInstallResult:
+    def installer(
+        config: Any,
+        *,
+        fsync: bool,
+        progress: Any,
+    ) -> TaskwarriorInstallResult:
         return TaskwarriorInstallResult(
             success=False,
             already_installed=False,
@@ -200,7 +215,12 @@ def test_unexpected_executable_path_is_rejected(
         installed_at=datetime(2026, 7, 24, tzinfo=UTC),
     )
 
-    def installer(config: Any, *, fsync: bool) -> TaskwarriorInstallResult:
+    def installer(
+        config: Any,
+        *,
+        fsync: bool,
+        progress: Any,
+    ) -> TaskwarriorInstallResult:
         return TaskwarriorInstallResult(
             success=True,
             already_installed=False,

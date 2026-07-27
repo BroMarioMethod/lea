@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from lea.installers.taskwarrior.activation import activate_staged_taskwarrior
 from lea.installers.taskwarrior.build_execution import (
+    TaskwarriorBuildProgressReporter,
     TaskwarriorSourceBuildExecutionResult,
     execute_taskwarrior_source_build,
 )
@@ -103,6 +104,7 @@ def install_source_taskwarrior(
     network_timeout_seconds: float = 30.0,
     smoke_timeout_seconds: float = _DEFAULT_SMOKE_TIMEOUT_SECONDS,
     fsync: bool = False,
+    progress: TaskwarriorBuildProgressReporter | None = None,
 ) -> TaskwarriorSourceInstallResult:
     """Build, validate and atomically install pinned Taskwarrior source."""
     if config.mode is not TaskwarriorInstallMode.SOURCE_BUILD:
@@ -210,7 +212,10 @@ def install_source_taskwarrior(
             build_concurrency=normalised.build_concurrency,
             timeout_seconds=build_timeout_seconds,
         )
-        build = execute_taskwarrior_source_build(plan)
+        build = execute_taskwarrior_source_build(
+            plan,
+            progress=progress,
+        )
         if not build.success or build.installation_prefix is None:
             return TaskwarriorSourceInstallResult(
                 success=False,

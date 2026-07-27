@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass
 
+from lea.installers.taskwarrior.build_execution import (
+    TaskwarriorBuildProgressReporter,
+)
 from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallerConfig,
     TaskwarriorInstallerIssue,
@@ -59,6 +62,7 @@ def install_taskwarrior(
     config: TaskwarriorInstallerConfig,
     *,
     fsync: bool = False,
+    progress: TaskwarriorBuildProgressReporter | None = None,
 ) -> TaskwarriorInstallResult:
     """Install Taskwarrior using the mode declared by the configuration."""
     if not isinstance(config, TaskwarriorInstallerConfig):
@@ -75,6 +79,7 @@ def install_taskwarrior(
         source_result = install_source_taskwarrior(
             config,
             fsync=fsync,
+            progress=progress,
         )
         return _from_source(source_result)
 

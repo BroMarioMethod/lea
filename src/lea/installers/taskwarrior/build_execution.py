@@ -15,6 +15,57 @@ from lea.installers.taskwarrior.contracts import (
 )
 
 
+class TaskwarriorBuildProgressReporter(Protocol):
+    """Progress boundary used during Taskwarrior source builds."""
+
+    def heartbeat(
+        self,
+        message: str,
+        *,
+        elapsed_seconds: float,
+    ) -> None:
+        """Report that a long-running build remains active."""
+        ...
+
+    def detail(
+        self,
+        message: str,
+    ) -> None:
+        """Report one build detail."""
+        ...
+
+    def output(
+        self,
+        text: str,
+    ) -> None:
+        """Report subprocess output."""
+        ...
+
+
+class NullTaskwarriorBuildProgressReporter:
+    """No-op build reporter used by non-terminal callers."""
+
+    def heartbeat(
+        self,
+        message: str,
+        *,
+        elapsed_seconds: float,
+    ) -> None:
+        """Discard one heartbeat."""
+
+    def detail(
+        self,
+        message: str,
+    ) -> None:
+        """Discard one build detail."""
+
+    def output(
+        self,
+        text: str,
+    ) -> None:
+        """Discard subprocess output."""
+
+
 class _CommandRunner(Protocol):
     """Callable contract for one subprocess invocation."""
 
@@ -121,10 +172,13 @@ def execute_taskwarrior_source_build(
     plan: TaskwarriorSourceBuildPlan,
     *,
     runner: _CommandRunner = _run_command,
+    progress: TaskwarriorBuildProgressReporter | None = None,
 ) -> TaskwarriorSourceBuildExecutionResult:
     """Execute one deterministic Taskwarrior source-build plan."""
     if not isinstance(plan, TaskwarriorSourceBuildPlan):
         raise TypeError("plan must be a TaskwarriorSourceBuildPlan value.")
+
+    reporter = progress or NullTaskwarriorBuildProgressReporter()
 
     plan.cmake_build_directory.mkdir(
         mode=0o750,
@@ -150,6 +204,7 @@ def execute_taskwarrior_source_build(
             cwd=plan.source_root,
             timeout_seconds=plan.timeout_seconds,
             runner=runner,
+            progress=reporter,
         )
         steps.append(step)
 
@@ -204,6 +259,36 @@ def execute_taskwarrior_source_build(
     )
 
 
+def _report_detail(
+    reporter: TaskwarriorBuildProgressReporter,
+    message: str,
+) -> None:
+    """Report build detail without affecting installation."""
+    try:
+        reporter.detail(message)
+    except Exception:
+        return
+
+
+def _report_output(
+    reporter: TaskwarriorBuildProgressReporter,
+    text: str,
+) -> None:
+    """Report captured build output without affecting installation."""
+    if not text:
+        return
+
+    try:
+        reporter.output(text)
+    except Exception:
+        return
+
+
+def _render_command(command: tuple[str, ...]) -> str:
+    """Render one non-secret build command for diagnostics."""
+    return " ".join(command)
+
+
 def _run_step(
     *,
     phase: str,
@@ -211,12 +296,17 @@ def _run_step(
     cwd: Path,
     timeout_seconds: float,
     runner: _CommandRunner,
+    progress: TaskwarriorBuildProgressReporter,
 ) -> tuple[
     TaskwarriorBuildStepResult,
     TaskwarriorInstallerIssue | None,
 ]:
     """Run one finite build command and capture its diagnostics."""
     started = time.monotonic()
+    _report_detail(
+        progress,
+        f"Taskwarrior {phase} phase started: {_render_command(command)}",
+    )
 
     try:
         completed = runner(
@@ -231,6 +321,12 @@ def _run_step(
         duration = time.monotonic() - started
         stdout = _normalise_stream(error.stdout)
         stderr = _normalise_stream(error.stderr)
+        _report_output(progress, stdout)
+        _report_output(progress, stderr)
+        _report_detail(
+            progress,
+            (f"Taskwarrior {phase} phase timed out after {duration:.1f} seconds."),
+        )
         step = TaskwarriorBuildStepResult(
             phase=phase,
             command=command,
@@ -251,6 +347,13 @@ def _run_step(
         return step, issue
     except OSError as error:
         duration = time.monotonic() - started
+        _report_detail(
+            progress,
+            (
+                f"Taskwarrior {phase} command could not be executed after "
+                f"{duration:.1f} seconds."
+            ),
+        )
         step = TaskwarriorBuildStepResult(
             phase=phase,
             command=command,
@@ -280,6 +383,16 @@ def _run_step(
         stderr=completed.stderr,
         duration_seconds=duration,
         timed_out=False,
+    )
+
+    _report_output(progress, completed.stdout)
+    _report_output(progress, completed.stderr)
+    _report_detail(
+        progress,
+        (
+            f"Taskwarrior {phase} phase finished with exit status "
+            f"{completed.returncode} after {duration:.1f} seconds."
+        ),
     )
 
     if completed.returncode != 0:

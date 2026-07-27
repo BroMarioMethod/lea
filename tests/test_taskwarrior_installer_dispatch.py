@@ -146,9 +146,11 @@ def test_dispatches_source_mode(
         value: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        progress: object | None,
     ) -> TaskwarriorSourceInstallResult:
         assert value is config
         assert fsync is True
+        assert progress is None
         return TaskwarriorSourceInstallResult(
             success=True,
             already_installed=False,

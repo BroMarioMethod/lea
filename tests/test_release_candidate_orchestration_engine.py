@@ -15,6 +15,7 @@ from lea.installers.release_candidate import (
     InstallerInteractionKind,
     InstallerIssue,
     InstallerIssueCode,
+    InstallerProgressReporter,
     InstallerStepId,
     InstallerStepState,
     PostInstallHealthResult,
@@ -195,6 +196,7 @@ def _dependencies(
     def taskwarrior(
         _request: ReleaseCandidateInstallRequest,
         _inputs: ReleaseCandidateTaskwarriorInputs,
+        _progress: InstallerProgressReporter,
     ) -> ReleaseCandidateTaskwarriorResult:
         calls.append("taskwarrior")
         return ReleaseCandidateTaskwarriorResult(
@@ -550,12 +552,14 @@ def test_failed_step_preserves_structured_issues(tmp_path: Path) -> None:
     )
     dependencies = replace(
         dependencies,
-        taskwarrior=lambda _request, _inputs: ReleaseCandidateTaskwarriorResult(
-            success=False,
-            already_installed=False,
-            executable=None,
-            record=None,
-            issues=(issue,),
+        taskwarrior=lambda _request, _inputs, _progress: (
+            ReleaseCandidateTaskwarriorResult(
+                success=False,
+                already_installed=False,
+                executable=None,
+                record=None,
+                issues=(issue,),
+            )
         ),
     )
 
@@ -567,3 +571,83 @@ def test_failed_step_preserves_structured_issues(tmp_path: Path) -> None:
     assert result.state is ReleaseCandidateOrchestrationState.FAILED
     assert result.issues == (issue,)
     assert result.step_results[-1].state is InstallerStepState.FAILED
+
+
+class RecordingProgressReporter:
+    """Record orchestration progress events for assertions."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str, str]] = []
+
+    def step_started(
+        self,
+        step: InstallerStepId,
+        message: str,
+    ) -> None:
+        self.events.append(("started", step.value, message))
+
+    def step_completed(
+        self,
+        step: InstallerStepId,
+        message: str,
+    ) -> None:
+        self.events.append(("completed", step.value, message))
+
+    def heartbeat(
+        self,
+        message: str,
+        *,
+        elapsed_seconds: float,
+    ) -> None:
+        self.events.append(("heartbeat", str(elapsed_seconds), message))
+
+    def detail(
+        self,
+        message: str,
+    ) -> None:
+        self.events.append(("detail", "", message))
+
+    def output(
+        self,
+        text: str,
+    ) -> None:
+        self.events.append(("output", "", text))
+
+
+def test_successful_orchestration_reports_step_progress(
+    tmp_path: Path,
+) -> None:
+    """Successful orchestration should report starts and completions."""
+    calls: list[str] = []
+    progress = RecordingProgressReporter()
+
+    result = run_release_candidate_orchestration(
+        _request(tmp_path),
+        dependencies=_dependencies(tmp_path, calls),
+        progress=progress,
+    )
+
+    assert result.state is ReleaseCandidateOrchestrationState.SUCCEEDED
+
+    started = [step for event, step, _message in progress.events if event == "started"]
+    completed = [
+        step for event, step, _message in progress.events if event == "completed"
+    ]
+
+    assert started == [
+        "preflight",
+        "filesystem",
+        "base-configuration",
+        "taskwarrior",
+        "health",
+        "acceptance",
+    ]
+    assert completed == [
+        "preflight",
+        "system-account",
+        "filesystem",
+        "base-configuration",
+        "taskwarrior",
+        "health",
+        "acceptance",
+    ]

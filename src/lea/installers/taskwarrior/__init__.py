@@ -7,6 +7,8 @@ from lea.installers.taskwarrior.activation import (
     write_taskwarrior_installation_record,
 )
 from lea.installers.taskwarrior.build_execution import (
+    NullTaskwarriorBuildProgressReporter,
+    TaskwarriorBuildProgressReporter,
     TaskwarriorBuildStepResult,
     TaskwarriorSourceBuildExecutionResult,
     execute_taskwarrior_source_build,
@@ -90,8 +92,10 @@ from lea.installers.taskwarrior.validation import (
 )
 
 __all__ = [
+    "NullTaskwarriorBuildProgressReporter",
     "TaskwarriorActivationResult",
     "TaskwarriorBuildDependencyResult",
+    "TaskwarriorBuildProgressReporter",
     "TaskwarriorBuildStepResult",
     "TaskwarriorBuildTools",
     "TaskwarriorBundledInstallResult",

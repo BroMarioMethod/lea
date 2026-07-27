@@ -29,6 +29,7 @@ from lea.installers.release_candidate.contracts import (
     InstallerIssueCode,
     InstallerMutation,
     InstallerMutationKind,
+    InstallerOutputMode,
     InstallerStepId,
     InstallerStepPlan,
     InstallerStepResult,
@@ -73,6 +74,10 @@ from lea.installers.release_candidate.preflight import (
     collect_host_facts,
     evaluate_host_preflight,
     run_host_preflight,
+)
+from lea.installers.release_candidate.progress import (
+    InstallerProgressReporter,
+    NullInstallerProgressReporter,
 )
 from lea.installers.release_candidate.provisioning import (
     ManagedDirectory,
@@ -137,11 +142,14 @@ __all__ = [
     "InstallerIssueCode",
     "InstallerMutation",
     "InstallerMutationKind",
+    "InstallerOutputMode",
+    "InstallerProgressReporter",
     "InstallerStepId",
     "InstallerStepPlan",
     "InstallerStepResult",
     "InstallerStepState",
     "ManagedDirectory",
+    "NullInstallerProgressReporter",
     "PostInstallCheck",
     "PostInstallCheckState",
     "PostInstallHealthPlan",
