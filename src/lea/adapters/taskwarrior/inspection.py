@@ -53,8 +53,9 @@ def inspect_taskwarrior(
 
     runner = TaskwarriorRunner(config)
     result = runner.run(
-        ("_version",),
+        ("--version",),
         operation="inspect",
+        configured=False,
     )
 
     if not result.success:

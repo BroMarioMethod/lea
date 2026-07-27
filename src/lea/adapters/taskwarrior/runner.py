@@ -40,6 +40,7 @@ class TaskwarriorRunner:
         arguments: Sequence[str],
         *,
         operation: str,
+        configured: bool = True,
     ) -> TaskwarriorRunResult:
         """Run Taskwarrior without shell construction."""
         if not operation.strip():
@@ -48,8 +49,13 @@ class TaskwarriorRunner:
         if any(not argument for argument in arguments):
             raise ValueError("arguments must not contain empty values.")
 
-        command = self._build_command(arguments)
-        environment = self._build_environment()
+        command = self._build_command(
+            arguments,
+            configured=configured,
+        )
+        environment = self._build_environment(
+            configured=configured,
+        )
         started = monotonic()
 
         try:
@@ -134,8 +140,16 @@ class TaskwarriorRunner:
     def _build_command(
         self,
         arguments: Sequence[str],
+        *,
+        configured: bool,
     ) -> list[str]:
         """Build one exact Taskwarrior argument list."""
+        if not configured:
+            return [
+                str(self._config.executable),
+                *arguments,
+            ]
+
         return [
             str(self._config.executable),
             f"rc:{self._config.taskrc}",
@@ -145,11 +159,21 @@ class TaskwarriorRunner:
             *arguments,
         ]
 
-    def _build_environment(self) -> dict[str, str]:
+    def _build_environment(
+        self,
+        *,
+        configured: bool,
+    ) -> dict[str, str]:
         """Build the explicit subprocess environment."""
         environment = dict(self._base_environment)
-        environment["HOME"] = str(self._config.home_dir)
-        environment["TASKRC"] = str(self._config.taskrc)
+
+        if configured:
+            environment["HOME"] = str(self._config.home_dir)
+            environment["TASKRC"] = str(self._config.taskrc)
+        else:
+            environment.pop("TASKRC", None)
+            environment.pop("TASKDATA", None)
+
         return environment
 
 

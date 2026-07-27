@@ -195,3 +195,50 @@ def test_runner_does_not_change_parent_environment(
 
     assert result.success is True
     assert os.environ.get("HOME") == original_home
+
+
+def test_unconfigured_runner_omits_managed_runtime_configuration(
+    tmp_path: Path,
+) -> None:
+    """Unconfigured probes must not expose managed Taskwarrior storage."""
+    executable = tmp_path / "bin" / "task"
+    make_executable(
+        executable,
+        (
+            "import json, os, sys\n"
+            "print(json.dumps({"
+            "'argv': sys.argv[1:], "
+            "'home': os.environ.get('HOME'), "
+            "'taskrc': os.environ.get('TASKRC'), "
+            "'taskdata': os.environ.get('TASKDATA')"
+            "}))\n"
+        ),
+    )
+    config = make_config(tmp_path, executable=executable)
+    runner = TaskwarriorRunner(
+        config,
+        base_environment={
+            "HOME": "/root",
+            "TASKRC": "/untrusted/taskrc",
+            "TASKDATA": "/untrusted/data",
+        },
+    )
+
+    result = runner.run(
+        ("--version",),
+        operation="inspect",
+        configured=False,
+    )
+
+    assert result.success is True
+    assert result.command is not None
+    assert result.command.arguments == (
+        str(config.executable),
+        "--version",
+    )
+    assert '"home": "/root"' in result.command.stdout
+    assert '"taskrc": null' in result.command.stdout
+    assert '"taskdata": null' in result.command.stdout
+    assert str(config.taskrc) not in result.command.stdout
+    assert str(config.data_dir) not in result.command.stdout
+    assert str(config.home_dir) not in result.command.stdout
