@@ -63,6 +63,7 @@ def install_taskwarrior(
     *,
     fsync: bool = False,
     progress: TaskwarriorBuildProgressReporter | None = None,
+    preserve_failed_artefacts: bool = False,
 ) -> TaskwarriorInstallResult:
     """Install Taskwarrior using the mode declared by the configuration."""
     if not isinstance(config, TaskwarriorInstallerConfig):
@@ -80,6 +81,7 @@ def install_taskwarrior(
             config,
             fsync=fsync,
             progress=progress,
+            preserve_failed_artefacts=preserve_failed_artefacts,
         )
         return _from_source(source_result)
 

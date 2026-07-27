@@ -167,6 +167,7 @@ def install_release_candidate_taskwarrior(
         plan.config,
         fsync=fsync,
         progress=progress,
+        preserve_failed_artefacts=True,
     )
 
     if not result.success or result.record is None:

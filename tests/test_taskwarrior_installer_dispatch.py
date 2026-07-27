@@ -147,10 +147,12 @@ def test_dispatches_source_mode(
         *,
         fsync: bool,
         progress: object | None,
+        preserve_failed_artefacts: bool,
     ) -> TaskwarriorSourceInstallResult:
         assert value is config
         assert fsync is True
         assert progress is None
+        assert preserve_failed_artefacts is False
         return TaskwarriorSourceInstallResult(
             success=True,
             already_installed=False,

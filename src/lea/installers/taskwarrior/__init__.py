@@ -36,6 +36,10 @@ from lea.installers.taskwarrior.external_installer import (
     TaskwarriorExternalInstallResult,
     install_external_taskwarrior,
 )
+from lea.installers.taskwarrior.failure_diagnostics import (
+    TaskwarriorFailureDiagnostics,
+    preserve_taskwarrior_failure_diagnostics,
+)
 from lea.installers.taskwarrior.installer import (
     TaskwarriorBundledInstallResult,
     install_bundled_taskwarrior,
@@ -101,6 +105,7 @@ __all__ = [
     "TaskwarriorBundledInstallResult",
     "TaskwarriorExternalInstallResult",
     "TaskwarriorExtractedSource",
+    "TaskwarriorFailureDiagnostics",
     "TaskwarriorInstallFailureCode",
     "TaskwarriorInstallMode",
     "TaskwarriorInstallResult",
@@ -134,6 +139,7 @@ __all__ = [
     "is_supported_taskwarrior_version",
     "is_valid_sha256",
     "normalise_taskwarrior_platform",
+    "preserve_taskwarrior_failure_diagnostics",
     "provision_taskwarrior_runtime_layout",
     "read_taskwarrior_installation_record",
     "remove_taskwarrior_extracted_source",

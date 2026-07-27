@@ -94,15 +94,22 @@ def test_installation_delegates_to_existing_dispatcher(
         _inputs(tmp_path),
     )
     record = _record(plan)
-    calls: list[tuple[Any, bool]] = []
+    calls: list[tuple[Any, bool, bool]] = []
 
     def installer(
         config: Any,
         *,
         fsync: bool,
         progress: Any,
+        preserve_failed_artefacts: bool,
     ) -> TaskwarriorInstallResult:
-        calls.append((config, fsync))
+        calls.append(
+            (
+                config,
+                fsync,
+                preserve_failed_artefacts,
+            )
+        )
         return TaskwarriorInstallResult(
             success=True,
             already_installed=False,
@@ -118,7 +125,7 @@ def test_installation_delegates_to_existing_dispatcher(
     assert result.success is True
     assert result.executable == plan.expected_executable
     assert result.record == record
-    assert calls == [(plan.config, True)]
+    assert calls == [(plan.config, True, True)]
 
 
 def test_already_installed_state_is_preserved(
@@ -136,6 +143,7 @@ def test_already_installed_state_is_preserved(
         *,
         fsync: bool,
         progress: Any,
+        preserve_failed_artefacts: bool,
     ) -> TaskwarriorInstallResult:
         return TaskwarriorInstallResult(
             success=True,
@@ -173,6 +181,7 @@ def test_component_issues_are_translated(
         *,
         fsync: bool,
         progress: Any,
+        preserve_failed_artefacts: bool,
     ) -> TaskwarriorInstallResult:
         return TaskwarriorInstallResult(
             success=False,
@@ -220,6 +229,7 @@ def test_unexpected_executable_path_is_rejected(
         *,
         fsync: bool,
         progress: Any,
+        preserve_failed_artefacts: bool,
     ) -> TaskwarriorInstallResult:
         return TaskwarriorInstallResult(
             success=True,

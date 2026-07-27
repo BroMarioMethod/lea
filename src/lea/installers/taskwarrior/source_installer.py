@@ -1,6 +1,8 @@
 """Pinned-source Taskwarrior installation workflow."""
 
+from contextlib import suppress
 from dataclasses import dataclass
+from pathlib import Path
 
 from lea.installers.taskwarrior.activation import activate_staged_taskwarrior
 from lea.installers.taskwarrior.build_execution import (
@@ -20,6 +22,9 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallFailureCode,
     TaskwarriorInstallMode,
 )
+from lea.installers.taskwarrior.failure_diagnostics import (
+    preserve_taskwarrior_failure_diagnostics,
+)
 from lea.installers.taskwarrior.preflight import (
     calculate_sha256,
     run_taskwarrior_installer_preflight,
@@ -36,6 +41,7 @@ from lea.installers.taskwarrior.smoke_test import (
     validate_staged_taskwarrior_binary,
 )
 from lea.installers.taskwarrior.source_archive import (
+    TaskwarriorExtractedSource,
     extract_taskwarrior_source_archive,
     remove_taskwarrior_extracted_source,
 )
@@ -44,6 +50,7 @@ from lea.installers.taskwarrior.source_network import (
     validate_taskwarrior_source_network,
 )
 from lea.installers.taskwarrior.staging import (
+    TaskwarriorStagedBinary,
     remove_taskwarrior_staging,
     stage_taskwarrior_binary,
 )
@@ -105,6 +112,7 @@ def install_source_taskwarrior(
     smoke_timeout_seconds: float = _DEFAULT_SMOKE_TIMEOUT_SECONDS,
     fsync: bool = False,
     progress: TaskwarriorBuildProgressReporter | None = None,
+    preserve_failed_artefacts: bool = False,
 ) -> TaskwarriorSourceInstallResult:
     """Build, validate and atomically install pinned Taskwarrior source."""
     if config.mode is not TaskwarriorInstallMode.SOURCE_BUILD:
@@ -203,6 +211,10 @@ def install_source_taskwarrior(
 
     extracted = extraction.extracted
     staged = None
+    artefacts_preserved = False
+    diagnostics_parent = (
+        normalised.installation_record.parent / "failed" / "taskwarrior"
+    )
     try:
         plan = create_taskwarrior_source_build_plan(
             tools=dependencies.tools,
@@ -217,12 +229,24 @@ def install_source_taskwarrior(
             progress=progress,
         )
         if not build.success or build.installation_prefix is None:
+            issues = build.issues
+            if preserve_failed_artefacts:
+                artefacts_preserved, preservation_issues = _preserve_failure(
+                    destination_parent=diagnostics_parent,
+                    extracted=extracted,
+                    staged=None,
+                    build=build,
+                    issues=issues,
+                    progress=progress,
+                )
+                issues = (*issues, *preservation_issues)
+
             return TaskwarriorSourceInstallResult(
                 success=False,
                 already_installed=False,
                 record=None,
                 build=build,
-                issues=build.issues,
+                issues=issues,
             )
 
         built_executable = build.installation_prefix / "bin" / "task"
@@ -267,35 +291,69 @@ def install_source_taskwarrior(
             timeout_seconds=smoke_timeout_seconds,
         )
         if not smoke.passed:
-            cleanup = remove_taskwarrior_staging(staged)
-            staged = None
+            issues = smoke.issues
+
+            if preserve_failed_artefacts:
+                artefacts_preserved, preservation_issues = _preserve_failure(
+                    destination_parent=diagnostics_parent,
+                    extracted=extracted,
+                    staged=staged,
+                    build=build,
+                    issues=issues,
+                    progress=progress,
+                )
+                if artefacts_preserved:
+                    staged = None
+                issues = (*issues, *preservation_issues)
+            else:
+                cleanup = remove_taskwarrior_staging(staged)
+                staged = None
+                issues = (*issues, *cleanup)
+
             return TaskwarriorSourceInstallResult(
                 success=False,
                 already_installed=False,
                 record=None,
                 build=build,
-                issues=(*smoke.issues, *cleanup),
+                issues=issues,
             )
         if smoke.version != normalised.version:
-            cleanup = remove_taskwarrior_staging(staged)
-            staged = None
+            mismatch = TaskwarriorInstallerIssue(
+                code=TaskwarriorInstallFailureCode.UNSUPPORTED_VERSION,
+                message=(
+                    "The built version does not match the requested pinned version."
+                ),
+                field="version",
+                path=built_executable,
+            )
+            mismatch_issues: tuple[TaskwarriorInstallerIssue, ...] = (mismatch,)
+
+            if preserve_failed_artefacts:
+                artefacts_preserved, preservation_issues = _preserve_failure(
+                    destination_parent=diagnostics_parent,
+                    extracted=extracted,
+                    staged=staged,
+                    build=build,
+                    issues=mismatch_issues,
+                    progress=progress,
+                )
+                if artefacts_preserved:
+                    staged = None
+                mismatch_issues = (
+                    *mismatch_issues,
+                    *preservation_issues,
+                )
+            else:
+                cleanup = remove_taskwarrior_staging(staged)
+                staged = None
+                mismatch_issues = (*mismatch_issues, *cleanup)
+
             return TaskwarriorSourceInstallResult(
                 success=False,
                 already_installed=False,
                 record=None,
                 build=build,
-                issues=(
-                    TaskwarriorInstallerIssue(
-                        code=TaskwarriorInstallFailureCode.UNSUPPORTED_VERSION,
-                        message=(
-                            "The built version does not match the requested "
-                            "pinned version."
-                        ),
-                        field="version",
-                        path=built_executable,
-                    ),
-                    *cleanup,
-                ),
+                issues=mismatch_issues,
             )
 
         layout = provision_taskwarrior_runtime_layout(normalised, fsync=fsync)
@@ -340,9 +398,63 @@ def install_source_taskwarrior(
             issues=(),
         )
     finally:
-        if staged is not None:
-            remove_taskwarrior_staging(staged)
-        remove_taskwarrior_extracted_source(extracted)
+        if not artefacts_preserved:
+            if staged is not None:
+                remove_taskwarrior_staging(staged)
+            remove_taskwarrior_extracted_source(extracted)
+
+
+def _preserve_failure(
+    *,
+    destination_parent: Path,
+    extracted: TaskwarriorExtractedSource,
+    staged: TaskwarriorStagedBinary | None,
+    build: TaskwarriorSourceBuildExecutionResult | None,
+    issues: tuple[TaskwarriorInstallerIssue, ...],
+    progress: TaskwarriorBuildProgressReporter | None,
+) -> tuple[bool, tuple[TaskwarriorInstallerIssue, ...]]:
+    """Preserve failure evidence without replacing the primary failure."""
+    try:
+        diagnostics = preserve_taskwarrior_failure_diagnostics(
+            destination_parent=destination_parent,
+            extracted=extracted,
+            staged=staged,
+            build=build,
+            issues=issues,
+        )
+    except (OSError, ValueError) as error:
+        return (
+            False,
+            (
+                TaskwarriorInstallerIssue(
+                    code=TaskwarriorInstallFailureCode.BUILD_FAILED,
+                    message=(
+                        "Taskwarrior failure diagnostics could not be "
+                        f"preserved: {error}."
+                    ),
+                    field="failure_diagnostics",
+                    path=destination_parent,
+                ),
+            ),
+        )
+
+    if progress is not None:
+        with suppress(Exception):
+            progress.detail(
+                f"Taskwarrior failure artefacts were preserved at {diagnostics.root}."
+            )
+
+    return (
+        True,
+        (
+            TaskwarriorInstallerIssue(
+                code=TaskwarriorInstallFailureCode.BUILD_FAILED,
+                message=("Taskwarrior failure artefacts were preserved for diagnosis."),
+                field="failure_diagnostics",
+                path=diagnostics.root,
+            ),
+        ),
+    )
 
 
 def _inspect_existing_source_installation(
