@@ -49,6 +49,42 @@ class TaskwarriorRunner:
         if any(not argument for argument in arguments):
             raise ValueError("arguments must not contain empty values.")
 
+        if not self._config.executable.exists():
+            return _failure(
+                code="taskwarrior_executable_missing",
+                message="The configured Taskwarrior executable was not found.",
+                operation=operation,
+            )
+
+        if not self._config.executable.is_file():
+            return _failure(
+                code="taskwarrior_executable_not_executable",
+                message=(
+                    "The configured Taskwarrior executable path is not a regular file."
+                ),
+                operation=operation,
+            )
+
+        working_dir = self._config.working_dir
+
+        if working_dir is not None and not working_dir.exists():
+            return _failure(
+                code="taskwarrior_working_directory_unavailable",
+                message=(
+                    "The configured Taskwarrior working directory does not exist."
+                ),
+                operation=operation,
+            )
+
+        if working_dir is not None and not working_dir.is_dir():
+            return _failure(
+                code="taskwarrior_working_directory_unavailable",
+                message=(
+                    "The configured Taskwarrior working directory is not a directory."
+                ),
+                operation=operation,
+            )
+
         command = self._build_command(
             arguments,
             configured=configured,

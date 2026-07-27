@@ -1,5 +1,6 @@
 """Tests for release-candidate system account and filesystem provisioning."""
 
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,17 @@ def _request(tmp_path: Path) -> ReleaseCandidateInstallRequest:
         configuration_root=tmp_path / "etc" / "lea",
         state_root=tmp_path / "var" / "lib" / "lea",
         log_root=tmp_path / "var" / "log" / "lea",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_managed_file_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prevent isolated provisioning tests from writing system paths."""
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._ensure_managed_file",
+        lambda _managed: False,
     )
 
 
@@ -91,6 +103,8 @@ def test_plan_rejects_duplicate_paths(tmp_path: Path) -> None:
         mode=0o750,
     )
 
+    baseline = create_system_provisioning_plan(_request(tmp_path))
+
     with pytest.raises(
         ValueError,
         match="duplicate paths",
@@ -99,6 +113,8 @@ def test_plan_rejects_duplicate_paths(tmp_path: Path) -> None:
             service_user="lea",
             service_group="lea",
             directories=(directory, directory),
+            tmpfiles_configuration=baseline.tmpfiles_configuration,
+            systemd_tmpfiles=baseline.systemd_tmpfiles,
         )
 
 
@@ -157,6 +173,7 @@ def test_existing_identity_skips_account_commands(
 ) -> None:
     """Existing service identities should not be recreated."""
     plan = create_system_provisioning_plan(_request(tmp_path))
+    commands: list[tuple[str, ...]] = []
 
     monkeypatch.setattr(
         "lea.installers.release_candidate.provisioning._group_exists",
@@ -172,13 +189,21 @@ def test_existing_identity_skips_account_commands(
     )
 
     def run(command: tuple[str, ...], **kwargs: Any) -> Any:
-        raise AssertionError(f"Unexpected command: {command}")
+        commands.append(command)
+        return type("Completed", (), {"returncode": 0})()
 
     result = provision_system_layout(plan, command_runner=run)
 
     assert result.success is True
     assert result.group_created is False
     assert result.user_created is False
+    assert commands == [
+        (
+            str(plan.systemd_tmpfiles),
+            "--create",
+            str(plan.tmpfiles_configuration.path),
+        ),
+    ]
 
 
 def test_directory_changes_are_reported(
@@ -202,7 +227,138 @@ def test_directory_changes_are_reported(
         lambda directory: directory.path == changed_path,
     )
 
-    result = provision_system_layout(plan)
+    def run(command: tuple[str, ...], **kwargs: Any) -> Any:
+        return type("Completed", (), {"returncode": 0})()
+
+    result = provision_system_layout(
+        plan,
+        command_runner=run,
+    )
 
     assert result.success is True
     assert result.directories_changed == (changed_path,)
+
+
+def test_plan_contains_boot_persistent_runtime_directory_rule(
+    tmp_path: Path,
+) -> None:
+    """The provisioning plan should recreate /run/lea after every boot."""
+    plan = create_system_provisioning_plan(_request(tmp_path))
+    managed = plan.tmpfiles_configuration
+
+    assert managed.path == Path("/etc/tmpfiles.d/lea.conf")
+    assert managed.contents == "d /run/lea 0750 lea lea -\n"
+    assert managed.owner == "root"
+    assert managed.group == "root"
+    assert managed.mode == 0o644
+    assert plan.systemd_tmpfiles == Path("/usr/bin/systemd-tmpfiles")
+
+
+def test_managed_file_requires_absolute_path() -> None:
+    """Managed files must use explicit absolute paths."""
+    from lea.installers.release_candidate import ManagedFile
+
+    with pytest.raises(
+        ValueError,
+        match="path must be an absolute path",
+    ):
+        ManagedFile(
+            path=Path("etc/tmpfiles.d/lea.conf"),
+            contents="d /run/lea 0750 lea lea -\n",
+            owner="root",
+            group="root",
+            mode=0o644,
+        )
+
+
+def test_provisioning_installs_and_activates_tmpfiles_rule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provisioning should install and activate the persistent runtime rule."""
+    plan = create_system_provisioning_plan(_request(tmp_path))
+    commands: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._group_exists",
+        lambda _name: True,
+    )
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._user_exists",
+        lambda _name: True,
+    )
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._ensure_managed_file",
+        lambda managed: managed == plan.tmpfiles_configuration,
+    )
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._ensure_directory",
+        lambda _directory: False,
+    )
+
+    def run(command: tuple[str, ...], **kwargs: Any) -> Any:
+        commands.append(command)
+        return type("Completed", (), {"returncode": 0})()
+
+    result = provision_system_layout(
+        plan,
+        command_runner=run,
+    )
+
+    assert result.success is True
+    assert result.files_changed == (plan.tmpfiles_configuration.path,)
+    assert commands == [
+        (
+            str(plan.systemd_tmpfiles),
+            "--create",
+            str(plan.tmpfiles_configuration.path),
+        ),
+    ]
+
+
+def test_tmpfiles_activation_failure_is_reported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed systemd-tmpfiles invocation should fail provisioning."""
+    plan = create_system_provisioning_plan(_request(tmp_path))
+
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._group_exists",
+        lambda _name: True,
+    )
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._user_exists",
+        lambda _name: True,
+    )
+    monkeypatch.setattr(
+        "lea.installers.release_candidate.provisioning._ensure_directory",
+        lambda _directory: False,
+    )
+
+    def run(command: tuple[str, ...], **kwargs: Any) -> Any:
+        raise subprocess.CalledProcessError(
+            returncode=1,
+            cmd=command,
+            stderr="synthetic tmpfiles failure",
+        )
+
+    result = provision_system_layout(
+        plan,
+        command_runner=run,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code.value == ("release_candidate_install_step_failed")
+
+
+def test_deployment_asset_matches_canonical_tmpfiles_rule(
+    tmp_path: Path,
+) -> None:
+    """The shipped tmpfiles asset must match the privileged provisioning plan."""
+    plan = create_system_provisioning_plan(_request(tmp_path))
+    repository_root = Path(__file__).resolve().parents[1]
+    asset = repository_root / "deploy" / "tmpfiles.d" / "lea.conf"
+
+    assert asset.is_file()
+    assert asset.read_text(encoding="utf-8") == (plan.tmpfiles_configuration.contents)

@@ -242,3 +242,48 @@ def test_unconfigured_runner_omits_managed_runtime_configuration(
     assert str(config.taskrc) not in result.command.stdout
     assert str(config.data_dir) not in result.command.stdout
     assert str(config.home_dir) not in result.command.stdout
+
+
+def test_runner_reports_missing_working_directory(
+    tmp_path: Path,
+) -> None:
+    """A missing working directory must not be reported as a missing binary."""
+    executable = tmp_path / "bin" / "task"
+    make_executable(executable, "print('3.4.2')\n")
+    config = make_config(tmp_path, executable=executable)
+    working_dir = config.working_dir
+    assert working_dir is not None
+    working_dir.rmdir()
+
+    result = TaskwarriorRunner(config).run(
+        ("--version",),
+        operation="inspect",
+        configured=False,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code == ("taskwarrior_working_directory_unavailable")
+    assert "does not exist" in result.issues[0].message
+
+
+def test_runner_reports_non_directory_working_path(
+    tmp_path: Path,
+) -> None:
+    """A non-directory working path should fail before process execution."""
+    executable = tmp_path / "bin" / "task"
+    make_executable(executable, "print('3.4.2')\n")
+    config = make_config(tmp_path, executable=executable)
+    working_dir = config.working_dir
+    assert working_dir is not None
+    working_dir.rmdir()
+    working_dir.write_text("not a directory\n", encoding="utf-8")
+
+    result = TaskwarriorRunner(config).run(
+        ("--version",),
+        operation="inspect",
+        configured=False,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code == ("taskwarrior_working_directory_unavailable")
+    assert "not a directory" in result.issues[0].message

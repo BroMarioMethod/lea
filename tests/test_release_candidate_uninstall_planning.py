@@ -25,6 +25,8 @@ def _request() -> ReleaseCandidateUninstallRequest:
         log_root=Path("/srv/lea-log"),
         taskwarrior_root=Path("/srv/lea-tools/taskwarrior"),
         systemd_unit=Path("/srv/systemd/lea-telegram.service"),
+        tmpfiles_configuration=Path("/srv/tmpfiles/lea.conf"),
+        runtime_directory=Path("/srv/run/lea"),
         systemctl=Path("/usr/bin/systemctl"),
     )
 
@@ -93,6 +95,7 @@ def test_plan_orders_service_before_files_and_account() -> None:
 
     assert tuple(step.step for step in plan.steps) == (
         ReleaseCandidateUninstallStepId.SYSTEMD_SERVICE,
+        ReleaseCandidateUninstallStepId.RUNTIME_RESOURCES,
         ReleaseCandidateUninstallStepId.TASKWARRIOR,
         ReleaseCandidateUninstallStepId.CONFIGURATION,
         ReleaseCandidateUninstallStepId.STATE,
@@ -167,6 +170,8 @@ def test_plan_contains_only_expected_destructive_targets() -> None:
 
     assert targets == (
         request.systemd_unit,
+        request.tmpfiles_configuration,
+        request.runtime_directory,
         request.taskwarrior_root,
         request.configuration_root,
         request.state_root,

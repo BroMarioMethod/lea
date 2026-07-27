@@ -45,12 +45,42 @@ class ManagedDirectory:
 
 
 @dataclass(frozen=True, slots=True)
+class ManagedFile:
+    """One managed regular file with canonical contents and metadata."""
+
+    path: Path
+    contents: str
+    owner: str
+    group: str
+    mode: int
+
+    def __post_init__(self) -> None:
+        """Validate managed-file fields."""
+        _validate_absolute_path(self.path, field_name="path")
+
+        if not isinstance(self.contents, str) or not self.contents:
+            raise ValueError("contents must be non-empty.")
+
+        for field_name, value in (
+            ("owner", self.owner),
+            ("group", self.group),
+        ):
+            if not value.strip():
+                raise ValueError(f"{field_name} must be non-empty.")
+
+        if self.mode < 0 or self.mode > 0o7777:
+            raise ValueError("mode must be a valid Unix permission mode.")
+
+
+@dataclass(frozen=True, slots=True)
 class SystemProvisioningPlan:
     """Immutable plan for the LEA account and managed directories."""
 
     service_user: str
     service_group: str
     directories: tuple[ManagedDirectory, ...]
+    tmpfiles_configuration: ManagedFile
+    systemd_tmpfiles: Path
 
     def __post_init__(self) -> None:
         """Validate provisioning-plan consistency."""
@@ -63,6 +93,11 @@ class SystemProvisioningPlan:
 
         if not self.directories:
             raise ValueError("directories must not be empty.")
+
+        _validate_absolute_path(
+            self.systemd_tmpfiles,
+            field_name="systemd_tmpfiles",
+        )
 
         paths = tuple(directory.path for directory in self.directories)
         if len(set(paths)) != len(paths):
@@ -77,6 +112,7 @@ class SystemProvisioningResult:
     user_created: bool
     group_created: bool
     directories_changed: tuple[Path, ...]
+    files_changed: tuple[Path, ...]
     issues: tuple[InstallerIssue, ...]
 
     def __post_init__(self) -> None:
@@ -84,8 +120,14 @@ class SystemProvisioningResult:
         for path in self.directories_changed:
             _validate_absolute_path(path, field_name="directories_changed")
 
+        for path in self.files_changed:
+            _validate_absolute_path(path, field_name="files_changed")
+
         if len(set(self.directories_changed)) != len(self.directories_changed):
             raise ValueError("directories_changed must not contain duplicates.")
+
+        if len(set(self.files_changed)) != len(self.files_changed):
+            raise ValueError("files_changed must not contain duplicates.")
 
         if self.success:
             if self.issues:
@@ -188,6 +230,16 @@ def create_system_provisioning_plan(
         service_user=request.service_user,
         service_group=request.service_group,
         directories=directories,
+        tmpfiles_configuration=ManagedFile(
+            path=Path("/etc/tmpfiles.d/lea.conf"),
+            contents=(
+                f"d /run/lea 0750 {request.service_user} {request.service_group} -\n"
+            ),
+            owner="root",
+            group="root",
+            mode=0o644,
+        ),
+        systemd_tmpfiles=Path("/usr/bin/systemd-tmpfiles"),
     )
 
 
@@ -203,6 +255,7 @@ def provision_system_layout(
     user_created = False
     group_created = False
     changed: list[Path] = []
+    files_changed: list[Path] = []
 
     try:
         if not _group_exists(plan.service_group):
@@ -234,6 +287,21 @@ def provision_system_layout(
             )
             user_created = True
 
+        file_changed = _ensure_managed_file(
+            plan.tmpfiles_configuration,
+        )
+        if file_changed:
+            files_changed.append(plan.tmpfiles_configuration.path)
+
+        _run_checked(
+            command_runner,
+            (
+                str(plan.systemd_tmpfiles),
+                "--create",
+                str(plan.tmpfiles_configuration.path),
+            ),
+        )
+
         for directory in plan.directories:
             changed_now = _ensure_directory(directory)
             if changed_now:
@@ -245,6 +313,7 @@ def provision_system_layout(
             user_created=user_created,
             group_created=group_created,
             directories_changed=tuple(changed),
+            files_changed=tuple(files_changed),
             issues=(
                 InstallerIssue(
                     code=InstallerIssueCode.STEP_FAILED,
@@ -262,8 +331,52 @@ def provision_system_layout(
         user_created=user_created,
         group_created=group_created,
         directories_changed=tuple(changed),
+        files_changed=tuple(files_changed),
         issues=(),
     )
+
+
+def _ensure_managed_file(managed: ManagedFile) -> bool:
+    """Create or repair one exact managed regular file."""
+    path = managed.path
+
+    if path.is_symlink():
+        raise OSError(f"Managed file path is a symbolic link: {path}")
+
+    existed = path.exists()
+
+    if existed and not path.is_file():
+        raise OSError(f"Managed file path is not a regular file: {path}")
+
+    if existed:
+        existing_contents = path.read_text(encoding="utf-8")
+        if existing_contents != managed.contents:
+            raise PermissionError(f"Managed file contains conflicting contents: {path}")
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            managed.contents,
+            encoding="utf-8",
+            newline="\n",
+        )
+
+    owner = pwd.getpwnam(managed.owner)
+    group = grp.getgrnam(managed.group)
+
+    stat_result = path.stat()
+    current_mode = stat_result.st_mode & 0o7777
+    ownership_changed = (
+        stat_result.st_uid != owner.pw_uid or stat_result.st_gid != group.gr_gid
+    )
+    mode_changed = current_mode != managed.mode
+
+    if ownership_changed:
+        os.chown(path, owner.pw_uid, group.gr_gid)
+
+    if mode_changed:
+        os.chmod(path, managed.mode)
+
+    return not existed or ownership_changed or mode_changed
 
 
 def _ensure_directory(directory: ManagedDirectory) -> bool:

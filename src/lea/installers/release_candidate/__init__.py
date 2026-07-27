@@ -81,6 +81,7 @@ from lea.installers.release_candidate.progress import (
 )
 from lea.installers.release_candidate.provisioning import (
     ManagedDirectory,
+    ManagedFile,
     SystemProvisioningPlan,
     SystemProvisioningResult,
     create_system_provisioning_plan,
@@ -168,6 +169,7 @@ __all__ = [
     "InstallerStepResult",
     "InstallerStepState",
     "ManagedDirectory",
+    "ManagedFile",
     "NullInstallerProgressReporter",
     "PostInstallCheck",
     "PostInstallCheckState",

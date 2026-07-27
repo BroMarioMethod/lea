@@ -32,6 +32,8 @@ def _request(tmp_path: Path) -> ReleaseCandidateUninstallRequest:
         log_root=tmp_path / "var" / "log" / "lea",
         taskwarrior_root=tmp_path / "tools" / "taskwarrior",
         systemd_unit=(tmp_path / "systemd" / "lea-telegram.service"),
+        tmpfiles_configuration=(tmp_path / "tmpfiles" / "lea.conf"),
+        runtime_directory=(tmp_path / "run" / "lea"),
         systemctl=Path("/usr/bin/systemctl"),
     )
 
@@ -53,6 +55,18 @@ def _populate(request: ReleaseCandidateUninstallRequest) -> None:
     request.systemd_unit.parent.mkdir(parents=True)
     request.systemd_unit.write_text(
         "[Unit]\nDescription=LEA Telegram\n",
+        encoding="utf-8",
+    )
+
+    request.tmpfiles_configuration.parent.mkdir(parents=True)
+    request.tmpfiles_configuration.write_text(
+        "d /run/lea 0750 lea lea -\n",
+        encoding="utf-8",
+    )
+
+    request.runtime_directory.mkdir(parents=True)
+    (request.runtime_directory / "runtime.txt").write_text(
+        "runtime\n",
         encoding="utf-8",
     )
 
@@ -116,6 +130,7 @@ def test_purge_removes_all_managed_resources_in_safe_order(
         ReleaseCandidateUninstallStepState.COMPLETED,
         ReleaseCandidateUninstallStepState.COMPLETED,
         ReleaseCandidateUninstallStepState.COMPLETED,
+        ReleaseCandidateUninstallStepState.COMPLETED,
     )
 
     assert runner.commands == [
@@ -144,6 +159,8 @@ def test_purge_removes_all_managed_resources_in_safe_order(
     ]
 
     assert not request.systemd_unit.exists()
+    assert not request.tmpfiles_configuration.exists()
+    assert not request.runtime_directory.exists()
     assert not request.configuration_root.exists()
     assert not request.state_root.exists()
     assert not request.log_root.exists()
@@ -494,3 +511,59 @@ def test_user_removal_may_also_remove_private_group(
     account_result = result.steps[-1]
     assert account_result.state is ReleaseCandidateUninstallStepState.COMPLETED
     assert account_result.message == "Removed managed user lea."
+
+
+def test_symlinked_tmpfiles_configuration_is_rejected(
+    tmp_path: Path,
+) -> None:
+    """Purge must not follow a tmpfiles-configuration symlink."""
+    request = _request(tmp_path)
+    external = tmp_path / "external.conf"
+    external.write_text("keep\n", encoding="utf-8")
+
+    request.tmpfiles_configuration.parent.mkdir(parents=True)
+    request.tmpfiles_configuration.symlink_to(external)
+
+    runner = RecordingRunner()
+    result = execute_release_candidate_uninstall(
+        create_release_candidate_uninstall_plan(request),
+        command_runner=runner,
+        user_exists=lambda _name: True,
+        group_exists=lambda _name: True,
+    )
+
+    assert result.success is False
+    assert external.read_text(encoding="utf-8") == "keep\n"
+    assert request.tmpfiles_configuration.is_symlink()
+
+    runtime_result = next(
+        step
+        for step in result.steps
+        if step.step is ReleaseCandidateUninstallStepId.RUNTIME_RESOURCES
+    )
+    assert runtime_result.state is ReleaseCandidateUninstallStepState.FAILED
+    assert runtime_result.issues[0].code is (
+        ReleaseCandidateUninstallIssueCode.UNSAFE_PATH
+    )
+
+
+def test_runtime_resources_are_idempotent_when_absent(
+    tmp_path: Path,
+) -> None:
+    """Absent tmpfiles and runtime paths should be skipped safely."""
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+
+    result = execute_release_candidate_uninstall(
+        create_release_candidate_uninstall_plan(request),
+        command_runner=runner,
+        user_exists=lambda _name: False,
+        group_exists=lambda _name: False,
+    )
+
+    runtime_result = next(
+        step
+        for step in result.steps
+        if step.step is ReleaseCandidateUninstallStepId.RUNTIME_RESOURCES
+    )
+    assert runtime_result.state is ReleaseCandidateUninstallStepState.SKIPPED

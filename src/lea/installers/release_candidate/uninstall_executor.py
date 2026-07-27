@@ -67,6 +67,13 @@ def execute_release_candidate_uninstall(
 
     file_removal_failed = False
 
+    runtime_result = _remove_runtime_resources(plan)
+    results.append(runtime_result)
+    issues.extend(runtime_result.issues)
+
+    if runtime_result.state is ReleaseCandidateUninstallStepState.FAILED:
+        file_removal_failed = True
+
     for step_id in (
         ReleaseCandidateUninstallStepId.TASKWARRIOR,
         ReleaseCandidateUninstallStepId.CONFIGURATION,
@@ -213,6 +220,98 @@ def _run_idempotent_systemctl(
         )
         if not tolerated:
             raise
+
+
+def _remove_runtime_resources(
+    plan: ReleaseCandidateUninstallPlan,
+) -> ReleaseCandidateUninstallStepResult:
+    """Remove the exact managed tmpfiles rule and volatile runtime directory."""
+    step = _step(
+        plan,
+        ReleaseCandidateUninstallStepId.RUNTIME_RESOURCES,
+    )
+    targets = tuple(
+        mutation.target for mutation in step.mutations if mutation.target is not None
+    )
+
+    if targets != (
+        plan.request.tmpfiles_configuration,
+        plan.request.runtime_directory,
+    ):
+        return _failed_step(
+            step=step.step,
+            message=(
+                "The uninstall plan did not contain the expected "
+                "runtime-resource targets."
+            ),
+        )
+
+    tmpfiles = plan.request.tmpfiles_configuration
+    runtime = plan.request.runtime_directory
+
+    if tmpfiles.is_symlink():
+        return _unsafe_path_result(
+            step=step.step,
+            path=tmpfiles,
+            message=("The managed tmpfiles configuration is a symbolic link."),
+        )
+
+    if tmpfiles.exists() and not tmpfiles.is_file():
+        return _unsafe_path_result(
+            step=step.step,
+            path=tmpfiles,
+            message=("The managed tmpfiles configuration is not a regular file."),
+        )
+
+    if runtime.is_symlink():
+        return _unsafe_path_result(
+            step=step.step,
+            path=runtime,
+            message=("The managed runtime-directory target is a symbolic link."),
+        )
+
+    if runtime.exists() and not runtime.is_dir():
+        return _unsafe_path_result(
+            step=step.step,
+            path=runtime,
+            message=("The managed runtime-directory target is not a directory."),
+        )
+
+    tmpfiles_existed = tmpfiles.exists()
+    runtime_existed = runtime.exists()
+
+    try:
+        if tmpfiles_existed:
+            tmpfiles.unlink()
+
+        if runtime_existed:
+            shutil.rmtree(runtime)
+    except OSError as error:
+        return _failed_step(
+            step=step.step,
+            message=(
+                f"Managed runtime-resource removal failed: {type(error).__name__}."
+            ),
+        )
+
+    if not tmpfiles_existed and not runtime_existed:
+        return ReleaseCandidateUninstallStepResult(
+            step=step.step,
+            state=ReleaseCandidateUninstallStepState.SKIPPED,
+            message="Managed runtime resources were already absent.",
+        )
+
+    removed: list[str] = []
+    if tmpfiles_existed:
+        removed.append(str(tmpfiles))
+    if runtime_existed:
+        removed.append(str(runtime))
+
+    return ReleaseCandidateUninstallStepResult(
+        step=step.step,
+        state=ReleaseCandidateUninstallStepState.COMPLETED,
+        message=f"Removed managed runtime resources: {', '.join(removed)}.",
+    )
 
 
 def _remove_managed_path(

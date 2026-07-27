@@ -64,6 +64,25 @@ def create_release_candidate_uninstall_plan(
                 ),
             ),
             ReleaseCandidateUninstallStepPlan(
+                step=ReleaseCandidateUninstallStepId.RUNTIME_RESOURCES,
+                summary=(
+                    "Remove the persistent runtime-directory rule and "
+                    "the current volatile runtime directory."
+                ),
+                mutations=(
+                    ReleaseCandidateUninstallMutation(
+                        kind=(ReleaseCandidateUninstallMutationKind.REMOVE_FILE),
+                        summary=("Remove the managed systemd tmpfiles configuration."),
+                        target=request.tmpfiles_configuration,
+                    ),
+                    ReleaseCandidateUninstallMutation(
+                        kind=(ReleaseCandidateUninstallMutationKind.REMOVE_DIRECTORY),
+                        summary=("Remove the current volatile LEA runtime directory."),
+                        target=request.runtime_directory,
+                    ),
+                ),
+            ),
+            ReleaseCandidateUninstallStepPlan(
                 step=ReleaseCandidateUninstallStepId.TASKWARRIOR,
                 summary="Remove the managed Taskwarrior installation.",
                 mutations=(

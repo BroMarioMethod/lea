@@ -177,6 +177,7 @@ def _dependencies(
             user_created=True,
             group_created=True,
             directories_changed=(tmp_path / "var" / "lib" / "lea",),
+            files_changed=(),
             issues=(),
         )
 

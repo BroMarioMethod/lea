@@ -9,6 +9,7 @@ class ReleaseCandidateUninstallStepId(StrEnum):
     """Stable release-candidate uninstall step identifiers."""
 
     SYSTEMD_SERVICE = "systemd-service"
+    RUNTIME_RESOURCES = "runtime-resources"
     TASKWARRIOR = "taskwarrior"
     CONFIGURATION = "configuration"
     STATE = "state"
@@ -61,6 +62,8 @@ class ReleaseCandidateUninstallRequest:
     log_root: Path = Path("/var/log/lea")
     taskwarrior_root: Path = Path("/opt/lea-tools/taskwarrior")
     systemd_unit: Path = Path("/etc/systemd/system/lea-telegram.service")
+    tmpfiles_configuration: Path = Path("/etc/tmpfiles.d/lea.conf")
+    runtime_directory: Path = Path("/run/lea")
     systemctl: Path = Path("/usr/bin/systemctl")
 
     def __post_init__(self) -> None:
@@ -85,6 +88,8 @@ class ReleaseCandidateUninstallRequest:
             ("log_root", self.log_root),
             ("taskwarrior_root", self.taskwarrior_root),
             ("systemd_unit", self.systemd_unit),
+            ("tmpfiles_configuration", self.tmpfiles_configuration),
+            ("runtime_directory", self.runtime_directory),
             ("systemctl", self.systemctl),
         ):
             _validate_absolute_path(path, field_name=field_name)

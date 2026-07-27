@@ -77,17 +77,27 @@ def create_release_candidate_install_plan(
         InstallerStepPlan(
             step=InstallerStepId.FILESYSTEM,
             summary="Create or repair the managed filesystem layout.",
-            mutations=tuple(
+            mutations=(
+                *(
+                    InstallerMutation(
+                        kind=InstallerMutationKind.CREATE_DIRECTORY,
+                        summary=(
+                            "Ensure directory ownership "
+                            f"{directory.owner}:{directory.group} "
+                            f"and mode {directory.mode:#06o}."
+                        ),
+                        target=directory.path,
+                    )
+                    for directory in provisioning.directories
+                ),
                 InstallerMutation(
-                    kind=InstallerMutationKind.CREATE_DIRECTORY,
+                    kind=InstallerMutationKind.WRITE_FILE,
                     summary=(
-                        "Ensure directory ownership "
-                        f"{directory.owner}:{directory.group} "
-                        f"and mode {directory.mode:#06o}."
+                        "Install the systemd tmpfiles rule that recreates "
+                        "the volatile LEA runtime directory after boot."
                     ),
-                    target=directory.path,
-                )
-                for directory in provisioning.directories
+                    target=provisioning.tmpfiles_configuration.path,
+                ),
             ),
         ),
         InstallerStepPlan(
