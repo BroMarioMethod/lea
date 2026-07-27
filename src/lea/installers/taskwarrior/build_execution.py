@@ -1,10 +1,12 @@
 """Finite, non-shell execution of Taskwarrior source-build plans."""
 
+import queue
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TextIO
 
 from lea.installers.taskwarrior.build_plan import (
     TaskwarriorSourceBuildPlan,
@@ -13,6 +15,11 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallerIssue,
     TaskwarriorInstallFailureCode,
 )
+
+_STREAM_CHUNK_CHARACTERS = 4_096
+_MAX_CAPTURED_STREAM_CHARACTERS = 200_000
+_HEARTBEAT_INTERVAL_SECONDS = 60.0
+_TERMINATE_GRACE_SECONDS = 5.0
 
 
 class TaskwarriorBuildProgressReporter(Protocol):
@@ -64,6 +71,10 @@ class NullTaskwarriorBuildProgressReporter:
         text: str,
     ) -> None:
         """Discard subprocess output."""
+
+
+class _StreamingTimeoutExpired(subprocess.TimeoutExpired):
+    """Timeout raised after production output was already streamed."""
 
 
 class _CommandRunner(Protocol):
@@ -168,6 +179,193 @@ def _run_command(
     )
 
 
+def _run_streaming_command(
+    command: tuple[str, ...],
+    *,
+    cwd: Path,
+    timeout: float,
+    progress: TaskwarriorBuildProgressReporter,
+    phase: str,
+    started: float,
+    heartbeat_interval_seconds: float = _HEARTBEAT_INTERVAL_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    """Run one production command with streaming and bounded capture."""
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        shell=False,
+    )
+
+    if process.stdout is None or process.stderr is None:
+        process.kill()
+        process.wait()
+        raise OSError("The build process did not expose output pipes.")
+
+    events: queue.Queue[tuple[str, str]] = queue.Queue()
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    stdout_characters = 0
+    stderr_characters = 0
+
+    readers = (
+        threading.Thread(
+            target=_read_stream,
+            args=("stdout", process.stdout, events),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=_read_stream,
+            args=("stderr", process.stderr, events),
+            daemon=True,
+        ),
+    )
+
+    for reader in readers:
+        reader.start()
+
+    deadline = started + timeout
+    next_heartbeat = started + heartbeat_interval_seconds
+    timed_out = False
+
+    while True:
+        now = time.monotonic()
+
+        if process.poll() is None and now >= deadline:
+            timed_out = True
+            _stop_process(process)
+
+        if process.poll() is None and now >= next_heartbeat:
+            _report_heartbeat(
+                progress,
+                f"Taskwarrior {phase} phase is still running.",
+                elapsed_seconds=now - started,
+            )
+            next_heartbeat += heartbeat_interval_seconds
+
+        try:
+            stream_name, chunk = events.get(timeout=0.1)
+        except queue.Empty:
+            stream_name = ""
+            chunk = ""
+
+        if chunk:
+            _report_output(progress, chunk)
+
+            if stream_name == "stdout":
+                stdout_characters = _append_bounded(
+                    stdout_parts,
+                    chunk,
+                    captured_characters=stdout_characters,
+                )
+            else:
+                stderr_characters = _append_bounded(
+                    stderr_parts,
+                    chunk,
+                    captured_characters=stderr_characters,
+                )
+
+        if process.poll() is not None and all(
+            not reader.is_alive() for reader in readers
+        ):
+            break
+
+    for reader in readers:
+        reader.join(timeout=1.0)
+
+    while True:
+        try:
+            stream_name, chunk = events.get_nowait()
+        except queue.Empty:
+            break
+
+        if not chunk:
+            continue
+
+        _report_output(progress, chunk)
+
+        if stream_name == "stdout":
+            stdout_characters = _append_bounded(
+                stdout_parts,
+                chunk,
+                captured_characters=stdout_characters,
+            )
+        else:
+            stderr_characters = _append_bounded(
+                stderr_parts,
+                chunk,
+                captured_characters=stderr_characters,
+            )
+
+    stdout = "".join(stdout_parts)
+    stderr = "".join(stderr_parts)
+
+    if timed_out:
+        raise _StreamingTimeoutExpired(
+            command,
+            timeout,
+            output=stdout,
+            stderr=stderr,
+        )
+
+    return subprocess.CompletedProcess(
+        command,
+        process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+def _read_stream(
+    name: str,
+    stream: TextIO,
+    events: queue.Queue[tuple[str, str]],
+) -> None:
+    """Read one subprocess stream without blocking the other stream."""
+    try:
+        while True:
+            chunk = stream.read(_STREAM_CHUNK_CHARACTERS)
+            if not chunk:
+                return
+            events.put((name, chunk))
+    finally:
+        stream.close()
+
+
+def _append_bounded(
+    parts: list[str],
+    chunk: str,
+    *,
+    captured_characters: int,
+) -> int:
+    """Append as much of one stream chunk as the capture limit permits."""
+    remaining = _MAX_CAPTURED_STREAM_CHARACTERS - captured_characters
+
+    if remaining <= 0:
+        return captured_characters
+
+    retained = chunk[:remaining]
+    parts.append(retained)
+    return captured_characters + len(retained)
+
+
+def _stop_process(
+    process: subprocess.Popen[str],
+) -> None:
+    """Terminate one timed-out build process, escalating when required."""
+    process.terminate()
+
+    try:
+        process.wait(timeout=_TERMINATE_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 def execute_taskwarrior_source_build(
     plan: TaskwarriorSourceBuildPlan,
     *,
@@ -270,6 +468,22 @@ def _report_detail(
         return
 
 
+def _report_heartbeat(
+    reporter: TaskwarriorBuildProgressReporter,
+    message: str,
+    *,
+    elapsed_seconds: float,
+) -> None:
+    """Report a build heartbeat without affecting installation."""
+    try:
+        reporter.heartbeat(
+            message,
+            elapsed_seconds=elapsed_seconds,
+        )
+    except Exception:
+        return
+
+
 def _report_output(
     reporter: TaskwarriorBuildProgressReporter,
     text: str,
@@ -308,15 +522,53 @@ def _run_step(
         f"Taskwarrior {phase} phase started: {_render_command(command)}",
     )
 
+    streamed = runner is _run_command
+
     try:
-        completed = runner(
-            command,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
+        if streamed:
+            completed = _run_streaming_command(
+                command,
+                cwd=cwd,
+                timeout=timeout_seconds,
+                progress=progress,
+                phase=phase,
+                started=started,
+            )
+        else:
+            completed = runner(
+                command,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+    except _StreamingTimeoutExpired as error:
+        duration = time.monotonic() - started
+        stdout = _normalise_stream(error.stdout)
+        stderr = _normalise_stream(error.stderr)
+        _report_detail(
+            progress,
+            (f"Taskwarrior {phase} phase timed out after {duration:.1f} seconds."),
         )
+        step = TaskwarriorBuildStepResult(
+            phase=phase,
+            command=command,
+            returncode=None,
+            stdout=stdout,
+            stderr=stderr,
+            duration_seconds=duration,
+            timed_out=True,
+        )
+        issue = TaskwarriorInstallerIssue(
+            code=TaskwarriorInstallFailureCode.BUILD_TIMEOUT,
+            message=(
+                f"The Taskwarrior {phase} phase exceeded the finite build timeout."
+            ),
+            field="build_directory",
+            path=cwd,
+        )
+        return step, issue
     except subprocess.TimeoutExpired as error:
         duration = time.monotonic() - started
         stdout = _normalise_stream(error.stdout)
@@ -385,8 +637,10 @@ def _run_step(
         timed_out=False,
     )
 
-    _report_output(progress, completed.stdout)
-    _report_output(progress, completed.stderr)
+    if not streamed:
+        _report_output(progress, completed.stdout)
+        _report_output(progress, completed.stderr)
+
     _report_detail(
         progress,
         (
