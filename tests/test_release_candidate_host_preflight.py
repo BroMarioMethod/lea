@@ -33,6 +33,7 @@ def _facts(
     systemd_available: bool = True,
     dietpi_available: bool = True,
     missing_executables: tuple[Path, ...] = (),
+    libuuid_available: bool = True,
     service_user_exists: bool = False,
     service_group_exists: bool = False,
     managed_paths_present: tuple[Path, ...] = (),
@@ -40,8 +41,14 @@ def _facts(
     """Return supported host facts with selected overrides."""
     required = (
         Path("/usr/bin/bash"),
+        Path("/usr/bin/cargo"),
+        Path("/usr/bin/cmake"),
+        Path("/usr/bin/c++"),
         Path("/usr/bin/git"),
+        Path("/usr/bin/make"),
+        Path("/usr/bin/pkg-config"),
         Path("/usr/bin/python3"),
+        Path("/usr/bin/rustc"),
         Path("/usr/bin/sudo"),
         Path("/usr/bin/systemctl"),
     )
@@ -54,6 +61,7 @@ def _facts(
         dietpi_available=dietpi_available,
         required_executables=required,
         missing_executables=missing_executables,
+        libuuid_available=libuuid_available,
         service_user_exists=service_user_exists,
         service_group_exists=service_group_exists,
         managed_paths_present=managed_paths_present,
@@ -206,3 +214,44 @@ def test_missing_executables_must_be_required() -> None:
         match="must be a subset",
     ):
         _facts(missing_executables=(Path("/usr/bin/curl"),))
+
+
+def test_missing_native_build_prerequisites_are_reported_together() -> None:
+    """All missing Taskwarrior build prerequisites should fail preflight."""
+    missing = (
+        Path("/usr/bin/cargo"),
+        Path("/usr/bin/rustc"),
+        Path("/usr/bin/pkg-config"),
+    )
+    facts = _facts(
+        missing_executables=missing,
+        libuuid_available=False,
+    )
+
+    result = evaluate_host_preflight(_request(), facts)
+
+    assert result.supported is False
+
+    issue_fields = {issue.field for issue in result.issues}
+
+    assert "cargo" not in issue_fields
+    assert "rustc" not in issue_fields
+    assert "pkg-config" not in issue_fields
+    assert "libuuid" in issue_fields
+
+    issue_paths = {issue.path for issue in result.issues}
+
+    assert Path("/usr/bin/cargo") in issue_paths
+    assert Path("/usr/bin/rustc") in issue_paths
+    assert Path("/usr/bin/pkg-config") in issue_paths
+
+    failed_names = {
+        check.name
+        for check in result.checks
+        if check.state is HostPreflightCheckState.FAILED
+    }
+
+    assert "executable:cargo" in failed_names
+    assert "executable:rustc" in failed_names
+    assert "executable:pkg-config" in failed_names
+    assert "library:libuuid" in failed_names

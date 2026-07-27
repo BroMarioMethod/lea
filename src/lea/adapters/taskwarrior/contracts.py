@@ -82,14 +82,15 @@ class TaskwarriorRunResult:
 
             return
 
-        if self.command is not None:
-            raise ValueError(
-                "A failed Taskwarrior run must not contain a command result."
-            )
-
         if not self.issues:
             raise ValueError(
                 "A failed Taskwarrior run must contain at least one issue."
+            )
+
+        if self.command is not None and self.command.return_code == 0:
+            raise ValueError(
+                "A failed Taskwarrior run command result must have a "
+                "non-zero return code."
             )
 
 

@@ -104,6 +104,7 @@ def _facts() -> HostFacts:
         dietpi_available=True,
         required_executables=(),
         missing_executables=(),
+        libuuid_available=True,
         service_user_exists=False,
         service_group_exists=False,
         managed_paths_present=(),

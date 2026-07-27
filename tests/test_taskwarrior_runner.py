@@ -134,11 +134,16 @@ def test_runner_reports_timeout(
 def test_runner_reports_non_zero_exit(
     tmp_path: Path,
 ) -> None:
-    """Non-zero exit codes should not be successful command results."""
+    """Non-zero process results should retain bounded diagnostics."""
     executable = tmp_path / "bin" / "task"
     make_executable(
         executable,
-        "import sys\nsys.exit(7)\n",
+        (
+            "import sys\n"
+            "print('diagnostic stdout')\n"
+            "print('diagnostic stderr', file=sys.stderr)\n"
+            "sys.exit(7)\n"
+        ),
     )
     config = make_config(tmp_path, executable=executable)
 
@@ -148,7 +153,10 @@ def test_runner_reports_non_zero_exit(
     )
 
     assert result.success is False
-    assert result.command is None
+    assert result.command is not None
+    assert result.command.return_code == 7
+    assert result.command.stdout == "diagnostic stdout\n"
+    assert result.command.stderr == "diagnostic stderr\n"
     assert result.issues[0].code == "taskwarrior_process_failed"
     assert result.issues[0].return_code == 7
 

@@ -20,6 +20,7 @@ from lea.tasks import (
     TaskCreateRequest,
     TaskListQuery,
     TaskModifyRequest,
+    TaskProviderIssue,
     TaskStatus,
 )
 
@@ -114,9 +115,7 @@ def validate_taskwarrior_executable(
         inspection = inspect_taskwarrior(config)
 
         if not inspection.available or inspection.version is None:
-            return _failure(
-                "The staged Taskwarrior executable failed version inspection."
-            )
+            return _inspection_failure(inspection.issues)
 
         provider = provider_factory(config)
 
@@ -241,6 +240,32 @@ def _create_isolated_config(
         timeout_seconds=timeout_seconds,
         working_dir=temporary_root,
     )
+
+
+def _inspection_failure(
+    issues: tuple[TaskProviderIssue, ...],
+) -> TaskwarriorSmokeTestResult:
+    """Preserve bounded provider diagnostics from failed inspection."""
+    details = "; ".join(_render_provider_issue(issue) for issue in issues)
+
+    message = "The staged Taskwarrior executable failed version inspection."
+
+    if details:
+        message = f"{message} {details}"
+
+    return _failure(message)
+
+
+def _render_provider_issue(
+    issue: TaskProviderIssue,
+) -> str:
+    """Render one structured provider issue without exposing arguments."""
+    parts = [f"[{issue.code}]", issue.message]
+
+    if issue.return_code is not None:
+        parts.append(f"exit status {issue.return_code}")
+
+    return " ".join(parts)
 
 
 def _failure(

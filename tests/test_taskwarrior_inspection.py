@@ -108,3 +108,31 @@ def test_missing_executable_issue_is_preserved(
 
     assert result.available is False
     assert result.issues[0].code == "taskwarrior_executable_missing"
+
+
+def test_non_zero_inspection_preserves_bounded_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """Inspection should retain diagnostics from an executed failed process."""
+    config = make_config(tmp_path)
+
+    config.executable.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "print('inspection stdout')\n"
+            "print('inspection stderr', file=sys.stderr)\n"
+            "raise SystemExit(9)\n"
+        ),
+        encoding="utf-8",
+    )
+    config.executable.chmod(config.executable.stat().st_mode | stat.S_IXUSR)
+
+    result = inspect_taskwarrior(config)
+
+    assert result.available is False
+    assert result.version is None
+    assert result.issues[0].code == "taskwarrior_process_failed"
+    assert result.issues[0].return_code == 9
+    assert "inspection stderr" in result.issues[0].message
+    assert "inspection stdout" in result.issues[0].message

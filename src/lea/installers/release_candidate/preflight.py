@@ -6,6 +6,7 @@ import grp
 import os
 import platform
 import pwd
+import subprocess
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
@@ -40,6 +41,7 @@ class HostFacts:
     dietpi_available: bool
     required_executables: tuple[Path, ...]
     missing_executables: tuple[Path, ...]
+    libuuid_available: bool
     service_user_exists: bool
     service_group_exists: bool
     managed_paths_present: tuple[Path, ...]
@@ -141,8 +143,14 @@ class HostPreflightResult:
 
 _REQUIRED_EXECUTABLES = (
     Path("/usr/bin/bash"),
+    Path("/usr/bin/cargo"),
+    Path("/usr/bin/cmake"),
+    Path("/usr/bin/c++"),
     Path("/usr/bin/git"),
+    Path("/usr/bin/make"),
+    Path("/usr/bin/pkg-config"),
     Path("/usr/bin/python3"),
+    Path("/usr/bin/rustc"),
     Path("/usr/bin/sudo"),
     Path("/usr/bin/systemctl"),
 )
@@ -177,6 +185,10 @@ def collect_host_facts() -> HostFacts:
         dietpi_available=Path("/boot/dietpi/.version").is_file(),
         required_executables=required,
         missing_executables=missing,
+        libuuid_available=_pkg_config_package_available(
+            Path("/usr/bin/pkg-config"),
+            "uuid",
+        ),
         service_user_exists=_user_exists("lea"),
         service_group_exists=_group_exists("lea"),
         managed_paths_present=tuple(path for path in _MANAGED_PATHS if path.exists()),
@@ -263,6 +275,21 @@ def evaluate_host_preflight(
             failure_message=f"Required executable is missing: {executable}.",
             path=executable,
         )
+
+    _record_check(
+        checks,
+        issues,
+        name="library:libuuid",
+        passed=facts.libuuid_available,
+        success_message=(
+            "The libuuid development package is available through pkg-config."
+        ),
+        failure_message=(
+            "The libuuid development package is unavailable through pkg-config."
+        ),
+        field="libuuid",
+        path=Path("/usr/bin/pkg-config"),
+    )
 
     existing_installation = bool(
         facts.managed_paths_present
@@ -373,6 +400,29 @@ def _record_check(
                 path=path,
             )
         )
+
+
+def _pkg_config_package_available(
+    executable: Path,
+    package: str,
+) -> bool:
+    """Return whether one pkg-config package is available."""
+    if not _executable_available(executable):
+        return False
+
+    try:
+        completed = subprocess.run(
+            (str(executable), "--exists", package),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+    return completed.returncode == 0
 
 
 def _read_os_release(path: Path) -> dict[str, str]:

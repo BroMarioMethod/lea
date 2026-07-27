@@ -113,7 +113,7 @@ class TaskwarriorRunner:
         if completed.returncode != 0:
             return TaskwarriorRunResult(
                 success=False,
-                command=None,
+                command=command_result,
                 issues=(
                     TaskProviderIssue(
                         code="taskwarrior_process_failed",
