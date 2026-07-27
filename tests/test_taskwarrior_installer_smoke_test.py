@@ -161,6 +161,29 @@ class SuccessfulProvider:
         )
 
 
+class TimedOutCreateProvider(SuccessfulProvider):
+    """Return a deterministic command-timeout issue during creation."""
+
+    def create_task(
+        self,
+        request: TaskCreateRequest,
+    ) -> TaskCreateResult:
+        """Return a failed creation result with timeout diagnostics."""
+        from lea.tasks import TaskProviderIssue
+
+        return TaskCreateResult(
+            success=False,
+            task=None,
+            issues=(
+                TaskProviderIssue(
+                    code="taskwarrior_timeout",
+                    message="Taskwarrior exceeded its command timeout.",
+                    return_code=None,
+                ),
+            ),
+        )
+
+
 class FailingCreateProvider(SuccessfulProvider):
     """Fail the first lifecycle mutation."""
 
@@ -238,6 +261,25 @@ def test_smoke_test_reports_lifecycle_failure(
 
     assert result.passed is False
     assert "failed task creation" in result.issues[0].message
+
+
+def test_smoke_test_preserves_lifecycle_provider_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """Lifecycle failures should preserve bounded provider diagnostics."""
+    staged = make_staged_binary(tmp_path)
+
+    result = validate_staged_taskwarrior_binary(
+        staged,
+        provider_factory=TimedOutCreateProvider,  # type: ignore[arg-type]
+    )
+
+    assert result.passed is False
+    assert result.version is None
+    assert result.issues[0].code is TaskwarriorInstallFailureCode.SMOKE_TEST_FAILED
+    assert "failed task creation" in result.issues[0].message
+    assert "taskwarrior_timeout" in result.issues[0].message
+    assert "exceeded its command timeout" in result.issues[0].message
 
 
 def test_smoke_test_removes_temporary_data_after_failure(
