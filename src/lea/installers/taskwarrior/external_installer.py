@@ -1,5 +1,6 @@
 """Administrator-supplied Taskwarrior executable installation workflow."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,10 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallFailureCode,
     TaskwarriorInstallMode,
 )
+from lea.installers.taskwarrior.ownership import (
+    OwnershipApplier,
+    ignore_ownership,
+)
 from lea.installers.taskwarrior.preflight import calculate_sha256
 from lea.installers.taskwarrior.records import (
     TaskwarriorInstallationRecord,
@@ -23,11 +28,14 @@ from lea.installers.taskwarrior.runtime_layout import (
     provision_taskwarrior_runtime_layout,
 )
 from lea.installers.taskwarrior.smoke_test import (
+    TaskwarriorSmokeTestResult,
     validate_taskwarrior_executable,
 )
 from lea.installers.taskwarrior.validation import (
     validate_taskwarrior_installer_config,
 )
+
+_ExecutableValidator = Callable[..., TaskwarriorSmokeTestResult]
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +70,8 @@ def install_external_taskwarrior(
     config: TaskwarriorInstallerConfig,
     *,
     fsync: bool = False,
+    apply_ownership: OwnershipApplier = ignore_ownership,
+    validate_executable: _ExecutableValidator = validate_taskwarrior_executable,
 ) -> TaskwarriorExternalInstallResult:
     """Validate and register one exact administrator-supplied executable."""
     if config.mode is not TaskwarriorInstallMode.EXTERNAL_EXECUTABLE:
@@ -113,7 +123,7 @@ def install_external_taskwarrior(
     if existing is not None:
         return existing
 
-    smoke = validate_taskwarrior_executable(
+    smoke = validate_executable(
         executable,
         temporary_parent=normalised.state_root.parent,
     )
@@ -129,6 +139,7 @@ def install_external_taskwarrior(
     layout = provision_taskwarrior_runtime_layout(
         normalised,
         fsync=fsync,
+        apply_ownership=apply_ownership,
     )
 
     if not layout.success or layout.layout is None:
@@ -157,7 +168,10 @@ def install_external_taskwarrior(
     record_issues = write_taskwarrior_installation_record(
         record,
         destination=normalised.installation_record,
+        owner="root",
+        group=normalised.service_group,
         fsync=fsync,
+        apply_ownership=apply_ownership,
     )
 
     if record_issues:

@@ -19,6 +19,10 @@ from lea.installers.taskwarrior.installer import (
     TaskwarriorBundledInstallResult,
     install_bundled_taskwarrior,
 )
+from lea.installers.taskwarrior.ownership import (
+    OwnershipApplier,
+    apply_posix_ownership,
+)
 from lea.installers.taskwarrior.records import (
     TaskwarriorInstallationRecord,
 )
@@ -64,6 +68,7 @@ def install_taskwarrior(
     fsync: bool = False,
     progress: TaskwarriorBuildProgressReporter | None = None,
     preserve_failed_artefacts: bool = False,
+    apply_ownership: OwnershipApplier = apply_posix_ownership,
 ) -> TaskwarriorInstallResult:
     """Install Taskwarrior using the mode declared by the configuration."""
     if not isinstance(config, TaskwarriorInstallerConfig):
@@ -73,6 +78,7 @@ def install_taskwarrior(
         bundled_result = install_bundled_taskwarrior(
             config,
             fsync=fsync,
+            apply_ownership=apply_ownership,
         )
         return _from_bundled(bundled_result)
 
@@ -82,6 +88,7 @@ def install_taskwarrior(
             fsync=fsync,
             progress=progress,
             preserve_failed_artefacts=preserve_failed_artefacts,
+            apply_ownership=apply_ownership,
         )
         return _from_source(source_result)
 
@@ -89,6 +96,7 @@ def install_taskwarrior(
         external_result = install_external_taskwarrior(
             config,
             fsync=fsync,
+            apply_ownership=apply_ownership,
         )
         return _from_external(external_result)
 

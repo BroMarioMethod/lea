@@ -25,6 +25,10 @@ from lea.installers.taskwarrior.contracts import (
 from lea.installers.taskwarrior.failure_diagnostics import (
     preserve_taskwarrior_failure_diagnostics,
 )
+from lea.installers.taskwarrior.ownership import (
+    OwnershipApplier,
+    ignore_ownership,
+)
 from lea.installers.taskwarrior.preflight import (
     calculate_sha256,
     run_taskwarrior_installer_preflight,
@@ -113,6 +117,7 @@ def install_source_taskwarrior(
     fsync: bool = False,
     progress: TaskwarriorBuildProgressReporter | None = None,
     preserve_failed_artefacts: bool = False,
+    apply_ownership: OwnershipApplier = ignore_ownership,
 ) -> TaskwarriorSourceInstallResult:
     """Build, validate and atomically install pinned Taskwarrior source."""
     if config.mode is not TaskwarriorInstallMode.SOURCE_BUILD:
@@ -356,7 +361,11 @@ def install_source_taskwarrior(
                 issues=mismatch_issues,
             )
 
-        layout = provision_taskwarrior_runtime_layout(normalised, fsync=fsync)
+        layout = provision_taskwarrior_runtime_layout(
+            normalised,
+            fsync=fsync,
+            apply_ownership=apply_ownership,
+        )
         if not layout.success:
             cleanup = remove_taskwarrior_staging(staged)
             staged = None
@@ -368,7 +377,12 @@ def install_source_taskwarrior(
                 issues=(*layout.issues, *cleanup),
             )
 
-        activation = activate_staged_taskwarrior(staged, normalised, fsync=fsync)
+        activation = activate_staged_taskwarrior(
+            staged,
+            normalised,
+            fsync=fsync,
+            apply_ownership=apply_ownership,
+        )
         if not activation.success:
             cleanup = remove_taskwarrior_staging(staged)
             staged = None

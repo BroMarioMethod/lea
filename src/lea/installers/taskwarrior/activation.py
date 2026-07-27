@@ -15,6 +15,10 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallerIssue,
     TaskwarriorInstallFailureCode,
 )
+from lea.installers.taskwarrior.ownership import (
+    OwnershipApplier,
+    ignore_ownership,
+)
 from lea.installers.taskwarrior.preflight import calculate_sha256
 from lea.installers.taskwarrior.records import (
     TaskwarriorInstallationRecord,
@@ -95,6 +99,7 @@ def activate_staged_taskwarrior(
     *,
     clock: _Clock = lambda: datetime.now(UTC),
     fsync: bool = False,
+    apply_ownership: OwnershipApplier = ignore_ownership,
 ) -> TaskwarriorActivationResult:
     """Atomically activate one validated staged Taskwarrior binary."""
     final_root = config.tools_root / config.version
@@ -104,6 +109,7 @@ def activate_staged_taskwarrior(
         final_executable=final_executable,
         expected_sha256=staged.sha256,
         config=config,
+        apply_ownership=apply_ownership,
     )
 
     if existing_result is not None:
@@ -125,24 +131,48 @@ def activate_staged_taskwarrior(
             code=TaskwarriorInstallFailureCode.ACTIVATION_FAILED,
             message=(
                 "The Taskwarrior installation directories could not be "
-                f"prepared: {error.strerror or type(error).__name__}."
+                f"prepared: {_error_detail(error)}."
             ),
             path=config.tools_root,
         )
 
     try:
         os.replace(staged.staging_root, final_root)
+        _normalise_managed_installation(
+            tools_root=config.tools_root,
+            final_root=final_root,
+            final_executable=final_executable,
+            service_group=config.service_group,
+            apply_ownership=apply_ownership,
+        )
 
         if fsync:
             _fsync_directory(config.tools_root)
-    except OSError as error:
-        return _failure(
+    except (KeyError, OSError) as error:
+        activation_issue = TaskwarriorInstallerIssue(
             code=TaskwarriorInstallFailureCode.ACTIVATION_FAILED,
             message=(
                 "The staged Taskwarrior installation could not be "
-                f"activated: {error.strerror or type(error).__name__}."
+                f"activated: {_error_detail(error)}."
             ),
+            field="tools_root",
             path=final_root,
+        )
+        rollback_issue = _rollback_activated_installation(final_root)
+
+        if rollback_issue is not None:
+            return TaskwarriorActivationResult(
+                success=False,
+                already_installed=False,
+                record=None,
+                issues=(activation_issue, rollback_issue),
+            )
+
+        return TaskwarriorActivationResult(
+            success=False,
+            already_installed=False,
+            record=None,
+            issues=(activation_issue,),
         )
 
     record = _make_record(
@@ -155,7 +185,10 @@ def activate_staged_taskwarrior(
     write_issues = write_taskwarrior_installation_record(
         record,
         destination=config.installation_record,
+        owner="root",
+        group=config.service_group,
         fsync=fsync,
+        apply_ownership=apply_ownership,
     )
 
     if write_issues:
@@ -188,7 +221,10 @@ def write_taskwarrior_installation_record(
     record: TaskwarriorInstallationRecord,
     *,
     destination: Path,
+    owner: str = "root",
+    group: str = "root",
     fsync: bool = False,
+    apply_ownership: OwnershipApplier = ignore_ownership,
 ) -> tuple[TaskwarriorInstallerIssue, ...]:
     """Atomically replace one Taskwarrior installation record."""
     if not destination.is_absolute():
@@ -225,16 +261,18 @@ def write_taskwarrior_installation_record(
 
         os.replace(temporary_path, destination)
         temporary_path = None
+        destination.chmod(0o640)
+        apply_ownership(destination, owner, group)
 
         if fsync:
             _fsync_directory(destination.parent)
-    except OSError as error:
+    except (KeyError, OSError) as error:
         return (
             TaskwarriorInstallerIssue(
                 code=TaskwarriorInstallFailureCode.RECORD_FAILED,
                 message=(
                     "The Taskwarrior installation record could not be "
-                    f"written: {error.strerror or type(error).__name__}."
+                    f"written: {_error_detail(error)}."
                 ),
                 field="installation_record",
                 path=destination,
@@ -253,6 +291,7 @@ def _inspect_existing_installation(
     final_executable: Path,
     expected_sha256: str,
     config: TaskwarriorInstallerConfig,
+    apply_ownership: OwnershipApplier,
 ) -> TaskwarriorActivationResult | None:
     """Return an idempotent result or mismatch failure when present."""
     final_root = final_executable.parent.parent
@@ -271,13 +310,29 @@ def _inspect_existing_installation(
         )
 
     try:
+        _normalise_managed_installation(
+            tools_root=config.tools_root,
+            final_root=final_root,
+            final_executable=final_executable,
+            service_group=config.service_group,
+            apply_ownership=apply_ownership,
+        )
+
+        if config.installation_record.exists():
+            config.installation_record.chmod(0o640)
+            apply_ownership(
+                config.installation_record,
+                "root",
+                config.service_group,
+            )
+
         existing_sha256 = calculate_sha256(final_executable)
-    except OSError as error:
+    except (KeyError, OSError) as error:
         return _failure(
             code=TaskwarriorInstallFailureCode.ACTIVATION_FAILED,
             message=(
                 "The existing Taskwarrior installation could not be "
-                f"verified: {error.strerror or type(error).__name__}."
+                f"verified: {_error_detail(error)}."
             ),
             path=final_executable,
         )
@@ -328,6 +383,32 @@ def _inspect_existing_installation(
     )
 
 
+def _normalise_managed_installation(
+    *,
+    tools_root: Path,
+    final_root: Path,
+    final_executable: Path,
+    service_group: str,
+    apply_ownership: OwnershipApplier,
+) -> None:
+    """Apply canonical ownership and modes to one managed installation."""
+    tools_root.chmod(0o750)
+    apply_ownership(tools_root, "root", service_group)
+
+    paths = (final_root, *sorted(final_root.rglob("*")))
+
+    for candidate in paths:
+        if candidate.is_symlink():
+            raise OSError(f"Managed Taskwarrior path is a symbolic link: {candidate}")
+
+        if candidate.is_dir() or candidate == final_executable:
+            candidate.chmod(0o750)
+        elif candidate.is_file():
+            candidate.chmod(0o640)
+
+        apply_ownership(candidate, "root", service_group)
+
+
 def _make_record(
     *,
     config: TaskwarriorInstallerConfig,
@@ -363,7 +444,7 @@ def _rollback_activated_installation(
             code=TaskwarriorInstallFailureCode.ACTIVATION_FAILED,
             message=(
                 "The failed Taskwarrior activation could not be rolled "
-                f"back: {error.strerror or type(error).__name__}."
+                f"back: {_error_detail(error)}."
             ),
             field="tools_root",
             path=final_root,
@@ -380,6 +461,17 @@ def _fsync_directory(directory: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _error_detail(error: BaseException) -> str:
+    """Return bounded text for filesystem and account lookup failures."""
+    strerror = getattr(error, "strerror", None)
+
+    if isinstance(strerror, str) and strerror:
+        return strerror
+
+    rendered = str(error).strip()
+    return rendered or type(error).__name__
 
 
 def _failure(

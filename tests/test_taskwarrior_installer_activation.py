@@ -226,3 +226,73 @@ def test_record_requires_canonical_utc(
             smoke_test="passed",
             installed_at=datetime.fromisoformat("2026-07-21T20:30:00+02:00"),
         )
+
+
+def test_activation_applies_managed_ownership_and_modes(
+    tmp_path: Path,
+) -> None:
+    """Activation should normalise the managed tree and installation record."""
+    staged = make_staged_binary(tmp_path)
+    config = make_config(tmp_path)
+    ownership: list[tuple[Path, str, str]] = []
+
+    def apply_ownership(
+        path: Path,
+        owner: str,
+        group: str,
+    ) -> None:
+        ownership.append((path, owner, group))
+
+    result = activate_staged_taskwarrior(
+        staged,
+        config,
+        clock=lambda: INSTALLED_AT,
+        apply_ownership=apply_ownership,
+    )
+
+    final_root = config.tools_root / config.version
+    final_bin = final_root / "bin"
+    final_executable = final_bin / "task"
+
+    assert result.success is True
+    assert final_root.stat().st_mode & 0o777 == 0o750
+    assert final_bin.stat().st_mode & 0o777 == 0o750
+    assert final_executable.stat().st_mode & 0o777 == 0o750
+    assert config.installation_record.stat().st_mode & 0o777 == 0o640
+
+    assert (config.tools_root, "root", "lea") in ownership
+    assert (final_root, "root", "lea") in ownership
+    assert (final_bin, "root", "lea") in ownership
+    assert (final_executable, "root", "lea") in ownership
+    assert (config.installation_record, "root", "lea") in ownership
+
+
+def test_activation_ownership_failure_rolls_back_new_installation(
+    tmp_path: Path,
+) -> None:
+    """Ownership failure after activation must remove the new version tree."""
+    staged = make_staged_binary(tmp_path)
+    config = make_config(tmp_path)
+    final_root = config.tools_root / config.version
+
+    def fail_ownership(
+        path: Path,
+        _owner: str,
+        _group: str,
+    ) -> None:
+        if path == final_root:
+            raise PermissionError("ownership denied")
+
+    result = activate_staged_taskwarrior(
+        staged,
+        config,
+        clock=lambda: INSTALLED_AT,
+        apply_ownership=fail_ownership,
+    )
+
+    assert result.success is False
+    assert result.record is None
+    assert result.issues[0].code is TaskwarriorInstallFailureCode.ACTIVATION_FAILED
+    assert "ownership denied" in result.issues[0].message
+    assert not final_root.exists()
+    assert not config.installation_record.exists()

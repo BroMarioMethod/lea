@@ -82,3 +82,40 @@ def test_external_installer_requires_full_lifecycle(
     assert result.record is None
     assert result.issues
     assert not config.installation_record.exists()
+
+
+def test_external_installer_never_changes_external_executable_ownership(
+    tmp_path: Path,
+) -> None:
+    """Only LEA-managed runtime and record paths may receive ownership changes."""
+    from lea.installers.taskwarrior import TaskwarriorSmokeTestResult
+
+    executable = make_executable(tmp_path)
+    config = make_config(tmp_path, executable)
+    ownership: list[tuple[Path, str, str]] = []
+
+    def apply_ownership(
+        path: Path,
+        owner: str,
+        group: str,
+    ) -> None:
+        ownership.append((path, owner, group))
+
+    result = install_external_taskwarrior(
+        config,
+        apply_ownership=apply_ownership,
+        validate_executable=lambda *_args, **_kwargs: TaskwarriorSmokeTestResult(
+            passed=True,
+            version="3.4.2",
+            issues=(),
+        ),
+    )
+
+    assert result.success is True
+    assert executable not in {path for path, _owner, _group in ownership}
+    assert (
+        config.installation_record,
+        "root",
+        "lea",
+    ) in ownership
+    assert config.installation_record.stat().st_mode & 0o777 == 0o640
