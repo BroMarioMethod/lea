@@ -3,7 +3,7 @@ license: AGPL-3.0-only
 id: LEA-SPEC-0009
 title: Runtime Layout and Configuration Specification
 version: 0.2.0
-status: Complete
+status: Accepted
 review_required: false
 ---
 
@@ -13,7 +13,7 @@ review_required: false
 
 | Item | Value |
 |---|---|
-| Status | Complete |
+| Status | Accepted |
 | Requires Review | No |
 | Implementation | Complete |
 | Test Status | 663 repository tests passing |

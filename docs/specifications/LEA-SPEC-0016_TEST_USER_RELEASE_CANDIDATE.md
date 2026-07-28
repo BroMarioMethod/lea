@@ -1,6 +1,10 @@
 # LEA-SPEC-0016 — Test-user Release Candidate
 
-**Status:** Accepted  
+**Document Status:** Accepted  
+**Implementation Status:** In Progress  
+**Verification Status:** Partially Verified  
+**Verified Profile:** Fresh DietPi installation without Telegram  
+**Last Verified:** 28 July 2026  
 **Milestone:** 2.7 — Test-user Release Candidate  
 **Repository:** LEA  
 **Licence:** AGPL-3.0-only  
@@ -436,7 +440,33 @@ Automated tests shall cover:
 
 Network tests shall use deterministic fakes by default. Live Bot API testing belongs to controlled clean-room acceptance.
 
-## 20. Proposed implementation slices
+## 20. Current verification state
+
+The local installation profile has passed clean-room verification on a fresh
+DietPi system with Telegram disabled.
+
+Verified behaviour includes:
+
+- fresh installation;
+- repair;
+- managed purge;
+- pinned Taskwarrior 3.4.2 source installation;
+- post-install health;
+- disposable Taskwarrior lifecycle acceptance;
+- runtime-directory recreation after reboot;
+- post-reboot health and acceptance.
+
+The complete evidence is recorded in:
+
+```text
+docs/development/RELEASE_CANDIDATE_CLEAN_ROOM_VERIFICATION.md
+```
+
+The full milestone is not yet verified because live Telegram onboarding,
+Telegram service operation, the user-facing installation entry point and final
+release tagging remain outstanding.
+
+## 21. Proposed implementation slices
 
 ### Slice 1 — Milestone specification
 
@@ -541,7 +571,7 @@ Network tests shall use deterministic fakes by default. Live Bot API testing bel
 - complete the release checklist;
 - version and tag the candidate.
 
-## 21. Completion criteria
+## 22. Completion criteria
 
 Milestone 2.7 is complete when:
 
@@ -557,7 +587,7 @@ Milestone 2.7 is complete when:
 - the release checklist is complete;
 - the release candidate is merged and tagged.
 
-## 22. Deferred work
+## 23. Deferred work
 
 The following remain deferred:
 
