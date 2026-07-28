@@ -456,6 +456,15 @@ Verified behaviour includes:
 - runtime-directory recreation after reboot;
 - post-reboot health and acceptance.
 
+- user-facing installer and uninstaller wrapper execution from outside the
+  repository;
+- safe wrapper cancellation and managed purge;
+- preservation of the source repository and release assets during purge;
+- fresh reinstall through the user-facing installer wrapper;
+- persistent acceptance-record generation;
+- service-user access to the managed executable, configuration and runtime
+  directory;
+
 The complete evidence is recorded in:
 
 ```text

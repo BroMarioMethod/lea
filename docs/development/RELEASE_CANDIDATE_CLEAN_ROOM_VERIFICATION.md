@@ -11,7 +11,8 @@
 | Platform | Raspberry Pi 4B, AArch64 |
 | Operating System | Debian GNU/Linux 13.6 through DietPi |
 | Repository Commit | `dc17c74` |
-| Merged Main Commit | `11aaa22` |
+| Wrapper Feature Commit | `a6a7931` |
+| Merged Main Commit | `138adfb` |
 
 ## Purpose
 
@@ -158,6 +159,35 @@ The purge preserved:
 
 while removing managed LEA product state.
 
+## User-facing wrapper verification
+
+The top-level user-facing wrappers were verified on the same clean-room tester
+host at merged main commit `138adfb`.
+
+Verified wrapper behaviour included:
+
+- `install.sh` and `uninstall.sh` resolved the repository correctly when
+  invoked from `/tmp`;
+- both help paths worked without elevation and through `sudo`;
+- the uninstaller rendered the complete managed purge plan;
+- declining the uninstall confirmation caused no managed-state mutation;
+- approving the purge removed LEA configuration, state, logs, runtime state,
+  the managed Taskwarrior installation and the `lea` service identity;
+- purge preserved `/opt/lea`, `/opt/lea-release-assets` and the shared
+  `/opt/lea-tools` parent directory;
+- the pinned Taskwarrior archive remained unchanged at the expected SHA-256;
+- a fresh non-Telegram installation through `sudo /opt/lea/install.sh`
+  completed all seven installer stages;
+- Taskwarrior 3.4.2 was rebuilt and activated successfully;
+- post-install health and disposable functional acceptance passed;
+- the dedicated acceptance harness wrote
+  `/var/lib/lea/acceptance/release-candidate.json` with mode `0640`;
+- after reboot, `/run/lea` was recreated, the managed executable remained
+  available and the acceptance harness passed again;
+- the `lea` service user retained executable access, Taskwarrior configuration
+  read access and runtime-directory write access;
+- the source repository remained clean at commit `138adfb`.
+
 ## Verified scope
 
 This evidence verifies:
@@ -174,6 +204,12 @@ This evidence verifies:
 - managed purge behaviour;
 - runtime-directory recreation after reboot;
 - post-reboot health and acceptance.
+
+- user-facing installer and uninstaller wrapper behaviour;
+- safe wrapper cancellation and managed purge;
+- wrapper execution from outside the repository;
+- persistent acceptance-record generation;
+- service-user executable, configuration and runtime access;
 
 ## Outstanding verification
 
