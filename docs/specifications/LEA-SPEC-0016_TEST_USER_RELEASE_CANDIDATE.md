@@ -1,8 +1,8 @@
 # LEA-SPEC-0016 — Test-user Release Candidate
 
 **Document Status:** Accepted  
-**Implementation Status:** In Progress  
-**Verification Status:** Partially Verified  
+**Implementation Status:** Implemented<br>
+**Verification Status:** Verified<br>
 **Verified Profile:** Fresh DietPi installation without Telegram  
 **Last Verified:** 28 July 2026  
 **Milestone:** 2.7 — Test-user Release Candidate  
@@ -479,8 +479,8 @@ The complete evidence is recorded in:
 docs/development/RELEASE_CANDIDATE_CLEAN_ROOM_VERIFICATION.md
 ```
 
-The full milestone is not yet verified because the final release checklist
-and release tagging remain outstanding.
+Milestone 2.7 is implemented and behaviourally verified. The final release
+commit is ready for annotated tag `milestone-2.7` as LEA `0.2.0`.
 
 ## 21. Proposed implementation slices
 
