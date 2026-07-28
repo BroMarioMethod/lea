@@ -2,7 +2,10 @@
 
 set -euo pipefail
 
-printf 'Running Ruff formatting check...\n'
+printf 'Validating release-candidate wrapper syntax...\n'
+bash -n install.sh uninstall.sh
+
+printf '\nRunning Ruff formatting check...\n'
 uv run ruff format --check .
 
 printf '\nRunning Ruff linting...\n'

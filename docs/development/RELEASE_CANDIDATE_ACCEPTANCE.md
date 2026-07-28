@@ -50,6 +50,26 @@ The first real acceptance run belongs to the clean-room installation stage. It
 must not be performed merely against the repository checkout on the development
 device.
 
+## Host service-manager prerequisite
+
+The tested DietPi host must use systemd with a working system D-Bus.
+
+Verify:
+
+```bash
+test -S /run/dbus/system_bus_socket
+systemctl is-active dbus.service
+systemctl is-system-running
+```
+
+The host may use either `dbus-daemon` or `dbus-broker`. Acceptance must check
+the generic `dbus.service` and system-bus socket rather than requiring one
+specific implementation.
+
+A fresh DietPi image may require D-Bus packages or first-boot configuration
+changes followed by a reboot. Any undocumented manual remediation is an
+installer defect.
+
 ## Standard paths
 
 The default installed-system paths are:
