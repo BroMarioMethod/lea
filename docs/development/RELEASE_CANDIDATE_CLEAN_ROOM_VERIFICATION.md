@@ -260,9 +260,6 @@ This evidence verifies:
 The following release-candidate requirements remain unverified:
 
 - live Telegram bot-token validation;
-- authorised Telegram user and private-chat registration;
-- installation of real Telegram secrets outside Git;
-- Telegram systemd service enablement and startup;
 - final release tag and release checklist.
 
 Real Telegram values must be configured only during the controlled live
@@ -270,8 +267,8 @@ runtime smoke test. Tokens and real identifiers must remain outside Git.
 
 ## Conclusion
 
-The non-Telegram release-candidate installation profile is verified on a fresh
-DietPi system.
+The non-Telegram installation profile and the live Telegram runtime profile
+are verified on the clean-room DietPi tester host.
 
 Milestone 2.7 remains partially verified until the final release checklist
 and release tag are completed.
