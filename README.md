@@ -213,13 +213,20 @@ Current accepted or completed standards and specifications include:
 - `LEA-SPEC-0009` — Runtime Layout and Configuration Specification
 - `LEA-SPEC-0010` — Persistent Proposal Repository Specification
 
-Operational guides:
+Operational and development guides:
 
 ```text
+docs/03_INSTALLATION.md
 docs/05_AUDIT_STORAGE.md
 docs/06_AUDIT_INTEGRITY.md
 docs/07_ACTION_ORCHESTRATION.md
 docs/08_RUNTIME_CONFIGURATION.md
+docs/09_PROPOSAL_REPOSITORY.md
+docs/10_TELEGRAM_DEPLOYMENT.md
+docs/development/DOCUMENT_STATUS_LIFECYCLE.md
+docs/development/RELEASE_CANDIDATE_ACCEPTANCE.md
+docs/development/RELEASE_CANDIDATE_CLEAN_ROOM_VERIFICATION.md
+docs/development/TASKWARRIOR_INSTALLATION.md
 ```
 
 The audit integrity implementation uses an unauthenticated SHA-256 hash chain. It detects many unrecomputed changes but does not protect against complete file replacement or valid tail truncation.
