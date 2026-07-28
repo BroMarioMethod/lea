@@ -134,11 +134,16 @@ def test_runner_reports_timeout(
 def test_runner_reports_non_zero_exit(
     tmp_path: Path,
 ) -> None:
-    """Non-zero exit codes should not be successful command results."""
+    """Non-zero process results should retain bounded diagnostics."""
     executable = tmp_path / "bin" / "task"
     make_executable(
         executable,
-        "import sys\nsys.exit(7)\n",
+        (
+            "import sys\n"
+            "print('diagnostic stdout')\n"
+            "print('diagnostic stderr', file=sys.stderr)\n"
+            "sys.exit(7)\n"
+        ),
     )
     config = make_config(tmp_path, executable=executable)
 
@@ -148,7 +153,10 @@ def test_runner_reports_non_zero_exit(
     )
 
     assert result.success is False
-    assert result.command is None
+    assert result.command is not None
+    assert result.command.return_code == 7
+    assert result.command.stdout == "diagnostic stdout\n"
+    assert result.command.stderr == "diagnostic stderr\n"
     assert result.issues[0].code == "taskwarrior_process_failed"
     assert result.issues[0].return_code == 7
 
@@ -187,3 +195,95 @@ def test_runner_does_not_change_parent_environment(
 
     assert result.success is True
     assert os.environ.get("HOME") == original_home
+
+
+def test_unconfigured_runner_omits_managed_runtime_configuration(
+    tmp_path: Path,
+) -> None:
+    """Unconfigured probes must not expose managed Taskwarrior storage."""
+    executable = tmp_path / "bin" / "task"
+    make_executable(
+        executable,
+        (
+            "import json, os, sys\n"
+            "print(json.dumps({"
+            "'argv': sys.argv[1:], "
+            "'home': os.environ.get('HOME'), "
+            "'taskrc': os.environ.get('TASKRC'), "
+            "'taskdata': os.environ.get('TASKDATA')"
+            "}))\n"
+        ),
+    )
+    config = make_config(tmp_path, executable=executable)
+    runner = TaskwarriorRunner(
+        config,
+        base_environment={
+            "HOME": "/root",
+            "TASKRC": "/untrusted/taskrc",
+            "TASKDATA": "/untrusted/data",
+        },
+    )
+
+    result = runner.run(
+        ("--version",),
+        operation="inspect",
+        configured=False,
+    )
+
+    assert result.success is True
+    assert result.command is not None
+    assert result.command.arguments == (
+        str(config.executable),
+        "--version",
+    )
+    assert '"home": "/root"' in result.command.stdout
+    assert '"taskrc": null' in result.command.stdout
+    assert '"taskdata": null' in result.command.stdout
+    assert str(config.taskrc) not in result.command.stdout
+    assert str(config.data_dir) not in result.command.stdout
+    assert str(config.home_dir) not in result.command.stdout
+
+
+def test_runner_reports_missing_working_directory(
+    tmp_path: Path,
+) -> None:
+    """A missing working directory must not be reported as a missing binary."""
+    executable = tmp_path / "bin" / "task"
+    make_executable(executable, "print('3.4.2')\n")
+    config = make_config(tmp_path, executable=executable)
+    working_dir = config.working_dir
+    assert working_dir is not None
+    working_dir.rmdir()
+
+    result = TaskwarriorRunner(config).run(
+        ("--version",),
+        operation="inspect",
+        configured=False,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code == ("taskwarrior_working_directory_unavailable")
+    assert "does not exist" in result.issues[0].message
+
+
+def test_runner_reports_non_directory_working_path(
+    tmp_path: Path,
+) -> None:
+    """A non-directory working path should fail before process execution."""
+    executable = tmp_path / "bin" / "task"
+    make_executable(executable, "print('3.4.2')\n")
+    config = make_config(tmp_path, executable=executable)
+    working_dir = config.working_dir
+    assert working_dir is not None
+    working_dir.rmdir()
+    working_dir.write_text("not a directory\n", encoding="utf-8")
+
+    result = TaskwarriorRunner(config).run(
+        ("--version",),
+        operation="inspect",
+        configured=False,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code == ("taskwarrior_working_directory_unavailable")
+    assert "not a directory" in result.issues[0].message

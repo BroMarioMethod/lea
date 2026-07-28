@@ -108,3 +108,60 @@ def test_missing_executable_issue_is_preserved(
 
     assert result.available is False
     assert result.issues[0].code == "taskwarrior_executable_missing"
+
+
+def test_non_zero_inspection_preserves_bounded_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """Inspection should retain diagnostics from an executed failed process."""
+    config = make_config(tmp_path)
+
+    config.executable.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "print('inspection stdout')\n"
+            "print('inspection stderr', file=sys.stderr)\n"
+            "raise SystemExit(9)\n"
+        ),
+        encoding="utf-8",
+    )
+    config.executable.chmod(config.executable.stat().st_mode | stat.S_IXUSR)
+
+    result = inspect_taskwarrior(config)
+
+    assert result.available is False
+    assert result.version is None
+    assert result.issues[0].code == "taskwarrior_process_failed"
+    assert result.issues[0].return_code == 9
+    assert "inspection stderr" in result.issues[0].message
+    assert "inspection stdout" in result.issues[0].message
+
+
+def test_inspection_does_not_pass_runtime_storage_configuration(
+    tmp_path: Path,
+) -> None:
+    """Version inspection must not initialise or address managed task storage."""
+    config = make_config(tmp_path)
+    arguments_file = tmp_path / "arguments.txt"
+
+    config.executable.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import pathlib\n"
+            "import sys\n"
+            f"pathlib.Path({str(arguments_file)!r}).write_text("
+            "'\\n'.join(sys.argv[1:]), encoding='utf-8')\n"
+            "print('3.4.2')\n"
+        ),
+        encoding="utf-8",
+    )
+    config.executable.chmod(config.executable.stat().st_mode | stat.S_IXUSR)
+
+    result = inspect_taskwarrior(config)
+
+    assert result.available is True
+    assert result.version == "3.4.2"
+    assert arguments_file.read_text(encoding="utf-8") == "--version"
+    assert list(config.data_dir.iterdir()) == []
+    assert list(config.home_dir.iterdir()) == []

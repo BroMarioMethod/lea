@@ -109,13 +109,22 @@ def test_dispatches_bundled_mode(
     config = _bundled_config(tmp_path)
     record = _record(config)
 
+    def ownership(
+        _path: Path,
+        _owner: str,
+        _group: str,
+    ) -> None:
+        pass
+
     def selected(
         value: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        apply_ownership: object,
     ) -> TaskwarriorBundledInstallResult:
         assert value is config
         assert fsync is True
+        assert apply_ownership is ownership
         return TaskwarriorBundledInstallResult(
             success=True,
             already_installed=False,
@@ -128,7 +137,11 @@ def test_dispatches_bundled_mode(
         selected,
     )
 
-    result = install_taskwarrior(config, fsync=True)
+    result = install_taskwarrior(
+        config,
+        fsync=True,
+        apply_ownership=ownership,
+    )
 
     assert result.record == record
     assert result.success is True
@@ -142,13 +155,26 @@ def test_dispatches_source_mode(
     config = _source_config(tmp_path)
     record = _record(config)
 
+    def ownership(
+        _path: Path,
+        _owner: str,
+        _group: str,
+    ) -> None:
+        pass
+
     def selected(
         value: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        progress: object | None,
+        preserve_failed_artefacts: bool,
+        apply_ownership: object,
     ) -> TaskwarriorSourceInstallResult:
         assert value is config
         assert fsync is True
+        assert progress is None
+        assert preserve_failed_artefacts is False
+        assert apply_ownership is ownership
         return TaskwarriorSourceInstallResult(
             success=True,
             already_installed=False,
@@ -162,7 +188,11 @@ def test_dispatches_source_mode(
         selected,
     )
 
-    result = install_taskwarrior(config, fsync=True)
+    result = install_taskwarrior(
+        config,
+        fsync=True,
+        apply_ownership=ownership,
+    )
 
     assert result.record == record
     assert result.success is True
@@ -176,13 +206,22 @@ def test_dispatches_external_mode(
     config = _external_config(tmp_path)
     record = _record(config)
 
+    def ownership(
+        _path: Path,
+        _owner: str,
+        _group: str,
+    ) -> None:
+        pass
+
     def selected(
         value: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        apply_ownership: object,
     ) -> TaskwarriorExternalInstallResult:
         assert value is config
         assert fsync is True
+        assert apply_ownership is ownership
         return TaskwarriorExternalInstallResult(
             success=True,
             already_installed=False,
@@ -195,7 +234,11 @@ def test_dispatches_external_mode(
         selected,
     )
 
-    result = install_taskwarrior(config, fsync=True)
+    result = install_taskwarrior(
+        config,
+        fsync=True,
+        apply_ownership=ownership,
+    )
 
     assert result.record == record
     assert result.success is True

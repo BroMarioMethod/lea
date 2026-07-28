@@ -73,6 +73,22 @@ def failing_runtime_runner(
     return EXIT_APPLICATION_ERROR
 
 
+def successful_release_candidate_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Record one successful installer CLI invocation."""
+    assert tuple(arguments) == (
+        "--mode",
+        "repair",
+    )
+    stdout.write("Installer command completed.\n")
+    assert stderr.write("") == 0
+    return EXIT_SUCCESS
+
+
 def successful_local_cli_runner(
     arguments: Sequence[str],
     *,
@@ -82,6 +98,19 @@ def successful_local_cli_runner(
     """Record one successful Local CLI invocation."""
     assert tuple(arguments) == ("status",)
     stdout.write("Local CLI completed.\n")
+    assert stderr.write("") == 0
+    return EXIT_SUCCESS
+
+
+def successful_release_candidate_acceptance_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Record one successful acceptance CLI invocation."""
+    assert tuple(arguments) == ("--no-telegram",)
+    stdout.write("Acceptance command completed.\n")
     assert stderr.write("") == 0
     return EXIT_SUCCESS
 
@@ -217,6 +246,29 @@ def test_dispatch_runtime_does_not_require_application_config() -> None:
     assert exit_code == EXIT_SUCCESS
 
 
+def test_dispatch_release_candidate_command_uses_installer_boundary() -> None:
+    """Installer arguments should avoid legacy application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "install-release-candidate",
+            "--mode",
+            "repair",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_cli_runner=successful_release_candidate_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Installer command completed.\n"
+    assert stderr.getvalue() == ""
+
+
 def test_dispatch_local_cli_command_uses_local_boundary() -> None:
     """Recognised Local CLI commands should avoid legacy application startup."""
     stdout = StringIO()
@@ -300,3 +352,95 @@ def test_non_runtime_arguments_preserve_existing_application_path(
     )
 
     assert exit_code == EXIT_SUCCESS
+
+
+def test_dispatch_acceptance_command_uses_acceptance_boundary() -> None:
+    """Acceptance arguments should avoid legacy application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "accept-release-candidate",
+            "--no-telegram",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_acceptance_cli_runner=(
+            successful_release_candidate_acceptance_runner
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Acceptance command completed.\n"
+    assert stderr.getvalue() == ""
+
+
+def test_dispatch_preserves_acceptance_exit_code() -> None:
+    """Acceptance failures should preserve their exit status."""
+
+    def failing_acceptance_runner(
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        assert tuple(arguments) == ("--telegram",)
+        stdout.write("Acceptance checks failed.\n")
+        assert stderr.write("") == 0
+        return EXIT_APPLICATION_ERROR
+
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = dispatch(
+        [
+            "accept-release-candidate",
+            "--telegram",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_acceptance_cli_runner=failing_acceptance_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_APPLICATION_ERROR
+    assert stdout.getvalue() == "Acceptance checks failed.\n"
+    assert stderr.getvalue() == ""
+
+
+def test_dispatch_uninstall_command_uses_uninstall_boundary() -> None:
+    """Uninstall arguments should avoid legacy application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    def successful_uninstall_runner(
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        assert tuple(arguments) == ("--purge", "--yes")
+        stdout.write("Uninstall command completed.\n")
+        assert stderr.write("") == 0
+        return EXIT_SUCCESS
+
+    exit_code = dispatch(
+        [
+            "uninstall-release-candidate",
+            "--purge",
+            "--yes",
+        ],
+        {},
+        application_runner=unexpected_application_runner,
+        release_candidate_uninstall_cli_runner=(successful_uninstall_runner),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Uninstall command completed.\n"
+    assert stderr.getvalue() == ""

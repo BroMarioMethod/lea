@@ -20,6 +20,7 @@ from lea.tasks import (
     TaskCreateRequest,
     TaskListQuery,
     TaskModifyRequest,
+    TaskProviderIssue,
     TaskStatus,
 )
 
@@ -58,7 +59,7 @@ class TaskwarriorSmokeTestResult:
 def validate_staged_taskwarrior_binary(
     staged: TaskwarriorStagedBinary,
     *,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = 60.0,
     provider_factory: _PROVIDER_FACTORY = TaskwarriorCliProvider,
 ) -> TaskwarriorSmokeTestResult:
     """Validate one staged executable in disposable isolated storage."""
@@ -77,7 +78,7 @@ def validate_taskwarrior_executable(
     executable: Path,
     *,
     temporary_parent: Path,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = 60.0,
     provider_factory: _PROVIDER_FACTORY = TaskwarriorCliProvider,
 ) -> TaskwarriorSmokeTestResult:
     """Validate one exact executable in disposable isolated storage."""
@@ -114,9 +115,7 @@ def validate_taskwarrior_executable(
         inspection = inspect_taskwarrior(config)
 
         if not inspection.available or inspection.version is None:
-            return _failure(
-                "The staged Taskwarrior executable failed version inspection."
-            )
+            return _inspection_failure(inspection.issues)
 
         provider = provider_factory(config)
 
@@ -129,7 +128,10 @@ def validate_taskwarrior_executable(
         )
 
         if not create_result.success or create_result.task is None:
-            return _failure("The staged Taskwarrior executable failed task creation.")
+            return _lifecycle_failure(
+                "The staged Taskwarrior executable failed task creation.",
+                create_result.issues,
+            )
 
         first_uuid = create_result.task.uuid
 
@@ -140,8 +142,9 @@ def validate_taskwarrior_executable(
             or len(list_result.tasks) != 1
             or list_result.tasks[0].uuid != first_uuid
         ):
-            return _failure(
-                "The staged Taskwarrior executable failed exact task listing."
+            return _lifecycle_failure(
+                "The staged Taskwarrior executable failed exact task listing.",
+                list_result.issues,
             )
 
         modify_result = provider.modify_task(
@@ -159,8 +162,9 @@ def validate_taskwarrior_executable(
             or modify_result.task.description
             != "LEA Taskwarrior installer smoke test modified"
         ):
-            return _failure(
-                "The staged Taskwarrior executable failed task modification."
+            return _lifecycle_failure(
+                "The staged Taskwarrior executable failed task modification.",
+                modify_result.issues,
             )
 
         complete_result = provider.complete_task(first_uuid)
@@ -171,7 +175,10 @@ def validate_taskwarrior_executable(
             or complete_result.task.uuid != first_uuid
             or complete_result.task.status is not TaskStatus.COMPLETED
         ):
-            return _failure("The staged Taskwarrior executable failed task completion.")
+            return _lifecycle_failure(
+                "The staged Taskwarrior executable failed task completion.",
+                complete_result.issues,
+            )
 
         second_create_result = provider.create_task(
             TaskCreateRequest(
@@ -182,8 +189,9 @@ def validate_taskwarrior_executable(
         )
 
         if not second_create_result.success or second_create_result.task is None:
-            return _failure(
-                "The staged Taskwarrior executable failed secondary task creation."
+            return _lifecycle_failure(
+                "The staged Taskwarrior executable failed secondary task creation.",
+                second_create_result.issues,
             )
 
         second_uuid = second_create_result.task.uuid
@@ -195,7 +203,10 @@ def validate_taskwarrior_executable(
             or delete_result.task.uuid != second_uuid
             or delete_result.task.status is not TaskStatus.DELETED
         ):
-            return _failure("The staged Taskwarrior executable failed task deletion.")
+            return _lifecycle_failure(
+                "The staged Taskwarrior executable failed task deletion.",
+                delete_result.issues,
+            )
 
         return TaskwarriorSmokeTestResult(
             passed=True,
@@ -241,6 +252,45 @@ def _create_isolated_config(
         timeout_seconds=timeout_seconds,
         working_dir=temporary_root,
     )
+
+
+def _inspection_failure(
+    issues: tuple[TaskProviderIssue, ...],
+) -> TaskwarriorSmokeTestResult:
+    """Preserve bounded provider diagnostics from failed inspection."""
+    details = "; ".join(_render_provider_issue(issue) for issue in issues)
+
+    message = "The staged Taskwarrior executable failed version inspection."
+
+    if details:
+        message = f"{message} {details}"
+
+    return _failure(message)
+
+
+def _lifecycle_failure(
+    message: str,
+    issues: tuple[TaskProviderIssue, ...],
+) -> TaskwarriorSmokeTestResult:
+    """Preserve bounded provider details for a lifecycle failure."""
+    details = "; ".join(_render_provider_issue(issue) for issue in issues)
+
+    if details:
+        message = f"{message} {details}"
+
+    return _failure(message)
+
+
+def _render_provider_issue(
+    issue: TaskProviderIssue,
+) -> str:
+    """Render one structured provider issue without exposing arguments."""
+    parts = [f"[{issue.code}]", issue.message]
+
+    if issue.return_code is not None:
+        parts.append(f"exit status {issue.return_code}")
+
+    return " ".join(parts)
 
 
 def _failure(

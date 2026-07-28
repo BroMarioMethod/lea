@@ -97,6 +97,24 @@ class TelegramBotApiTransport(TelegramTransport):
         self._config = config
         self._opener = opener
 
+    def get_bot(
+        self,
+    ) -> Mapping[str, object] | TelegramTransportIssue:
+        """Fetch the current bot identity through Telegram getMe."""
+        result = self._call("getMe", {})
+
+        if isinstance(result, TelegramTransportIssue):
+            return result
+
+        if not isinstance(result, Mapping):
+            return _issue(
+                "telegram_api_result_invalid",
+                "Telegram returned an invalid bot identity result.",
+                "get_me",
+            )
+
+        return cast(Mapping[str, object], result)
+
     def fetch_updates(
         self,
         *,

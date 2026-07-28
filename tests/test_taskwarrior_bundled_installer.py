@@ -133,6 +133,7 @@ def test_successful_workflow_runs_phases_in_order(
         value: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        apply_ownership: object,
     ) -> TaskwarriorRuntimeLayoutResult:
         calls.append("layout")
         return TaskwarriorRuntimeLayoutResult(
@@ -150,6 +151,7 @@ def test_successful_workflow_runs_phases_in_order(
         normalised: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        apply_ownership: object,
     ) -> TaskwarriorActivationResult:
         calls.append("activate")
         return TaskwarriorActivationResult(
@@ -280,6 +282,7 @@ def test_already_installed_cleans_unused_staging(
         value: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        apply_ownership: object,
     ) -> TaskwarriorRuntimeLayoutResult:
         return TaskwarriorRuntimeLayoutResult(
             success=True,
@@ -296,6 +299,7 @@ def test_already_installed_cleans_unused_staging(
         normalised: TaskwarriorInstallerConfig,
         *,
         fsync: bool,
+        apply_ownership: object,
     ) -> TaskwarriorActivationResult:
         return TaskwarriorActivationResult(
             success=True,

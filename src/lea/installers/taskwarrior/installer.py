@@ -13,6 +13,10 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallFailureCode,
     TaskwarriorInstallMode,
 )
+from lea.installers.taskwarrior.ownership import (
+    OwnershipApplier,
+    ignore_ownership,
+)
 from lea.installers.taskwarrior.preflight import (
     run_taskwarrior_installer_preflight,
 )
@@ -96,6 +100,7 @@ def install_bundled_taskwarrior(
     provision_layout: _LayoutProvisioner = (provision_taskwarrior_runtime_layout),
     activate: _Activator = activate_staged_taskwarrior,
     remove_staging: _StagingRemover = remove_taskwarrior_staging,
+    apply_ownership: OwnershipApplier = ignore_ownership,
 ) -> TaskwarriorBundledInstallResult:
     """Install one bundled Taskwarrior binary through validated phases."""
     if config.mode is not TaskwarriorInstallMode.BUNDLED_BINARY:
@@ -187,6 +192,7 @@ def install_bundled_taskwarrior(
     layout_result = provision_layout(
         normalised_config,
         fsync=fsync,
+        apply_ownership=apply_ownership,
     )
 
     if not layout_result.success:
@@ -202,6 +208,7 @@ def install_bundled_taskwarrior(
         staged,
         normalised_config,
         fsync=fsync,
+        apply_ownership=apply_ownership,
     )
 
     if not activation_result.success:

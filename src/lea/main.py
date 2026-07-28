@@ -11,6 +11,13 @@ from lea.cli import execute_local_cli
 from lea.config import AppConfig, load_config
 from lea.errors import ConfigurationError, LeaError
 from lea.logging import configure_logging
+from lea.release_candidate_acceptance_cli import (
+    execute_release_candidate_acceptance_cli,
+)
+from lea.release_candidate_cli import execute_release_candidate_cli
+from lea.release_candidate_uninstall_cli import (
+    execute_release_candidate_uninstall_cli,
+)
 from lea.runtime_cli import execute_runtime_cli
 
 EXIT_SUCCESS = 0
@@ -28,6 +35,30 @@ class RuntimeCliRunner(Protocol):
         self, arguments: Sequence[str], *, stdout: TextIO, stderr: TextIO
     ) -> int:
         """Execute runtime CLI arguments."""
+        ...
+
+
+class ReleaseCandidateCliRunner(Protocol):
+    """Callable boundary for release-candidate CLI execution."""
+
+    def __call__(
+        self, arguments: Sequence[str], *, stdout: TextIO, stderr: TextIO
+    ) -> int:
+        """Execute release-candidate installer arguments."""
+        ...
+
+
+class ReleaseCandidateUninstallCliRunner(Protocol):
+    """Callable boundary for release-candidate uninstall execution."""
+
+    def __call__(
+        self,
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        """Execute release-candidate uninstall arguments."""
         ...
 
 
@@ -66,12 +97,35 @@ def execute(
     return EXIT_SUCCESS
 
 
+class ReleaseCandidateAcceptanceCliRunner(Protocol):
+    """Callable boundary for release-candidate acceptance CLI execution."""
+
+    def __call__(
+        self,
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        """Execute release-candidate acceptance arguments."""
+        ...
+
+
 def dispatch(
     arguments: Sequence[str],
     environment: Mapping[str, str],
     *,
     application_runner: ApplicationRunner = run,
     runtime_cli_runner: RuntimeCliRunner = execute_runtime_cli,
+    release_candidate_cli_runner: ReleaseCandidateCliRunner = (
+        execute_release_candidate_cli
+    ),
+    release_candidate_acceptance_cli_runner: ReleaseCandidateAcceptanceCliRunner = (
+        execute_release_candidate_acceptance_cli
+    ),
+    release_candidate_uninstall_cli_runner: ReleaseCandidateUninstallCliRunner = (
+        execute_release_candidate_uninstall_cli
+    ),
     local_cli_runner: LocalCliRunner = execute_local_cli,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
@@ -79,6 +133,24 @@ def dispatch(
     """Dispatch process arguments to the selected LEA interface."""
     if arguments and arguments[0] == "runtime":
         return runtime_cli_runner(arguments[1:], stdout=stdout, stderr=stderr)
+    if arguments and arguments[0] == "install-release-candidate":
+        return release_candidate_cli_runner(
+            arguments[1:],
+            stdout=stdout,
+            stderr=stderr,
+        )
+    if arguments and arguments[0] == "accept-release-candidate":
+        return release_candidate_acceptance_cli_runner(
+            arguments[1:],
+            stdout=stdout,
+            stderr=stderr,
+        )
+    if arguments and arguments[0] == "uninstall-release-candidate":
+        return release_candidate_uninstall_cli_runner(
+            arguments[1:],
+            stdout=stdout,
+            stderr=stderr,
+        )
     if _uses_local_cli(arguments):
         return local_cli_runner(arguments, stdout=stdout, stderr=stderr)
     return execute(environment, application_runner)

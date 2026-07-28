@@ -11,6 +11,10 @@ from lea.installers.taskwarrior.contracts import (
     TaskwarriorInstallerIssue,
     TaskwarriorInstallFailureCode,
 )
+from lea.installers.taskwarrior.ownership import (
+    OwnershipApplier,
+    ignore_ownership,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +75,7 @@ def provision_taskwarrior_runtime_layout(
     config: TaskwarriorInstallerConfig,
     *,
     fsync: bool = False,
+    apply_ownership: OwnershipApplier = ignore_ownership,
 ) -> TaskwarriorRuntimeLayoutResult:
     """Create or validate LEA-managed Taskwarrior runtime paths."""
     taskrc = config.configuration_dir / "taskrc"
@@ -88,13 +93,13 @@ def provision_taskwarrior_runtime_layout(
             parents=True,
             exist_ok=True,
         )
-        home.mkdir(mode=0o700, exist_ok=True)
-        data.mkdir(mode=0o700, exist_ok=True)
+        home.mkdir(mode=0o750, exist_ok=True)
+        data.mkdir(mode=0o750, exist_ok=True)
     except OSError as error:
         return _failure(
             message=(
                 "The Taskwarrior runtime directories could not be "
-                f"provisioned: {error.strerror or type(error).__name__}."
+                f"provisioned: {_error_detail(error)}."
             ),
             path=config.state_root,
         )
@@ -164,14 +169,36 @@ def provision_taskwarrior_runtime_layout(
     try:
         config.configuration_dir.chmod(0o750)
         config.state_root.chmod(0o750)
-        home.chmod(0o700)
-        data.chmod(0o700)
-        taskrc.chmod(0o600)
-    except OSError as error:
+        home.chmod(0o750)
+        data.chmod(0o750)
+        taskrc.chmod(0o640)
+
+        apply_ownership(
+            config.configuration_dir,
+            "root",
+            config.service_group,
+        )
+        apply_ownership(
+            taskrc,
+            "root",
+            config.service_group,
+        )
+
+        for directory in (
+            config.state_root,
+            home,
+            data,
+        ):
+            apply_ownership(
+                directory,
+                config.service_user,
+                config.service_group,
+            )
+    except (KeyError, OSError) as error:
         return _failure(
             message=(
                 "The Taskwarrior runtime permissions could not be "
-                f"applied: {error.strerror or type(error).__name__}."
+                f"applied: {_error_detail(error)}."
             ),
             path=config.state_root,
         )
@@ -239,7 +266,7 @@ def _write_taskrc(
                 code=TaskwarriorInstallFailureCode.ACTIVATION_FAILED,
                 message=(
                     "The Taskwarrior taskrc could not be written: "
-                    f"{error.strerror or type(error).__name__}."
+                    f"{_error_detail(error)}."
                 ),
                 field="configuration_dir",
                 path=destination,
@@ -261,6 +288,17 @@ def _fsync_directory(directory: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _error_detail(error: BaseException) -> str:
+    """Return bounded text for filesystem and account lookup failures."""
+    strerror = getattr(error, "strerror", None)
+
+    if isinstance(strerror, str) and strerror:
+        return strerror
+
+    rendered = str(error).strip()
+    return rendered or type(error).__name__
 
 
 def _failure(

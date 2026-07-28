@@ -11,6 +11,12 @@ uv run ruff check .
 printf '\nRunning mypy...\n'
 uv run mypy
 
+printf '\nValidating Telegram deployment assets...\n'
+uv run python scripts/validate_telegram_deployment.py
+
+printf '\nValidating release-candidate acceptance assets...\n'
+uv run python scripts/validate_release_candidate_acceptance.py
+
 printf '\nRunning pytest...\n'
 uv run pytest
 

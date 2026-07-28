@@ -4,6 +4,7 @@ from pathlib import Path
 
 from lea.installers.taskwarrior import (
     TaskwarriorInstallerConfig,
+    TaskwarriorInstallFailureCode,
     TaskwarriorInstallMode,
     provision_taskwarrior_runtime_layout,
     render_taskwarrior_taskrc,
@@ -49,9 +50,9 @@ def test_provision_runtime_layout_creates_paths(
     )
     assert result.layout.home.is_dir()
     assert result.layout.data.is_dir()
-    assert result.layout.taskrc.stat().st_mode & 0o777 == 0o600
-    assert result.layout.home.stat().st_mode & 0o777 == 0o700
-    assert result.layout.data.stat().st_mode & 0o777 == 0o700
+    assert result.layout.taskrc.stat().st_mode & 0o777 == 0o640
+    assert result.layout.home.stat().st_mode & 0o777 == 0o750
+    assert result.layout.data.stat().st_mode & 0o777 == 0o750
 
 
 def test_provision_runtime_layout_is_idempotent(
@@ -117,3 +118,66 @@ def test_symlinked_data_directory_is_rejected(
 
     assert result.success is False
     assert external.is_dir()
+
+
+def test_runtime_layout_applies_canonical_ownership(
+    tmp_path: Path,
+) -> None:
+    """Runtime provisioning should assign configuration and state deliberately."""
+    config = make_config(tmp_path)
+    ownership: list[tuple[Path, str, str]] = []
+
+    def apply_ownership(
+        path: Path,
+        owner: str,
+        group: str,
+    ) -> None:
+        ownership.append((path, owner, group))
+
+    result = provision_taskwarrior_runtime_layout(
+        config,
+        apply_ownership=apply_ownership,
+    )
+
+    taskrc = config.configuration_dir / "taskrc"
+    home = config.state_root / "home"
+    data = config.state_root / "data"
+
+    assert result.success is True
+    assert ownership == [
+        (config.configuration_dir, "root", "lea"),
+        (taskrc, "root", "lea"),
+        (config.state_root, "lea", "lea"),
+        (home, "lea", "lea"),
+        (data, "lea", "lea"),
+    ]
+
+    assert config.configuration_dir.stat().st_mode & 0o777 == 0o750
+    assert taskrc.stat().st_mode & 0o777 == 0o640
+    assert config.state_root.stat().st_mode & 0o777 == 0o750
+    assert home.stat().st_mode & 0o777 == 0o750
+    assert data.stat().st_mode & 0o777 == 0o750
+
+
+def test_runtime_layout_reports_ownership_failure(
+    tmp_path: Path,
+) -> None:
+    """Ownership lookup or application failure should remain structured."""
+    config = make_config(tmp_path)
+
+    def fail_ownership(
+        _path: Path,
+        _owner: str,
+        _group: str,
+    ) -> None:
+        raise KeyError("lea")
+
+    result = provision_taskwarrior_runtime_layout(
+        config,
+        apply_ownership=fail_ownership,
+    )
+
+    assert result.success is False
+    assert result.layout is None
+    assert result.issues[0].code is TaskwarriorInstallFailureCode.ACTIVATION_FAILED
+    assert "lea" in result.issues[0].message
