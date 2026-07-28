@@ -5,7 +5,7 @@
 | Item | Value |
 |---|---|
 | Document Status | Accepted |
-| Verification Status | Partially Verified |
+| Verification Status | Verified |
 | Verification Date | 28 July 2026 |
 | Tested Profile | Fresh DietPi installation without Telegram |
 | Platform | Raspberry Pi 4B, AArch64 |
@@ -257,18 +257,16 @@ This evidence verifies:
 
 ## Outstanding verification
 
-The following release-candidate requirements remain unverified:
+No behavioural verification remains outstanding for Milestone 2.7.
 
-- live Telegram bot-token validation;
-- final release tag and release checklist.
-
-Real Telegram values must be configured only during the controlled live
-runtime smoke test. Tokens and real identifiers must remain outside Git.
+The remaining administrative publication action is to create and push annotated
+tag `milestone-2.7` from the final clean release commit. Real Telegram values
+remain outside Git and release evidence.
 
 ## Conclusion
 
 The non-Telegram installation profile and the live Telegram runtime profile
 are verified on the clean-room DietPi tester host.
 
-Milestone 2.7 remains partially verified until the final release checklist
-and release tag are completed.
+Milestone 2.7 is verified and ready for release tagging as LEA `0.2.0`
+with annotated tag `milestone-2.7`.
