@@ -12,7 +12,8 @@
 | Operating System | Debian GNU/Linux 13.6 through DietPi |
 | Repository Commit | `dc17c74` |
 | Wrapper Feature Commit | `a6a7931` |
-| Merged Main Commit | `138adfb` |
+| Telegram Verification Commit | `2549cde` |
+| Merged Main Commit | `2549cde` |
 
 ## Purpose
 
@@ -188,6 +189,41 @@ Verified wrapper behaviour included:
   read access and runtime-directory write access;
 - the source repository remained clean at commit `138adfb`.
 
+## Live Telegram verification
+
+Live Telegram onboarding and runtime acceptance were completed on the clean-room
+tester host at merged main commit `2549cde`.
+
+Verified behaviour included:
+
+- guided repair-mode onboarding with a real bot token entered through hidden
+  terminal input;
+- Telegram bot identity validation through `getMe`;
+- discovery and explicit confirmation of the intended private Telegram
+  identity;
+- assignment of the initial `owner` role;
+- secure installation of the Telegram token and managed configuration;
+- deployment, enablement and activation of `lea-telegram.service`;
+- successful `/status` and `/tasks` responses in the authorised private chat;
+- Telegram-enabled release-candidate health and functional acceptance;
+- token-file mode `0600` with ownership `lea:lea`;
+- absence of the token from the service command line, process environment and
+  recent service journal;
+- automatic Telegram service startup after reboot;
+- successful `/status` and `/tasks` responses after reboot;
+- successful Telegram-enabled acceptance after reboot;
+- induced worker-process failure using `SIGKILL`;
+- automatic systemd recovery with a new main process and an increased restart
+  count;
+- successful Telegram commands, runtime verification and acceptance after
+  recovery;
+- a clean source repository at commit `2549cde`.
+
+The tester host had `systemd-logind.service` masked. Invoking `sudo reboot`
+reported an `org.freedesktop.login1` activation error, but the host rebooted,
+system D-Bus returned healthy, `/run/lea` was recreated and the Telegram service
+started successfully. This host-level behaviour did not affect LEA acceptance.
+
 ## Verified scope
 
 This evidence verifies:
@@ -211,17 +247,19 @@ This evidence verifies:
 - persistent acceptance-record generation;
 - service-user executable, configuration and runtime access;
 
+- live Telegram onboarding with a real bot;
+- private authorised-user discovery and confirmation;
+- Telegram service enablement and active operation;
+- `/status` and `/tasks` interaction before and after reboot;
+- live secret-exposure checks against process and journal data;
+- Telegram-enabled acceptance before and after reboot;
+- induced worker failure and automatic systemd recovery;
+
 ## Outstanding verification
 
 The following release-candidate requirements remain unverified:
 
 - live Telegram bot-token validation;
-- authorised Telegram user and private-chat registration;
-- installation of real Telegram secrets outside Git;
-- Telegram systemd service enablement and startup;
-- Telegram `/status` and task interaction;
-- Telegram operation after reboot;
-- live confirmation that secrets are absent from diagnostics and process exposure;
 - final release tag and release checklist.
 
 Real Telegram values must be configured only during the controlled live
@@ -229,8 +267,8 @@ runtime smoke test. Tokens and real identifiers must remain outside Git.
 
 ## Conclusion
 
-The non-Telegram release-candidate installation profile is verified on a fresh
-DietPi system.
+The non-Telegram installation profile and the live Telegram runtime profile
+are verified on the clean-room DietPi tester host.
 
-Milestone 2.7 remains partially verified until the live Telegram acceptance
-requirements and final release checklist are completed.
+Milestone 2.7 remains partially verified until the final release checklist
+and release tag are completed.
