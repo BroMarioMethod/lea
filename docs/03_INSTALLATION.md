@@ -205,14 +205,27 @@ This command:
 6. runs read-only health checks;
 7. runs disposable functional acceptance.
 
-The simpler supported user entry point:
+The supported guided user entry point is:
 
 ```bash
 sudo ./install.sh
 ```
 
-is planned but not yet implemented. Until it exists, the command above remains
-the supported release-candidate installer interface.
+The wrapper resolves the repository location, locates `uv`, supplies the pinned
+Taskwarrior source-build defaults and delegates all installation behaviour to
+the existing deterministic Python CLI.
+
+Installer options may be passed through, for example:
+
+```bash
+sudo ./install.sh \
+    --mode fresh-install \
+    --display-timezone Africa/Gaborone \
+    --no-telegram
+```
+
+The advanced `lea install-release-candidate` command remains available for
+development, diagnostics and explicit path overrides.
 
 ## Installer output modes
 
@@ -429,13 +442,23 @@ It preserves:
 /opt/lea-release-assets
 ```
 
-The planned user-facing wrapper:
+The supported user-facing wrapper is:
 
 ```bash
 sudo ./uninstall.sh
 ```
 
-is not yet implemented.
+It always selects the managed purge contract and retains the Python CLI's
+destructive confirmation prompt.
+
+For explicitly approved non-interactive removal:
+
+```bash
+sudo ./uninstall.sh --yes
+```
+
+The advanced `lea uninstall-release-candidate --purge` command remains
+available for development and diagnostics.
 
 Do not remove `/opt/lea` as part of managed uninstallation unless the source
 repository has been reviewed separately for uncommitted work.

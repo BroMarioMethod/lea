@@ -463,8 +463,8 @@ docs/development/RELEASE_CANDIDATE_CLEAN_ROOM_VERIFICATION.md
 ```
 
 The full milestone is not yet verified because live Telegram onboarding,
-Telegram service operation, the user-facing installation entry point and final
-release tagging remain outstanding.
+Telegram service operation, the final release checklist and release tagging
+remain outstanding.
 
 ## 21. Proposed implementation slices
 

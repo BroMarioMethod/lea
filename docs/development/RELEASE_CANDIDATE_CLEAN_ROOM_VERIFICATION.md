@@ -186,7 +186,6 @@ The following release-candidate requirements remain unverified:
 - Telegram `/status` and task interaction;
 - Telegram operation after reboot;
 - live confirmation that secrets are absent from diagnostics and process exposure;
-- final one-command user-facing installer and uninstaller entry points;
 - final release tag and release checklist.
 
 Real Telegram values must be configured only during the controlled live
@@ -197,5 +196,5 @@ runtime smoke test. Tokens and real identifiers must remain outside Git.
 The non-Telegram release-candidate installation profile is verified on a fresh
 DietPi system.
 
-Milestone 2.7 remains partially verified until the user-facing installer
-interface and live Telegram acceptance requirements are completed.
+Milestone 2.7 remains partially verified until the live Telegram acceptance
+requirements and final release checklist are completed.
