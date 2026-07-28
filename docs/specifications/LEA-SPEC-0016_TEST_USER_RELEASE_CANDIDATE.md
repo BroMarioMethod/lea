@@ -465,15 +465,22 @@ Verified behaviour includes:
 - service-user access to the managed executable, configuration and runtime
   directory;
 
+- live Telegram onboarding with the intended private owner identity;
+- Telegram service deployment, enablement and active operation;
+- `/status` and `/tasks` interaction before and after reboot;
+- live confirmation that the bot token was absent from process arguments,
+  process environment and recent journal output;
+- Telegram-enabled release-candidate acceptance before and after reboot;
+- induced Telegram worker failure followed by automatic systemd recovery;
+
 The complete evidence is recorded in:
 
 ```text
 docs/development/RELEASE_CANDIDATE_CLEAN_ROOM_VERIFICATION.md
 ```
 
-The full milestone is not yet verified because live Telegram onboarding,
-Telegram service operation, the final release checklist and release tagging
-remain outstanding.
+The full milestone is not yet verified because the final release checklist
+and release tagging remain outstanding.
 
 ## 21. Proposed implementation slices
 
