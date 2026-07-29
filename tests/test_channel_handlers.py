@@ -90,6 +90,16 @@ def _dependencies(
     def executor(name: str) -> Callable[..., CliResult]:
         def run(**kwargs: object) -> CliResult:
             calls.append((name, dict(kwargs)))
+
+            actor = kwargs.get("actor")
+            if isinstance(actor, str):
+                return CliResult.succeeded(
+                    data={
+                        "command": name,
+                        "actor": actor,
+                    }
+                )
+
             return CliResult.succeeded(data={"command": name})
 
         return run
@@ -216,8 +226,15 @@ def test_proposal_actor_is_derived_from_identity(tmp_path: Path) -> None:
     )
 
     assert result.response is not None
+
+    # The accountable private actor still enters the CLI/audit boundary.
     assert calls[0][1]["actor"] == "telegram:123456789"
     assert calls[0][1]["reason"] == "Needs revision"
+
+    # The channel response exposes only the safe role-scoped label.
+    assert result.response.data is not None
+    assert result.response.data["actor"] == "telegram:owner"
+    assert "123456789" not in repr(result.response.data)
 
 
 def test_callback_parameters_are_supported(tmp_path: Path) -> None:

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
 from lea.adapters.telegram.contracts import TelegramTransport, TelegramUpdate
-from lea.adapters.telegram.formatting import format_telegram_response
+from lea.adapters.telegram.formatting import (
+    TelegramFormattedResponse,
+    format_telegram_response,
+)
 from lea.adapters.telegram.offsets import TelegramOffsetStore
 from lea.adapters.telegram.parser import (
     TelegramParsedCallback,
@@ -29,6 +33,8 @@ TelegramWorkerSleeper = Callable[[float], None]
 
 _MAX_RETRY_DELAY_SECONDS = 60.0
 _MAX_CONSECUTIVE_FETCH_FAILURES = 100
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class TelegramWorkerStopSignal(Protocol):
@@ -93,6 +99,7 @@ class TelegramWorkerDependencies:
     clock: TelegramUtcClock
     stop_signal: TelegramWorkerStopSignal
     sleeper: TelegramWorkerSleeper
+    warning_sink: Callable[[TelegramWorkerIssue], object] | None = None
 
     def __post_init__(self) -> None:
         """Reject empty authorisation configuration."""
@@ -155,6 +162,15 @@ class TelegramWorkerResult:
             raise ValueError(
                 "A failed Telegram worker result must contain at least one issue."
             )
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedUpdate:
+    """One checkpointable update with optional response delivery."""
+
+    destination: TelegramParsedMessage | TelegramParsedCallback | None = None
+    formatted: TelegramFormattedResponse | None = None
+    warning: TelegramWorkerIssue | None = None
 
 
 def run_telegram_worker(
@@ -228,15 +244,15 @@ def run_telegram_worker(
                 skipped += 1
                 continue
 
-            handled = _handle_update(config, dependencies, update)
+            prepared = _prepare_update(config, dependencies, update)
 
-            if handled is not None:
+            if isinstance(prepared, TelegramWorkerIssue):
                 return TelegramWorkerResult(
                     success=False,
                     stopped=False,
                     processed_updates=processed,
                     skipped_updates=skipped,
-                    issues=(handled,),
+                    issues=(prepared,),
                 )
 
             advanced = dependencies.offset_store.advance(update.update_id)
@@ -255,18 +271,28 @@ def run_telegram_worker(
             state = advanced.state
             processed += 1
 
+            if prepared.warning is not None:
+                _report_warning(dependencies, prepared.warning)
+
+            _deliver_response(
+                dependencies,
+                update_id=update.update_id,
+                prepared=prepared,
+            )
+
     return _stopped(processed=processed, skipped=skipped)
 
 
-def _handle_update(
+def _prepare_update(
     config: TelegramWorkerConfig,
     dependencies: TelegramWorkerDependencies,
     update: TelegramUpdate,
-) -> TelegramWorkerIssue | None:
+) -> _PreparedUpdate | TelegramWorkerIssue:
+    """Apply one update and prepare any best-effort Telegram response."""
     parsed = parse_telegram_update(update)
 
     if not parsed.success:
-        return None
+        return _PreparedUpdate()
 
     routed = route_telegram_update(
         parsed,
@@ -277,7 +303,7 @@ def _handle_update(
     )
 
     if not routed.success or routed.request is None:
-        return None
+        return _PreparedUpdate()
 
     applied = dependencies.application.handle(routed.request)
 
@@ -292,52 +318,56 @@ def _handle_update(
     formatted = format_telegram_response(applied.response)
 
     if not formatted.success or formatted.formatted is None:
-        return TelegramWorkerIssue(
-            code="telegram_response_formatting_failed",
-            message="The channel response could not be formatted for Telegram.",
-            operation="format_response",
-            update_id=update.update_id,
+        return _PreparedUpdate(
+            warning=TelegramWorkerIssue(
+                code="telegram_response_formatting_failed",
+                message="The channel response could not be formatted for Telegram.",
+                operation="format_response",
+                update_id=update.update_id,
+            )
         )
 
-    destination = _destination(parsed)
+    return _PreparedUpdate(
+        destination=_destination(parsed),
+        formatted=formatted.formatted,
+    )
+
+
+def _deliver_response(
+    dependencies: TelegramWorkerDependencies,
+    *,
+    update_id: int,
+    prepared: _PreparedUpdate,
+) -> None:
+    """Deliver one checkpointed response without terminating the worker."""
+    destination = prepared.destination
+    formatted = prepared.formatted
+
+    if destination is None or formatted is None:
+        return
 
     if isinstance(destination, TelegramParsedMessage):
         try:
             sent = dependencies.transport.send_message(
                 chat_id=destination.chat_id,
-                text=formatted.formatted.text,
-                keyboard=formatted.formatted.keyboard,
+                text=formatted.text,
+                keyboard=formatted.keyboard,
             )
         except Exception:
             sent = None
 
         if sent is None or not sent.success:
-            return TelegramWorkerIssue(
-                code="telegram_send_failed",
-                message="The Telegram response could not be sent.",
-                operation="send_message",
-                update_id=update.update_id,
+            _report_warning(
+                dependencies,
+                TelegramWorkerIssue(
+                    code="telegram_send_failed",
+                    message="The Telegram response could not be sent.",
+                    operation="send_message",
+                    update_id=update_id,
+                ),
             )
 
-        return None
-
-    try:
-        edited = dependencies.transport.edit_message(
-            chat_id=destination.chat_id,
-            message_id=destination.message_id,
-            text=formatted.formatted.text,
-            keyboard=formatted.formatted.keyboard,
-        )
-    except Exception:
-        edited = None
-
-    if edited is None or not edited.success:
-        return TelegramWorkerIssue(
-            code="telegram_edit_failed",
-            message="The Telegram callback message could not be updated.",
-            operation="edit_message",
-            update_id=update.update_id,
-        )
+        return
 
     try:
         answered = dependencies.transport.answer_callback_query(
@@ -347,14 +377,57 @@ def _handle_update(
         answered = None
 
     if answered is None or not answered.success:
-        return TelegramWorkerIssue(
-            code="telegram_callback_answer_failed",
-            message="The Telegram callback query could not be answered.",
-            operation="answer_callback_query",
-            update_id=update.update_id,
+        _report_warning(
+            dependencies,
+            TelegramWorkerIssue(
+                code="telegram_callback_answer_failed",
+                message="The Telegram callback query could not be answered.",
+                operation="answer_callback_query",
+                update_id=update_id,
+            ),
         )
 
-    return None
+    try:
+        edited = dependencies.transport.edit_message(
+            chat_id=destination.chat_id,
+            message_id=destination.message_id,
+            text=formatted.text,
+            keyboard=formatted.keyboard,
+        )
+    except Exception:
+        edited = None
+
+    if edited is None or not edited.success:
+        _report_warning(
+            dependencies,
+            TelegramWorkerIssue(
+                code="telegram_edit_failed",
+                message="The Telegram callback message could not be updated.",
+                operation="edit_message",
+                update_id=update_id,
+            ),
+        )
+
+
+def _report_warning(
+    dependencies: TelegramWorkerDependencies,
+    issue: TelegramWorkerIssue,
+) -> None:
+    """Report one redacted non-fatal worker warning."""
+    if dependencies.warning_sink is not None:
+        try:
+            dependencies.warning_sink(issue)
+            return
+        except Exception:
+            pass
+
+    _LOGGER.warning(
+        "Telegram worker warning: %s: %s operation=%s update_id=%s",
+        issue.code,
+        issue.message,
+        issue.operation,
+        issue.update_id,
+    )
 
 
 def _destination(

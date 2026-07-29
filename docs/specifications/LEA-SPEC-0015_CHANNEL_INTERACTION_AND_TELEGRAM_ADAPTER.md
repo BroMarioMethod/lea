@@ -1,7 +1,7 @@
 # LEA-SPEC-0015 — Channel Interaction and Telegram Adapter
 
 - **Status:** Accepted
-- **Version:** 1.3
+- **Version:** 1.4
 - **Date:** 24 July 2026
 - **Milestone:** 2.5 — Telegram Adapter
 
@@ -194,6 +194,11 @@ Responses must not contain:
 - audit hash internals;
 - provider command lines unless explicitly safe and intended.
 
+Channel responses shall not expose channel-scoped user or
+conversation identifiers as decision actors. User-facing decision data shall
+use a role-scoped label such as `telegram:owner`. The full accountable actor
+identifier may remain in local proposal-decision and audit records.
+
 ### 5.4 Interaction controls
 
 Channel-neutral controls should represent:
@@ -219,8 +224,13 @@ The worker must:
 - request updates using a persisted offset;
 - use a bounded long-poll timeout;
 - process updates in deterministic update-ID order;
-- advance the offset only after the update receives a terminal handling result;
-- retry temporary transport failures with bounded back-off;
+- apply the routed update and prepare any response before checkpointing;
+- advance the offset after a terminal application result and before outbound
+  response delivery;
+- treat response-formatting, send, edit and callback-answer failures after
+  checkpointing as redacted non-fatal warnings;
+- continue processing later updates after a response-delivery failure;
+- retry temporary update-fetching failures with bounded back-off;
 - stop cleanly on termination signals;
 - avoid uncontrolled busy loops.
 

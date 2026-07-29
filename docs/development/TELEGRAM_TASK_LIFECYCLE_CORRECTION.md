@@ -88,6 +88,27 @@ the existing actor-aware confirmation-decision audit boundary and the
 `approved → cancelled` transition already permitted by the state table.
 Repository replacement is guarded by the proposal's actual prior status.
 
+## Telegram checkpoint and actor-privacy correction
+
+A terminal channel application result shall be durably checkpointed before
+LEA attempts best-effort Telegram response delivery.
+
+After checkpointing, response-formatting, message-send, message-edit and
+callback-answer failures shall:
+
+- produce redacted non-fatal worker warnings;
+- not terminate the foreground worker;
+- not cause systemd to replay the committed update;
+- not prevent later fetched updates from being processed.
+
+Structural application failures remain fatal and shall not advance the
+checkpoint.
+
+Proposal decisions shall retain the accountable channel user identifier in
+the local CLI, proposal-decision and audit boundaries. Telegram and other
+user-facing channel responses shall expose only a role-scoped actor label,
+such as `telegram:owner`.
+
 ## Implementation slices
 
 ### Slice 1 — Proposal-submission application service

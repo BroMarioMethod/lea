@@ -1061,11 +1061,14 @@ def _proposal_decision(
         reason=reason_text,
         dependencies=dependencies.proposal_dependencies,
     )
-    response = _mapped(
+    response = _safe_decision_actor(
+        _mapped(
+            request,
+            result,
+            dependencies,
+            success_message=success_message,
+        ),
         request,
-        result,
-        dependencies,
-        success_message=success_message,
     )
 
     if not approved_controls or not result.success:
@@ -1079,6 +1082,23 @@ def _proposal_decision(
     return replace(
         response,
         controls=_approved_controls(proposal, dependencies),
+    )
+
+
+def _safe_decision_actor(
+    response: ChannelResponse,
+    request: ChannelRequest,
+) -> ChannelResponse:
+    """Replace a private decision actor with a channel-role label."""
+    if response.data is None or "actor" not in response.data:
+        return response
+
+    data = dict(response.data)
+    data["actor"] = _proposal_source(request)
+
+    return replace(
+        response,
+        data=data,
     )
 
 
