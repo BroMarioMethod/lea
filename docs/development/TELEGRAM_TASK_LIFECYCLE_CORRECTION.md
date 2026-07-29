@@ -77,6 +77,17 @@ Approval remains separate from execution. A future explicitly trusted
 automation may use the provider-neutral builder default, but ordinary
 interactive requests must not be silently approved.
 
+## Approved-state interaction
+
+Successful approval shall immediately return an Execute control and a Cancel
+control. Execute carries the proposal's exact risk-specific execution
+capability; Cancel retains `Proposals.Confirm`.
+
+An approved proposal may be cancelled without entering execution. This uses
+the existing actor-aware confirmation-decision audit boundary and the
+`approved → cancelled` transition already permitted by the state table.
+Repository replacement is guarded by the proposal's actual prior status.
+
 ## Implementation slices
 
 ### Slice 1 — Proposal-submission application service

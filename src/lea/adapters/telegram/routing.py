@@ -264,6 +264,11 @@ _CALLBACK_DEFINITIONS = {
         ChannelCapability.PROPOSALS_CONFIRM,
         ChannelRequestType.CONFIRMATION,
     ),
+    "proposal.execute": (
+        "proposals.execute",
+        ChannelCapability.PROPOSALS_READ,
+        ChannelRequestType.COMMAND,
+    ),
 }
 
 

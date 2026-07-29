@@ -417,13 +417,19 @@ def record_confirmation(
     """Record a human decision for a proposal awaiting confirmation."""
     issues: list[ConfirmationIssue] = []
 
-    if proposal.status is not ActionStatus.AWAITING_CONFIRMATION:
+    status_permits_decision = proposal.status is ActionStatus.AWAITING_CONFIRMATION or (
+        decision is ConfirmationDecision.CANCELLED
+        and proposal.status is ActionStatus.APPROVED
+    )
+
+    if not status_permits_decision:
         issues.append(
             ConfirmationIssue(
                 code="invalid_proposal_status",
                 message=(
                     "A human confirmation decision may only be recorded "
-                    "for proposals awaiting confirmation."
+                    "for proposals awaiting confirmation, except that an "
+                    "approved proposal may still be cancelled."
                 ),
                 proposal_id=proposal.proposal_id,
                 field="status",

@@ -850,7 +850,7 @@ def execute_proposal_cancel(
     reason: str | None,
     dependencies: ProposalCommandDependencies | None = None,
 ) -> CliResult:
-    """Cancel one persistent proposal awaiting confirmation."""
+    """Cancel one persistent proposal awaiting confirmation or approved."""
     validation = _validate_proposal_id(proposal_id)
     if validation is not None:
         return validation
@@ -948,7 +948,7 @@ def execute_proposal_cancel(
 
     replacement = repository.replace(
         confirmation.proposal,
-        expected_status=ActionStatus.AWAITING_CONFIRMATION,
+        expected_status=proposal.status,
     )
     if not replacement.success:
         return CliResult.failed(

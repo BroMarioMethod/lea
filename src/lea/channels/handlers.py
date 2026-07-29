@@ -178,6 +178,7 @@ def build_default_channel_application(
                     dependencies,
                     executor=dependencies.proposal_approve_executor,
                     success_message="Proposal approved.",
+                    approved_controls=True,
                 ),
             ),
             ChannelCommandDefinition(
@@ -759,6 +760,47 @@ def _confirmation_controls(
     )
 
 
+def _approved_controls(
+    proposal: ActionProposal,
+    dependencies: ChannelHandlerDependencies,
+) -> tuple[ChannelControl, ...]:
+    """Return controls valid after one proposal is approved."""
+    definitions: list[tuple[str, str, str]] = []
+    execution_capability = _proposal_execution_capability(proposal.risk_level)
+
+    if execution_capability is not None:
+        definitions.append(
+            (
+                "Execute",
+                "proposal.execute",
+                execution_capability.value,
+            )
+        )
+
+    definitions.append(
+        (
+            "Cancel",
+            "proposal.cancel",
+            ChannelCapability.PROPOSALS_CONFIRM.value,
+        )
+    )
+
+    return tuple(
+        ChannelControl(
+            control_id=_next_identifier(
+                dependencies.control_id_source,
+                field="control_id",
+            ),
+            label=label,
+            control_type=ChannelControlType.ACTION,
+            action=action,
+            parameters={"proposal_id": proposal.proposal_id},
+            required_capability=capability,
+        )
+        for label, action, capability in definitions
+    )
+
+
 def _proposals_list(
     request: ChannelRequest,
     dependencies: ChannelHandlerDependencies,
@@ -980,6 +1022,7 @@ def _proposal_decision(
     *,
     executor: CommandExecutor,
     success_message: str,
+    approved_controls: bool = False,
 ) -> ChannelResponse:
     parameters = _business_parameters(request)
     allowed = {"arguments", "proposal_id", "reason"}
@@ -1018,7 +1061,45 @@ def _proposal_decision(
         reason=reason_text,
         dependencies=dependencies.proposal_dependencies,
     )
-    return _mapped(request, result, dependencies, success_message=success_message)
+    response = _mapped(
+        request,
+        result,
+        dependencies,
+        success_message=success_message,
+    )
+
+    if not approved_controls or not result.success:
+        return response
+
+    proposal = _proposal_from_cli_result(result)
+
+    if proposal is None or proposal.status is not ActionStatus.APPROVED:
+        return response
+
+    return replace(
+        response,
+        controls=_approved_controls(proposal, dependencies),
+    )
+
+
+def _proposal_from_cli_result(
+    result: CliResult,
+) -> ActionProposal | None:
+    """Read one canonical proposal from a successful CLI result."""
+    data = result.data
+
+    if not isinstance(data, Mapping):
+        return None
+
+    raw_proposal = data.get("proposal")
+
+    if not isinstance(raw_proposal, Mapping):
+        return None
+
+    try:
+        return ActionProposal.from_dict(cast(Mapping[str, object], raw_proposal))
+    except Exception:
+        return None
 
 
 def _identifier_parameter(

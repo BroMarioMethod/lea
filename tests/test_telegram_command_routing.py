@@ -250,6 +250,11 @@ def test_read_only_can_read_but_cannot_write() -> None:
             ChannelRequestType.CONFIRMATION,
             "proposals.cancel",
         ),
+        (
+            "proposal.execute",
+            ChannelRequestType.COMMAND,
+            "proposals.execute",
+        ),
     ],
 )
 def test_callback_routes(
@@ -268,7 +273,7 @@ def test_callback_routes(
 
 
 def test_callback_rejects_unknown_action() -> None:
-    result = _route(_callback(f"proposal.execute:{PROPOSAL_ID}"))
+    result = _route(_callback(f"proposal.archive:{PROPOSAL_ID}"))
 
     assert result.success is False
     assert result.issues[0].code == "telegram_callback_route_unknown"

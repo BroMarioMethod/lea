@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from lea.actions import ActionHandlerRegistry, ActionStatus
+from lea.actions import ActionHandlerRegistry, ActionStatus, RiskLevel
 from lea.adapters.taskwarrior import TaskwarriorConfig
 from lea.audit import IntegrityJsonlAuditStore
 from lea.channels import (
@@ -394,6 +394,26 @@ def _approve(harness: LifecycleHarness) -> None:
     assert result.response is not None
     assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
     assert _read_status(harness.repository) is ActionStatus.APPROVED
+
+    read_result = harness.repository.read(PROPOSAL_ID)
+    assert read_result.success is True
+    assert read_result.proposal is not None
+    expected_capability = {
+        RiskLevel.LOW: EXECUTE_LOW,
+        RiskLevel.MEDIUM: EXECUTE_MEDIUM,
+        RiskLevel.HIGH: EXECUTE_HIGH,
+    }[read_result.proposal.risk_level]
+
+    assert tuple(control.action for control in result.response.controls) == (
+        "proposal.execute",
+        "proposal.cancel",
+    )
+    assert tuple(
+        control.required_capability for control in result.response.controls
+    ) == (
+        expected_capability,
+        PROPOSALS_CONFIRM,
+    )
 
 
 def test_low_risk_create_requires_confirmation_then_execution(

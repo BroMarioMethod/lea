@@ -18,6 +18,7 @@ class TelegramCallbackAction(StrEnum):
     """Supported Telegram proposal callback actions."""
 
     APPROVE = "proposal.approve"
+    EXECUTE = "proposal.execute"
     REJECT = "proposal.reject"
     CANCEL = "proposal.cancel"
     REVISE = "proposal.revise"
@@ -133,10 +134,19 @@ class TelegramControlResult:
 
 _ACTION_ORDER = {
     TelegramCallbackAction.APPROVE: 0,
-    TelegramCallbackAction.REJECT: 1,
-    TelegramCallbackAction.CANCEL: 2,
-    TelegramCallbackAction.REVISE: 3,
+    TelegramCallbackAction.EXECUTE: 1,
+    TelegramCallbackAction.REJECT: 2,
+    TelegramCallbackAction.CANCEL: 3,
+    TelegramCallbackAction.REVISE: 4,
 }
+
+_EXECUTION_CAPABILITIES = frozenset(
+    {
+        "Proposals.Execute.LowRisk",
+        "Proposals.Execute.MediumRisk",
+        "Proposals.Execute.HighRisk",
+    }
+)
 
 
 def build_telegram_controls(
@@ -286,14 +296,22 @@ def _parse_control(
             control_id=control.control_id,
         )
 
-    expected_capability = "Proposals.Confirm"
+    if action is TelegramCallbackAction.EXECUTE:
+        capability_valid = control.required_capability in _EXECUTION_CAPABILITIES
+        capability_message = (
+            "Execute controls must preserve one risk-specific proposal "
+            "execution capability."
+        )
+    else:
+        capability_valid = control.required_capability == "Proposals.Confirm"
+        capability_message = (
+            "Proposal decision controls must preserve the Proposals.Confirm capability."
+        )
 
-    if control.required_capability != expected_capability:
+    if not capability_valid:
         return TelegramControlIssue(
             code="telegram_control_capability_invalid",
-            message=(
-                "Proposal controls must preserve the Proposals.Confirm capability."
-            ),
+            message=capability_message,
             field=f"controls[{index}].required_capability",
             control_id=control.control_id,
         )

@@ -147,14 +147,38 @@ def test_cancel_rejects_blank_supplied_reason() -> None:
     assert result.issues[0].code == "proposal_reason_invalid"
 
 
-def test_cancel_rejects_invalid_proposal_state(tmp_path: Path) -> None:
+def test_cancel_allows_approved_proposal(tmp_path: Path) -> None:
+    dependencies = _dependencies(
+        tmp_path,
+        status=ActionStatus.APPROVED,
+    )
+
+    result = execute_proposal_cancel(
+        config_path=tmp_path / "lea.toml",
+        expected_profile=None,
+        proposal_id=PROPOSAL_ID,
+        actor="Marius",
+        reason="Do not execute.",
+        dependencies=dependencies,
+    )
+
+    assert result.success is True
+    assert isinstance(result.data, dict)
+    proposal_data = result.data.get("proposal")
+    assert isinstance(proposal_data, dict)
+    assert proposal_data["status"] == "cancelled"
+    assert result.data["actor"] == "Marius"
+    assert result.data["reason"] == "Do not execute."
+
+
+def test_cancel_rejects_terminal_proposal_state(tmp_path: Path) -> None:
     result = execute_proposal_cancel(
         config_path=tmp_path / "lea.toml",
         expected_profile=None,
         proposal_id=PROPOSAL_ID,
         actor="Marius",
         reason=None,
-        dependencies=_dependencies(tmp_path, status=ActionStatus.APPROVED),
+        dependencies=_dependencies(tmp_path, status=ActionStatus.SUCCEEDED),
     )
 
     assert result.exit_code is LocalCliExitCode.APPLICATION_ERROR

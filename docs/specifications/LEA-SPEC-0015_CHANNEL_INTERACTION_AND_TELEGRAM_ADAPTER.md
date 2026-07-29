@@ -1,7 +1,7 @@
 # LEA-SPEC-0015 — Channel Interaction and Telegram Adapter
 
 - **Status:** Accepted
-- **Version:** 1.2
+- **Version:** 1.3
 - **Date:** 24 July 2026
 - **Milestone:** 2.5 — Telegram Adapter
 
@@ -537,8 +537,8 @@ An approval callback or `/proposal_approve` command may transition an
 `awaiting_confirmation` proposal to `approved`, but shall not invoke
 Taskwarrior.
 
-Execution shall occur only through `/proposal_execute` or a future explicit
-execution control. The execution handler shall:
+Execution shall occur only through `/proposal_execute` or an explicit
+Execute control. The execution handler shall:
 
 - load the persistent proposal;
 - require `approved` status;
@@ -554,6 +554,21 @@ execution control. The execution handler shall:
 
 A single static low-risk route capability shall not authorise medium- or
 high-risk proposal execution.
+
+After successful approval, the channel shall return:
+
+```text
+Execute | Cancel
+```
+
+The Execute control shall carry the exact risk-specific execution capability.
+The callback route may use `Proposals.Read` as its static entry capability, but
+the stored-risk authorisation in the execution handler remains mandatory.
+
+Cancellation is valid while a proposal is `awaiting_confirmation` or
+`approved`. Cancelling an approved proposal shall preserve the actor, reason,
+timestamp, append-only audit event and optimistic repository status guard.
+Approval and rejection remain invalid once the proposal is already approved.
 
 ### Help command
 
