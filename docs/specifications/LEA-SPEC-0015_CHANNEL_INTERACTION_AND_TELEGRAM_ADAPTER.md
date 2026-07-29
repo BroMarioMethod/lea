@@ -1,7 +1,7 @@
 # LEA-SPEC-0015 — Channel Interaction and Telegram Adapter
 
 - **Status:** Accepted
-- **Version:** 1.0
+- **Version:** 1.1
 - **Date:** 24 July 2026
 - **Milestone:** 2.5 — Telegram Adapter
 
@@ -457,6 +457,96 @@ Exact command syntax must be deterministic and documented.
 Commands should map to channel-neutral request names rather than directly to CLI functions.
 
 The existing CLI remains a peer adapter, not the internal API for Telegram.
+
+## 10.1 Task command lifecycle
+
+Task read commands and task mutation commands have different execution
+boundaries.
+
+### Read commands
+
+The following commands are read-only and may execute immediately after channel
+authentication and capability validation:
+
+```text
+/tasks
+/task_show <task-uuid>
+```
+
+`/task_show` shall use the provider-neutral task read boundary. It shall not
+create an action proposal and shall return exactly one matching task or a
+structured not-found result.
+
+### Mutation commands
+
+The following commands request mutations and shall never invoke a task provider
+or Local CLI task mutation service directly:
+
+```text
+/task_add
+/task_modify
+/task_complete
+/task_delete
+```
+
+Each mutation command shall:
+
+1. parse and validate deterministic channel arguments;
+2. construct a new `ActionProposal`;
+3. record the authenticated channel identity as the proposal source;
+4. submit the proposal through `ActionOrchestrator`;
+5. persist the resulting canonical proposal document;
+6. persist all required append-only audit events;
+7. return the proposal identifier, action, risk, status and next permitted
+   operation;
+8. perform no provider mutation during proposal submission.
+
+The initial task-action risk assignments are:
+
+| Action | Risk | Confirmation policy |
+|---|---|---|
+| `task.create` | Low | When required |
+| `task.modify` | Medium | When required |
+| `task.complete` | Medium | When required |
+| `task.delete` | High | When required |
+
+Low-risk submission may produce an `approved` proposal, but approval does not
+imply execution. The user must still explicitly execute the approved proposal.
+
+Medium- and high-risk task proposals shall await explicit human confirmation.
+High-risk proposals require confirmation regardless of a less restrictive
+proposal policy.
+
+### Confirmation and execution
+
+Approval shall remain separate from execution.
+
+An approval callback or `/proposal_approve` command may transition an
+`awaiting_confirmation` proposal to `approved`, but shall not invoke
+Taskwarrior.
+
+Execution shall occur only through `/proposal_execute` or a future explicit
+execution control. The execution handler shall:
+
+- load the persistent proposal;
+- require `approved` status;
+- derive the required capability from the proposal risk:
+  - `Proposals.Execute.LowRisk`;
+  - `Proposals.Execute.MediumRisk`;
+  - `Proposals.Execute.HighRisk`;
+- reject the request before provider loading when the authenticated identity
+  lacks the exact capability;
+- execute through the registered provider-neutral action handler;
+- persist the action-execution audit event;
+- persist the final proposal state.
+
+A single static low-risk route capability shall not authorise medium- or
+high-risk proposal execution.
+
+### Help command
+
+`/help` shall return the deterministic command set actually supported by the
+channel application. It shall not advertise deferred commands as operational.
 
 ## 11. Confirmation controls
 
