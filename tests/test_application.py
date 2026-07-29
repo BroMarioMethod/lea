@@ -19,6 +19,6 @@ def test_run_logs_startup_and_completion(caplog: object) -> None:
     messages = [record.message for record in caplog.records]  # type: ignore[attr-defined]
 
     assert any(
-        "Starting LEA 0.2.0 in test environment." in message for message in messages
+        "Starting LEA 0.2.1 in test environment." in message for message in messages
     )
     assert "LEA application completed successfully." in messages
