@@ -13,6 +13,7 @@ from lea.adapters.telegram.contracts import (
     TelegramFetchUpdatesResult,
     TelegramSendMessageResult,
     TelegramSentMessage,
+    TelegramTransportIssue,
     TelegramUpdate,
 )
 from lea.adapters.telegram.fakes import FakeTelegramTransport
@@ -20,6 +21,7 @@ from lea.adapters.telegram.offsets import FileTelegramOffsetStore
 from lea.adapters.telegram.worker import (
     TelegramWorkerConfig,
     TelegramWorkerDependencies,
+    TelegramWorkerIssue,
     run_telegram_worker,
 )
 from lea.channels.application import (
@@ -123,6 +125,7 @@ def _dependencies(
     transport: FakeTelegramTransport,
     *,
     stop_signal: StopAfter,
+    warnings: list[TelegramWorkerIssue] | None = None,
 ) -> TelegramWorkerDependencies:
     identifiers = iter(
         [
@@ -143,6 +146,7 @@ def _dependencies(
         clock=lambda: NOW,
         stop_signal=stop_signal,
         sleeper=lambda _seconds: None,
+        warning_sink=warnings.append if warnings is not None else None,
     )
 
 
@@ -185,7 +189,7 @@ def test_processes_message_sends_response_and_advances_offset(
     ) == '{"next_update_id":43,"schema_version":1}\n'
 
 
-def test_processes_callback_edits_answers_and_advances(
+def test_processes_callback_answers_edits_and_advances(
     tmp_path: Path,
 ) -> None:
     transport = FakeTelegramTransport()
@@ -210,6 +214,153 @@ def test_processes_callback_edits_answers_and_advances(
     assert result.processed_updates == 1
     assert transport.edit_calls[0].message_id == 77
     assert transport.answer_calls[0].callback_query_id == "callback-50"
+
+
+def test_callback_edit_failure_is_checkpointed_and_non_fatal(
+    tmp_path: Path,
+) -> None:
+    warnings: list[TelegramWorkerIssue] = []
+    transport = FakeTelegramTransport()
+    transport.fetch_results.append(
+        TelegramFetchUpdatesResult(True, (_callback(51),), ())
+    )
+    transport.answer_results.append(TelegramAnswerCallbackResult(True, ()))
+    transport.edit_results.append(
+        TelegramEditMessageResult(
+            False,
+            None,
+            (
+                TelegramTransportIssue(
+                    code="unavailable",
+                    message="Unavailable.",
+                    operation="edit_message",
+                ),
+            ),
+        )
+    )
+
+    result = run_telegram_worker(
+        _config(),
+        _dependencies(
+            tmp_path,
+            transport,
+            stop_signal=StopAfter(2),
+            warnings=warnings,
+        ),
+    )
+
+    assert result.success is True
+    assert result.processed_updates == 1
+    assert transport.answer_calls[0].callback_query_id == "callback-51"
+    assert transport.edit_calls[0].message_id == 77
+    assert [warning.code for warning in warnings] == ["telegram_edit_failed"]
+    assert (tmp_path / "offset.json").read_text(
+        encoding="utf-8"
+    ) == '{"next_update_id":52,"schema_version":1}\n'
+
+
+def test_delivery_failure_does_not_block_later_updates(
+    tmp_path: Path,
+) -> None:
+    warnings: list[TelegramWorkerIssue] = []
+    transport = FakeTelegramTransport()
+    transport.fetch_results.append(
+        TelegramFetchUpdatesResult(
+            True,
+            (
+                _callback(53),
+                _message(54),
+            ),
+            (),
+        )
+    )
+    transport.answer_results.append(TelegramAnswerCallbackResult(True, ()))
+    transport.edit_results.append(
+        TelegramEditMessageResult(
+            False,
+            None,
+            (
+                TelegramTransportIssue(
+                    code="unavailable",
+                    message="Unavailable.",
+                    operation="edit_message",
+                ),
+            ),
+        )
+    )
+    transport.send_results.append(
+        TelegramSendMessageResult(
+            True,
+            TelegramSentMessage("123456789", 100),
+            (),
+        )
+    )
+
+    result = run_telegram_worker(
+        _config(),
+        _dependencies(
+            tmp_path,
+            transport,
+            stop_signal=StopAfter(3),
+            warnings=warnings,
+        ),
+    )
+
+    assert result.success is True
+    assert result.processed_updates == 2
+    assert len(transport.send_calls) == 1
+    assert [warning.code for warning in warnings] == ["telegram_edit_failed"]
+    assert (tmp_path / "offset.json").read_text(
+        encoding="utf-8"
+    ) == '{"next_update_id":55,"schema_version":1}\n'
+
+
+def test_callback_answer_failure_still_edits_and_checkpoints(
+    tmp_path: Path,
+) -> None:
+    warnings: list[TelegramWorkerIssue] = []
+    transport = FakeTelegramTransport()
+    transport.fetch_results.append(
+        TelegramFetchUpdatesResult(True, (_callback(52),), ())
+    )
+    transport.answer_results.append(
+        TelegramAnswerCallbackResult(
+            False,
+            (
+                TelegramTransportIssue(
+                    code="expired",
+                    message="Expired.",
+                    operation="answer_callback_query",
+                ),
+            ),
+        )
+    )
+    transport.edit_results.append(
+        TelegramEditMessageResult(
+            True,
+            TelegramSentMessage("123456789", 77),
+            (),
+        )
+    )
+
+    result = run_telegram_worker(
+        _config(),
+        _dependencies(
+            tmp_path,
+            transport,
+            stop_signal=StopAfter(2),
+            warnings=warnings,
+        ),
+    )
+
+    assert result.success is True
+    assert result.processed_updates == 1
+    assert transport.answer_calls[0].callback_query_id == "callback-52"
+    assert transport.edit_calls[0].message_id == 77
+    assert [warning.code for warning in warnings] == ["telegram_callback_answer_failed"]
+    assert (tmp_path / "offset.json").read_text(
+        encoding="utf-8"
+    ) == '{"next_update_id":53,"schema_version":1}\n'
 
 
 def test_parse_failure_is_checkpointed_without_response(tmp_path: Path) -> None:
@@ -264,13 +415,14 @@ def test_unauthorised_update_is_checkpointed_without_response(
     assert transport.send_calls == []
 
 
-def test_send_failure_does_not_advance_offset(tmp_path: Path) -> None:
+def test_send_failure_is_checkpointed_and_non_fatal(
+    tmp_path: Path,
+) -> None:
+    warnings: list[TelegramWorkerIssue] = []
     transport = FakeTelegramTransport()
     transport.fetch_results.append(
         TelegramFetchUpdatesResult(True, (_message(70),), ())
     )
-    from lea.adapters.telegram.contracts import TelegramTransportIssue
-
     transport.send_results.append(
         TelegramSendMessageResult(
             False,
@@ -287,12 +439,20 @@ def test_send_failure_does_not_advance_offset(tmp_path: Path) -> None:
 
     result = run_telegram_worker(
         _config(),
-        _dependencies(tmp_path, transport, stop_signal=StopAfter(10)),
+        _dependencies(
+            tmp_path,
+            transport,
+            stop_signal=StopAfter(2),
+            warnings=warnings,
+        ),
     )
 
-    assert result.success is False
-    assert result.issues[0].code == "telegram_send_failed"
-    assert not (tmp_path / "offset.json").exists()
+    assert result.success is True
+    assert result.processed_updates == 1
+    assert [warning.code for warning in warnings] == ["telegram_send_failed"]
+    assert (tmp_path / "offset.json").read_text(
+        encoding="utf-8"
+    ) == '{"next_update_id":71,"schema_version":1}\n'
 
 
 def test_stale_update_is_skipped(tmp_path: Path) -> None:
@@ -329,8 +489,6 @@ def test_stale_update_is_skipped(tmp_path: Path) -> None:
 
 def test_fetch_failures_are_bounded_and_redacted(tmp_path: Path) -> None:
     transport = FakeTelegramTransport()
-
-    from lea.adapters.telegram.contracts import TelegramTransportIssue
 
     failed = TelegramFetchUpdatesResult(
         False,

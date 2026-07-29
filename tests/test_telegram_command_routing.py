@@ -93,7 +93,7 @@ def _route(
     )
 
 
-def test_default_definitions_cover_accepted_command_set() -> None:
+def test_default_definitions_cover_active_command_set() -> None:
     commands = tuple(
         definition.telegram_command
         for definition in default_telegram_command_definitions()
@@ -114,10 +114,7 @@ def test_default_definitions_cover_accepted_command_set() -> None:
         "/proposal_approve",
         "/proposal_reject",
         "/proposal_cancel",
-        "/proposal_revise",
         "/proposal_execute",
-        "/knowledge_show",
-        "/knowledge_find",
     )
 
 
@@ -254,9 +251,9 @@ def test_read_only_can_read_but_cannot_write() -> None:
             "proposals.cancel",
         ),
         (
-            "proposal.revise",
-            ChannelRequestType.REVISION_REQUEST,
-            "proposals.revise",
+            "proposal.execute",
+            ChannelRequestType.COMMAND,
+            "proposals.execute",
         ),
     ],
 )
@@ -276,7 +273,7 @@ def test_callback_routes(
 
 
 def test_callback_rejects_unknown_action() -> None:
-    result = _route(_callback(f"proposal.execute:{PROPOSAL_ID}"))
+    result = _route(_callback(f"proposal.archive:{PROPOSAL_ID}"))
 
     assert result.success is False
     assert result.issues[0].code == "telegram_callback_route_unknown"
@@ -359,3 +356,52 @@ def test_duplicate_command_definitions_fail_closed() -> None:
 
     assert result.success is False
     assert result.issues[0].code == "telegram_command_ambiguous"
+
+
+def test_proposal_execute_route_requires_read_not_low_risk_execution() -> None:
+    command = f"/proposal_execute {PROPOSAL_ID}"
+
+    without_low_risk = _route(
+        _message(command),
+        users=(
+            _owner(
+                remove_capabilities=(ChannelCapability.PROPOSALS_EXECUTE_LOW_RISK,),
+            ),
+        ),
+    )
+    without_read = _route(
+        _message(command),
+        users=(
+            _owner(
+                remove_capabilities=(ChannelCapability.PROPOSALS_READ,),
+            ),
+        ),
+    )
+
+    assert without_low_risk.success is True
+    assert without_low_risk.request is not None
+    assert without_low_risk.request.command == "proposals.execute"
+    assert without_read.success is False
+    assert without_read.issues[0].code == "telegram_capability_required"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"/proposal_revise {PROPOSAL_ID} description=Revised",
+        f"/knowledge_show {PROPOSAL_ID}",
+        "/knowledge_find boiler",
+    ],
+)
+def test_deferred_commands_are_not_active(command: str) -> None:
+    result = _route(_message(command))
+
+    assert result.success is False
+    assert result.request is None
+
+
+def test_deferred_revision_callback_is_not_routed() -> None:
+    result = _route(_callback(f"proposal.revise:{PROPOSAL_ID}"))
+
+    assert result.success is False
+    assert result.request is None

@@ -210,3 +210,50 @@ def test_provider_failure_preserves_first_issue() -> None:
         create_task_action_handler(provider)(
             _proposal("task.create", {"description": "Create task"})
         )
+
+
+def test_create_handler_round_trips_due_timestamp() -> None:
+    """Create proposals should restore provider-neutral due timestamps."""
+    provider = RecordingProvider()
+    due = datetime(2026, 7, 30, 15, 30, tzinfo=UTC)
+
+    create_task_action_handler(provider)(
+        _proposal(
+            "task.create",
+            {
+                "description": "Create task",
+                "due": due.isoformat(),
+            },
+        )
+    )
+
+    assert provider.created == [
+        TaskCreateRequest(
+            description="Create task",
+            due=due,
+        )
+    ]
+
+
+def test_modify_handler_round_trips_clear_flags() -> None:
+    """Modify proposals should preserve explicit clearing operations."""
+    provider = RecordingProvider()
+
+    modify_task_action_handler(provider)(
+        _proposal(
+            "task.modify",
+            {
+                "uuid": TASK_UUID,
+                "clear_due": True,
+                "clear_priority": True,
+            },
+        )
+    )
+
+    assert provider.modified == [
+        TaskModifyRequest(
+            task_uuid=TASK_UUID,
+            clear_due=True,
+            clear_priority=True,
+        )
+    ]

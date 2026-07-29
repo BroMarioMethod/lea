@@ -24,6 +24,7 @@ CONTROL_IDS = {
     "proposal.reject": "31111111-1111-4111-8111-111111111111",
     "proposal.cancel": "41111111-1111-4111-8111-111111111111",
     "proposal.revise": "51111111-1111-4111-8111-111111111111",
+    "proposal.execute": "61111111-1111-4111-8111-111111111111",
 }
 
 
@@ -55,6 +56,10 @@ def test_controls_are_rendered_in_deterministic_action_order() -> None:
         (
             _control("proposal.revise"),
             _control("proposal.cancel"),
+            _control(
+                "proposal.execute",
+                required_capability="Proposals.Execute.LowRisk",
+            ),
             _control("proposal.approve"),
             _control("proposal.reject"),
         )
@@ -64,6 +69,7 @@ def test_controls_are_rendered_in_deterministic_action_order() -> None:
     assert result.keyboard is not None
     assert tuple(button.callback_data for button in result.keyboard.rows[0]) == (
         f"proposal.approve:{PROPOSAL_ID}",
+        f"proposal.execute:{PROPOSAL_ID}",
         f"proposal.reject:{PROPOSAL_ID}",
         f"proposal.cancel:{PROPOSAL_ID}",
         f"proposal.revise:{PROPOSAL_ID}",
@@ -83,6 +89,7 @@ def test_control_labels_are_preserved() -> None:
     "action",
     [
         TelegramCallbackAction.APPROVE,
+        TelegramCallbackAction.EXECUTE,
         TelegramCallbackAction.REJECT,
         TelegramCallbackAction.CANCEL,
         TelegramCallbackAction.REVISE,
@@ -136,10 +143,37 @@ def test_duplicate_actions_are_rejected() -> None:
 
 
 def test_unsupported_action_is_rejected() -> None:
-    result = build_telegram_controls((_control("proposal.execute"),))
+    result = build_telegram_controls((_control("proposal.archive"),))
 
     assert result.success is False
     assert result.issues[0].code == "telegram_control_action_unsupported"
+
+
+@pytest.mark.parametrize(
+    "capability",
+    [
+        "Proposals.Execute.LowRisk",
+        "Proposals.Execute.MediumRisk",
+        "Proposals.Execute.HighRisk",
+    ],
+)
+def test_execute_control_accepts_risk_capability(
+    capability: str,
+) -> None:
+    result = build_telegram_controls(
+        (
+            _control(
+                "proposal.execute",
+                required_capability=capability,
+            ),
+        )
+    )
+
+    assert result.success is True
+    assert result.keyboard is not None
+    assert result.keyboard.rows[0][0].callback_data == (
+        f"proposal.execute:{PROPOSAL_ID}"
+    )
 
 
 def test_wrong_capability_is_rejected() -> None:
@@ -207,7 +241,7 @@ def test_extra_control_parameters_are_rejected() -> None:
     [
         ("proposal.approve", "telegram_callback_data_invalid"),
         (
-            f"proposal.execute:{PROPOSAL_ID}",
+            f"proposal.archive:{PROPOSAL_ID}",
             "telegram_callback_action_unsupported",
         ),
         (

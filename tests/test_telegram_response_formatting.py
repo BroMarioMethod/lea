@@ -167,7 +167,7 @@ def test_invalid_controls_fail_without_partial_output() -> None:
         control_type=ChannelControlType.ACTION,
         action="proposal.execute",
         parameters={"proposal_id": PROPOSAL_ID},
-        required_capability="Proposals.Execute.LowRisk",
+        required_capability="Proposals.Confirm",
     )
 
     result = format_telegram_response(_response(controls=(invalid,)))

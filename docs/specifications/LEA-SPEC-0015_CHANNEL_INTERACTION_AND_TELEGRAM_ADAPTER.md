@@ -1,7 +1,7 @@
 # LEA-SPEC-0015 — Channel Interaction and Telegram Adapter
 
 - **Status:** Accepted
-- **Version:** 1.0
+- **Version:** 1.4
 - **Date:** 24 July 2026
 - **Milestone:** 2.5 — Telegram Adapter
 
@@ -194,6 +194,11 @@ Responses must not contain:
 - audit hash internals;
 - provider command lines unless explicitly safe and intended.
 
+Channel responses shall not expose channel-scoped user or
+conversation identifiers as decision actors. User-facing decision data shall
+use a role-scoped label such as `telegram:owner`. The full accountable actor
+identifier may remain in local proposal-decision and audit records.
+
 ### 5.4 Interaction controls
 
 Channel-neutral controls should represent:
@@ -219,8 +224,13 @@ The worker must:
 - request updates using a persisted offset;
 - use a bounded long-poll timeout;
 - process updates in deterministic update-ID order;
-- advance the offset only after the update receives a terminal handling result;
-- retry temporary transport failures with bounded back-off;
+- apply the routed update and prepare any response before checkpointing;
+- advance the offset after a terminal application result and before outbound
+  response delivery;
+- treat response-formatting, send, edit and callback-answer failures after
+  checkpointing as redacted non-fatal warnings;
+- continue processing later updates after a response-delivery failure;
+- retry temporary update-fetching failures with bounded back-off;
 - stop cleanly on termination signals;
 - avoid uncontrolled busy loops.
 
@@ -418,17 +428,18 @@ Requirements:
 - trailing newline permitted and stripped exactly once;
 - empty or malformed values rejected deterministically.
 
-## 10. MVP commands
+## 10. Active and planned commands
 
-The initial explicit command set should include:
+The active Telegram command set shall contain only commands backed by an
+implemented channel handler and application operation.
 
-### General
+### Active general commands
 
 - `/start`
 - `/help`
 - `/status`
 
-### Tasks
+### Active task commands
 
 - `/tasks`
 - `/task_add`
@@ -437,26 +448,142 @@ The initial explicit command set should include:
 - `/task_complete`
 - `/task_delete`
 
-### Proposals
+### Active proposal commands
 
 - `/proposals`
 - `/proposal_show`
 - `/proposal_approve`
 - `/proposal_reject`
 - `/proposal_cancel`
-- `/proposal_revise`
 - `/proposal_execute`
 
-### Knowledge
+### Deferred planned commands
 
-- `/knowledge_show`
-- `/knowledge_find`
+The following commands remain part of the planned interaction catalogue but
+shall not be registered by the active Telegram router until their application
+operations are implemented:
 
-Exact command syntax must be deterministic and documented.
+- `/proposal_revise`;
+- `/knowledge_show`;
+- `/knowledge_find`.
+
+`/proposal_revise` shall return only with the complete revision workflow
+specified below. The knowledge commands shall return with the provider-neutral
+knowledge integration.
+
+Exact active command syntax must be deterministic and documented.
 
 Commands should map to channel-neutral request names rather than directly to CLI functions.
 
 The existing CLI remains a peer adapter, not the internal API for Telegram.
+
+## 10.1 Task command lifecycle
+
+Task read commands and task mutation commands have different execution
+boundaries.
+
+### Read commands
+
+The following commands are read-only and may execute immediately after channel
+authentication and capability validation:
+
+```text
+/tasks
+/task_show <task-uuid>
+```
+
+`/task_show` shall use the provider-neutral task read boundary. It shall not
+create an action proposal and shall return exactly one matching task or a
+structured not-found result.
+
+### Mutation commands
+
+The following commands request mutations and shall never invoke a task provider
+or Local CLI task mutation service directly:
+
+```text
+/task_add
+/task_modify
+/task_complete
+/task_delete
+```
+
+Each mutation command shall:
+
+1. parse and validate deterministic channel arguments;
+2. construct a new `ActionProposal`;
+3. record the authenticated channel identity as the proposal source;
+4. submit the proposal through `ActionOrchestrator`;
+5. persist the resulting canonical proposal document;
+6. persist all required append-only audit events;
+7. return the proposal identifier, action, risk, status and next permitted
+   operation;
+8. perform no provider mutation during proposal submission.
+
+The initial task-action risk assignments and provider-neutral builder
+defaults are:
+
+| Action | Risk | Builder confirmation policy |
+|---|---|---|
+| `task.create` | Low | When required |
+| `task.modify` | Medium | When required |
+| `task.complete` | Medium | When required |
+| `task.delete` | High | When required |
+
+Interactive Telegram and Web/PWA task requests shall override the builder
+default with `always`. Every interactive task mutation, including low-risk
+creation, shall therefore persist as `awaiting_confirmation` and immediately
+return approval controls.
+
+The provider-neutral builders retain `when_required` so a future explicitly
+trusted automation may use the normal risk policy without changing the
+interactive safety contract. Approval never implies execution.
+
+### Confirmation and execution
+
+Approval shall remain separate from execution.
+
+An approval callback or `/proposal_approve` command may transition an
+`awaiting_confirmation` proposal to `approved`, but shall not invoke
+Taskwarrior.
+
+Execution shall occur only through `/proposal_execute` or an explicit
+Execute control. The execution handler shall:
+
+- load the persistent proposal;
+- require `approved` status;
+- derive the required capability from the proposal risk:
+  - `Proposals.Execute.LowRisk`;
+  - `Proposals.Execute.MediumRisk`;
+  - `Proposals.Execute.HighRisk`;
+- reject the request before provider loading when the authenticated identity
+  lacks the exact capability;
+- execute through the registered provider-neutral action handler;
+- persist the action-execution audit event;
+- persist the final proposal state.
+
+A single static low-risk route capability shall not authorise medium- or
+high-risk proposal execution.
+
+After successful approval, the channel shall return:
+
+```text
+Execute | Cancel
+```
+
+The Execute control shall carry the exact risk-specific execution capability.
+The callback route may use `Proposals.Read` as its static entry capability, but
+the stored-risk authorisation in the execution handler remains mandatory.
+
+Cancellation is valid while a proposal is `awaiting_confirmation` or
+`approved`. Cancelling an approved proposal shall preserve the actor, reason,
+timestamp, append-only audit event and optimistic repository status guard.
+Approval and rejection remain invalid once the proposal is already approved.
+
+### Help command
+
+`/help` shall return the deterministic command set actually supported by the
+channel application. It shall not advertise deferred commands as operational.
 
 ## 11. Confirmation controls
 
