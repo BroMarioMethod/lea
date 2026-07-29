@@ -12,6 +12,7 @@ from uuid import UUID
 from lea.actions import (
     ActionProposal,
     ActionStatus,
+    ConfirmationPolicy,
     RiskLevel,
     proposal_to_dict,
 )
@@ -485,14 +486,16 @@ def _tasks_create(
             priority=_optional_text(parameters.get("priority")),
             tags=_text_tuple(parameters.get("tags"), field="tags"),
         )
-        proposal = build_task_create_proposal(
-            task_request,
-            proposal_id=_next_identifier(
-                dependencies.proposal_id_source,
-                field="proposal_id",
-            ),
-            source=_proposal_source(request),
-            created_at=request.received_at,
+        proposal = _interactive_task_proposal(
+            build_task_create_proposal(
+                task_request,
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
         )
     except (TypeError, ValueError) as error:
         return _validation_response(
@@ -559,14 +562,16 @@ def _tasks_modify(
                 field="remove_tags",
             ),
         )
-        proposal = build_task_modify_proposal(
-            modify_request,
-            proposal_id=_next_identifier(
-                dependencies.proposal_id_source,
-                field="proposal_id",
-            ),
-            source=_proposal_source(request),
-            created_at=request.received_at,
+        proposal = _interactive_task_proposal(
+            build_task_modify_proposal(
+                modify_request,
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
         )
     except (TypeError, ValueError) as error:
         return _validation_response(
@@ -588,14 +593,16 @@ def _tasks_complete(
         return _validation_response(request, dependencies, identifier)
 
     try:
-        proposal = build_task_complete_proposal(
-            identifier,
-            proposal_id=_next_identifier(
-                dependencies.proposal_id_source,
-                field="proposal_id",
-            ),
-            source=_proposal_source(request),
-            created_at=request.received_at,
+        proposal = _interactive_task_proposal(
+            build_task_complete_proposal(
+                identifier,
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
         )
     except (TypeError, ValueError) as error:
         return _validation_response(
@@ -617,14 +624,16 @@ def _tasks_delete(
         return _validation_response(request, dependencies, identifier)
 
     try:
-        proposal = build_task_delete_proposal(
-            identifier,
-            proposal_id=_next_identifier(
-                dependencies.proposal_id_source,
-                field="proposal_id",
-            ),
-            source=_proposal_source(request),
-            created_at=request.received_at,
+        proposal = _interactive_task_proposal(
+            build_task_delete_proposal(
+                identifier,
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
         )
     except (TypeError, ValueError) as error:
         return _validation_response(
@@ -634,6 +643,16 @@ def _tasks_delete(
         )
 
     return _submit_task_proposal(request, dependencies, proposal)
+
+
+def _interactive_task_proposal(
+    proposal: ActionProposal,
+) -> ActionProposal:
+    """Require explicit confirmation for an interactive task request."""
+    return replace(
+        proposal,
+        confirmation_policy=ConfirmationPolicy.ALWAYS,
+    )
 
 
 def _submit_task_proposal(

@@ -1,7 +1,7 @@
 # LEA-SPEC-0015 — Channel Interaction and Telegram Adapter
 
 - **Status:** Accepted
-- **Version:** 1.1
+- **Version:** 1.2
 - **Date:** 24 July 2026
 - **Milestone:** 2.5 — Telegram Adapter
 
@@ -510,21 +510,24 @@ Each mutation command shall:
    operation;
 8. perform no provider mutation during proposal submission.
 
-The initial task-action risk assignments are:
+The initial task-action risk assignments and provider-neutral builder
+defaults are:
 
-| Action | Risk | Confirmation policy |
+| Action | Risk | Builder confirmation policy |
 |---|---|---|
 | `task.create` | Low | When required |
 | `task.modify` | Medium | When required |
 | `task.complete` | Medium | When required |
 | `task.delete` | High | When required |
 
-Low-risk submission may produce an `approved` proposal, but approval does not
-imply execution. The user must still explicitly execute the approved proposal.
+Interactive Telegram and Web/PWA task requests shall override the builder
+default with `always`. Every interactive task mutation, including low-risk
+creation, shall therefore persist as `awaiting_confirmation` and immediately
+return approval controls.
 
-Medium- and high-risk task proposals shall await explicit human confirmation.
-High-risk proposals require confirmation regardless of a less restrictive
-proposal policy.
+The provider-neutral builders retain `when_required` so a future explicitly
+trusted automation may use the normal risk policy without changing the
+interactive safety contract. Approval never implies execution.
 
 ### Confirmation and execution
 

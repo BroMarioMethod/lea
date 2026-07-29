@@ -13,6 +13,7 @@ from lea.actions import (
     ActionHandlerRegistry,
     ActionProposal,
     ActionStatus,
+    ConfirmationPolicy,
     RiskLevel,
     proposal_to_dict,
 )
@@ -159,14 +160,17 @@ def test_task_create_submits_without_direct_execution(
 
     assert result.response is not None
     assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
-    assert result.response.message == (
-        "Proposal approved and awaiting explicit execution."
+    assert result.response.message == "Proposal awaiting confirmation."
+    assert tuple(control.action for control in result.response.controls) == (
+        "proposal.approve",
+        "proposal.reject",
+        "proposal.cancel",
     )
-    assert result.response.controls == ()
     assert calls == []
     assert len(submitted) == 1
     assert submitted[0].action == "task.create"
     assert submitted[0].risk_level is RiskLevel.LOW
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
     assert submitted[0].source == "telegram:owner"
     assert submitted[0].parameters["description"] == "Write Slice 12"
 

@@ -396,7 +396,7 @@ def _approve(harness: LifecycleHarness) -> None:
     assert _read_status(harness.repository) is ActionStatus.APPROVED
 
 
-def test_low_risk_create_requires_explicit_execution(
+def test_low_risk_create_requires_confirmation_then_execution(
     tmp_path: Path,
 ) -> None:
     harness = _harness(tmp_path)
@@ -411,13 +411,31 @@ def test_low_risk_create_requires_explicit_execution(
 
     assert submitted.response is not None
     assert submitted.response.outcome is ChannelResponseOutcome.SUCCEEDED
-    assert submitted.response.message == (
-        "Proposal approved and awaiting explicit execution."
+    assert submitted.response.message == "Proposal awaiting confirmation."
+    assert tuple(control.action for control in submitted.response.controls) == (
+        "proposal.approve",
+        "proposal.reject",
+        "proposal.cancel",
     )
-    assert _read_status(harness.repository) is ActionStatus.APPROVED
+    assert _read_status(harness.repository) is (ActionStatus.AWAITING_CONFIRMATION)
     assert harness.provider.mutation_count == 0
     submission_audit_count = len(harness.audit_store.read_all())
     assert submission_audit_count > 0
+
+    premature = _execute(harness, capability=EXECUTE_LOW)
+
+    assert premature.response is not None
+    assert premature.response.outcome is (ChannelResponseOutcome.APPLICATION_FAILED)
+    assert premature.response.issue is not None
+    assert premature.response.issue.code == "execution_rejected"
+    assert harness.provider.mutation_count == 0
+
+    _approve(harness)
+
+    assert harness.provider.mutation_count == 0
+    assert _read_status(harness.repository) is ActionStatus.APPROVED
+    approval_audit_count = len(harness.audit_store.read_all())
+    assert approval_audit_count > submission_audit_count
 
     executed = _execute(harness, capability=EXECUTE_LOW)
 
@@ -428,12 +446,12 @@ def test_low_risk_create_requires_explicit_execution(
     ]
     assert harness.provider.mutation_count == 1
     assert _read_status(harness.repository) is ActionStatus.SUCCEEDED
-    assert len(harness.audit_store.read_all()) > submission_audit_count
+    assert len(harness.audit_store.read_all()) > approval_audit_count
 
     duplicate = _execute(harness, capability=EXECUTE_LOW)
 
     assert duplicate.response is not None
-    assert duplicate.response.outcome is ChannelResponseOutcome.APPLICATION_FAILED
+    assert duplicate.response.outcome is (ChannelResponseOutcome.APPLICATION_FAILED)
     assert duplicate.response.issue is not None
     assert duplicate.response.issue.code == "execution_rejected"
     assert harness.provider.mutation_count == 1

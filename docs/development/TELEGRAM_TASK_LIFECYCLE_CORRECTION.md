@@ -58,6 +58,25 @@ Telegram shall not use the Local CLI as its internal task mutation API. The
 Local CLI and Telegram remain peer adapters over reusable application
 services.
 
+## Interactive confirmation policy
+
+The provider-neutral task proposal builders retain
+`ConfirmationPolicy.WHEN_REQUIRED` as their reusable default.
+
+Interactive Telegram and Web/PWA task requests shall override that default
+with `ConfirmationPolicy.ALWAYS`. Every interactive task mutation, including
+low-risk task creation, shall therefore:
+
+1. construct and persist a proposal;
+2. persist the submission audit events;
+3. remain in `awaiting_confirmation`;
+4. immediately return approval controls;
+5. perform no task-provider mutation.
+
+Approval remains separate from execution. A future explicitly trusted
+automation may use the provider-neutral builder default, but ordinary
+interactive requests must not be silently approved.
+
 ## Implementation slices
 
 ### Slice 1 — Proposal-submission application service

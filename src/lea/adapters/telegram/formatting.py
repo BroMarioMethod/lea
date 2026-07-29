@@ -192,10 +192,41 @@ def _render_mapping(
 
         if _is_sequence(item):
             lines.append(f"{prefix}{rendered_key}:")
-            lines.extend(_render_sequence(item, indent=indent + 2))
+
+            if key == "commands":
+                lines.extend(
+                    _render_command_sequence(
+                        item,
+                        indent=indent + 2,
+                    )
+                )
+            else:
+                lines.extend(_render_sequence(item, indent=indent + 2))
+
             continue
 
         lines.append(f"{prefix}{rendered_key}: {_render_scalar(item)}")
+
+    return lines
+
+
+def _render_command_sequence(
+    value: Sequence[object],
+    *,
+    indent: int,
+) -> list[str]:
+    """Render one trusted deterministic command list."""
+    prefix = " " * indent
+    lines: list[str] = []
+
+    for item in value:
+        if isinstance(item, str):
+            lines.append(f"{prefix}- {_normalise_text(item)}")
+        else:
+            lines.append(f"{prefix}- {_REDACTED}")
+
+    if not lines:
+        lines.append(f"{prefix}(none)")
 
     return lines
 
