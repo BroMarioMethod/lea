@@ -240,32 +240,11 @@ _DEFAULT_COMMAND_DEFINITIONS = (
         maximum_arguments=None,
     ),
     TelegramCommandDefinition(
-        telegram_command="/proposal_revise",
-        channel_command="proposals.revise",
-        required_capability=ChannelCapability.PROPOSALS_CONFIRM,
-        minimum_arguments=2,
-        maximum_arguments=None,
-    ),
-    TelegramCommandDefinition(
         telegram_command="/proposal_execute",
         channel_command="proposals.execute",
         required_capability=ChannelCapability.PROPOSALS_READ,
         minimum_arguments=1,
         maximum_arguments=1,
-    ),
-    TelegramCommandDefinition(
-        telegram_command="/knowledge_show",
-        channel_command="knowledge.show",
-        required_capability=ChannelCapability.KNOWLEDGE_READ_LOW,
-        minimum_arguments=1,
-        maximum_arguments=1,
-    ),
-    TelegramCommandDefinition(
-        telegram_command="/knowledge_find",
-        channel_command="knowledge.find",
-        required_capability=ChannelCapability.KNOWLEDGE_READ_LOW,
-        minimum_arguments=1,
-        maximum_arguments=None,
     ),
 )
 
@@ -284,11 +263,6 @@ _CALLBACK_DEFINITIONS = {
         "proposals.cancel",
         ChannelCapability.PROPOSALS_CONFIRM,
         ChannelRequestType.CONFIRMATION,
-    ),
-    "proposal.revise": (
-        "proposals.revise",
-        ChannelCapability.PROPOSALS_CONFIRM,
-        ChannelRequestType.REVISION_REQUEST,
     ),
 }
 

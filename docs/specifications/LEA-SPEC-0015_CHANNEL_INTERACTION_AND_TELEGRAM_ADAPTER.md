@@ -418,17 +418,18 @@ Requirements:
 - trailing newline permitted and stripped exactly once;
 - empty or malformed values rejected deterministically.
 
-## 10. MVP commands
+## 10. Active and planned commands
 
-The initial explicit command set should include:
+The active Telegram command set shall contain only commands backed by an
+implemented channel handler and application operation.
 
-### General
+### Active general commands
 
 - `/start`
 - `/help`
 - `/status`
 
-### Tasks
+### Active task commands
 
 - `/tasks`
 - `/task_add`
@@ -437,22 +438,30 @@ The initial explicit command set should include:
 - `/task_complete`
 - `/task_delete`
 
-### Proposals
+### Active proposal commands
 
 - `/proposals`
 - `/proposal_show`
 - `/proposal_approve`
 - `/proposal_reject`
 - `/proposal_cancel`
-- `/proposal_revise`
 - `/proposal_execute`
 
-### Knowledge
+### Deferred planned commands
 
-- `/knowledge_show`
-- `/knowledge_find`
+The following commands remain part of the planned interaction catalogue but
+shall not be registered by the active Telegram router until their application
+operations are implemented:
 
-Exact command syntax must be deterministic and documented.
+- `/proposal_revise`;
+- `/knowledge_show`;
+- `/knowledge_find`.
+
+`/proposal_revise` shall return only with the complete revision workflow
+specified below. The knowledge commands shall return with the provider-neutral
+knowledge integration.
+
+Exact active command syntax must be deterministic and documented.
 
 Commands should map to channel-neutral request names rather than directly to CLI functions.
 
