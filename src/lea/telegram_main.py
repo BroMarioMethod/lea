@@ -15,6 +15,7 @@ from types import FrameType
 from typing import TextIO, cast
 from uuid import uuid4
 
+from lea.actions import ActionHandlerRegistry
 from lea.adapters.telegram.bot_api import telegram_bot_api_transport
 from lea.adapters.telegram.worker import (
     TelegramWorkerConfig,
@@ -22,13 +23,17 @@ from lea.adapters.telegram.worker import (
     TelegramWorkerResult,
     run_telegram_worker,
 )
+from lea.audit import IntegrityJsonlAuditStore, generate_event_id
 from lea.channels.handlers import (
     ChannelHandlerDependencies,
     build_default_channel_application,
 )
+from lea.orchestration import ActionOrchestrator
+from lea.proposals import ProposalSubmissionService
 from lea.runtime.contracts import RuntimeConfig
 from lea.runtime.health import check_runtime_health
 from lea.runtime.loader import load_runtime_config
+from lea.runtime.proposal_repository import runtime_proposal_repository
 from lea.runtime.telegram import (
     TelegramRuntimeConfig,
     TelegramRuntimeResult,
@@ -205,11 +210,27 @@ def execute(
         register_signal(signal.SIGINT, stop.request)
         register_signal(signal.SIGTERM, stop.request)
 
+        audit_store = IntegrityJsonlAuditStore(
+            runtime.paths.audit_file,
+            create_parents=False,
+        )
+        proposal_submission = ProposalSubmissionService(
+            ActionOrchestrator(
+                ActionHandlerRegistry(),
+                audit_store,
+                _utc_now,
+                generate_event_id,
+            ),
+            runtime_proposal_repository(runtime),
+        )
         application = build_default_channel_application(
             ChannelHandlerDependencies(
                 config_path=runtime_path,
                 expected_profile=runtime.profile,
                 clock=_utc_now,
+                proposal_submitter=proposal_submission.submit,
+                proposal_id_source=lambda: str(uuid4()),
+                control_id_source=lambda: str(uuid4()),
             )
         )
         result = worker_runner(

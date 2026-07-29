@@ -3,22 +3,34 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypeGuard
+from typing import TypeGuard, cast
 from uuid import UUID
 
-from lea.actions import ActionStatus
+from lea.actions import ActionProposal, ActionStatus, proposal_to_dict
 from lea.channels.application import (
     ChannelCommandDefinition,
     DispatchingChannelApplication,
 )
-from lea.channels.contracts import ChannelRequest, ChannelResponse
+from lea.channels.authorisation import ChannelCapability
+from lea.channels.contracts import (
+    ChannelControl,
+    ChannelControlType,
+    ChannelRequest,
+    ChannelResponse,
+)
 from lea.channels.result_mapping import (
     ChannelResponseClock,
     channel_response_from_cli_result,
 )
-from lea.cli.contracts import CliIssue, CliResult, LocalCliExitCode
+from lea.cli.contracts import (
+    CliIssue,
+    CliResult,
+    JsonValue,
+    LocalCliExitCode,
+)
 from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
     execute_proposal_approve,
@@ -31,21 +43,24 @@ from lea.cli.proposal_commands import (
 from lea.cli.status import StatusDependencies, execute_status
 from lea.cli.task_commands import (
     TaskCommandDependencies,
-    execute_task_complete,
-    execute_task_create,
-    execute_task_delete,
     execute_task_list,
-    execute_task_modify,
 )
+from lea.proposals import ProposalSubmissionResult
 from lea.runtime import RuntimeProfile
 from lea.tasks import (
     TaskCreateRequest,
     TaskListQuery,
     TaskModifyRequest,
     TaskStatus,
+    build_task_complete_proposal,
+    build_task_create_proposal,
+    build_task_delete_proposal,
+    build_task_modify_proposal,
 )
 
 CommandExecutor = Callable[..., CliResult]
+IdentifierSource = Callable[[], str]
+ProposalSubmitter = Callable[[ActionProposal], ProposalSubmissionResult]
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,15 +70,14 @@ class ChannelHandlerDependencies:
     config_path: Path
     expected_profile: RuntimeProfile | None
     clock: ChannelResponseClock
+    proposal_submitter: ProposalSubmitter
+    proposal_id_source: IdentifierSource
+    control_id_source: IdentifierSource
     status_dependencies: StatusDependencies | None = None
     task_dependencies: TaskCommandDependencies | None = None
     proposal_dependencies: ProposalCommandDependencies | None = None
     status_executor: CommandExecutor = execute_status
     task_list_executor: CommandExecutor = execute_task_list
-    task_create_executor: CommandExecutor = execute_task_create
-    task_modify_executor: CommandExecutor = execute_task_modify
-    task_complete_executor: CommandExecutor = execute_task_complete
-    task_delete_executor: CommandExecutor = execute_task_delete
     proposal_list_executor: CommandExecutor = execute_proposal_list
     proposal_show_executor: CommandExecutor = execute_proposal_show
     proposal_approve_executor: CommandExecutor = execute_proposal_approve
@@ -243,7 +257,14 @@ def _tasks_create(
     dependencies: ChannelHandlerDependencies,
 ) -> ChannelResponse:
     parameters = _business_parameters(request)
-    allowed = {"arguments", "description", "project", "priority", "tags"}
+    allowed = {
+        "arguments",
+        "description",
+        "project",
+        "due",
+        "priority",
+        "tags",
+    }
     unknown = sorted(set(parameters) - allowed)
     if unknown:
         return _unknown_parameter(request, dependencies, unknown[0])
@@ -260,8 +281,18 @@ def _tasks_create(
         task_request = TaskCreateRequest(
             description=_required_text(description, field="description"),
             project=_optional_text(parameters.get("project")),
+            due=_optional_utc_datetime(parameters.get("due"), field="due"),
             priority=_optional_text(parameters.get("priority")),
             tags=_text_tuple(parameters.get("tags"), field="tags"),
+        )
+        proposal = build_task_create_proposal(
+            task_request,
+            proposal_id=_next_identifier(
+                dependencies.proposal_id_source,
+                field="proposal_id",
+            ),
+            source=_proposal_source(request),
+            created_at=request.received_at,
         )
     except (TypeError, ValueError) as error:
         return _validation_response(
@@ -270,13 +301,7 @@ def _tasks_create(
             _issue("task_creation_invalid", str(error)),
         )
 
-    result = dependencies.task_create_executor(
-        config_path=dependencies.config_path,
-        expected_profile=dependencies.expected_profile,
-        request=task_request,
-        dependencies=dependencies.task_dependencies,
-    )
-    return _mapped(request, result, dependencies, success_message="Task created.")
+    return _submit_task_proposal(request, dependencies, proposal)
 
 
 def _tasks_modify(
@@ -289,6 +314,8 @@ def _tasks_modify(
         "task_uuid",
         "description",
         "project",
+        "due",
+        "clear_due",
         "priority",
         "clear_priority",
         "add_tags",
@@ -316,6 +343,11 @@ def _tasks_modify(
             task_uuid=_canonical_uuid(task_uuid, field="task_uuid"),
             description=_optional_text(description),
             project=_optional_text(parameters.get("project")),
+            due=_optional_utc_datetime(parameters.get("due"), field="due"),
+            clear_due=_boolean(
+                parameters.get("clear_due", False),
+                field="clear_due",
+            ),
             priority=_optional_text(parameters.get("priority")),
             clear_priority=_boolean(
                 parameters.get("clear_priority", False),
@@ -327,6 +359,15 @@ def _tasks_modify(
                 field="remove_tags",
             ),
         )
+        proposal = build_task_modify_proposal(
+            modify_request,
+            proposal_id=_next_identifier(
+                dependencies.proposal_id_source,
+                field="proposal_id",
+            ),
+            source=_proposal_source(request),
+            created_at=request.received_at,
+        )
     except (TypeError, ValueError) as error:
         return _validation_response(
             request,
@@ -334,58 +375,169 @@ def _tasks_modify(
             _issue("task_modification_invalid", str(error)),
         )
 
-    result = dependencies.task_modify_executor(
-        config_path=dependencies.config_path,
-        expected_profile=dependencies.expected_profile,
-        request=modify_request,
-        dependencies=dependencies.task_dependencies,
-    )
-    return _mapped(request, result, dependencies, success_message="Task modified.")
+    return _submit_task_proposal(request, dependencies, proposal)
 
 
 def _tasks_complete(
     request: ChannelRequest,
     dependencies: ChannelHandlerDependencies,
 ) -> ChannelResponse:
-    return _task_identifier_command(
-        request,
-        dependencies,
-        executor=dependencies.task_complete_executor,
-        success_message="Task completed.",
-    )
+    identifier = _identifier_parameter(request, name="task_uuid")
+
+    if isinstance(identifier, CliIssue):
+        return _validation_response(request, dependencies, identifier)
+
+    try:
+        proposal = build_task_complete_proposal(
+            identifier,
+            proposal_id=_next_identifier(
+                dependencies.proposal_id_source,
+                field="proposal_id",
+            ),
+            source=_proposal_source(request),
+            created_at=request.received_at,
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("task_completion_invalid", str(error)),
+        )
+
+    return _submit_task_proposal(request, dependencies, proposal)
 
 
 def _tasks_delete(
     request: ChannelRequest,
     dependencies: ChannelHandlerDependencies,
 ) -> ChannelResponse:
-    return _task_identifier_command(
-        request,
-        dependencies,
-        executor=dependencies.task_delete_executor,
-        success_message="Task deleted.",
-    )
-
-
-def _task_identifier_command(
-    request: ChannelRequest,
-    dependencies: ChannelHandlerDependencies,
-    *,
-    executor: CommandExecutor,
-    success_message: str,
-) -> ChannelResponse:
     identifier = _identifier_parameter(request, name="task_uuid")
 
     if isinstance(identifier, CliIssue):
         return _validation_response(request, dependencies, identifier)
 
-    result = executor(
-        config_path=dependencies.config_path,
-        expected_profile=dependencies.expected_profile,
-        task_uuid=identifier,
-        dependencies=dependencies.task_dependencies,
+    try:
+        proposal = build_task_delete_proposal(
+            identifier,
+            proposal_id=_next_identifier(
+                dependencies.proposal_id_source,
+                field="proposal_id",
+            ),
+            source=_proposal_source(request),
+            created_at=request.received_at,
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("task_deletion_invalid", str(error)),
+        )
+
+    return _submit_task_proposal(request, dependencies, proposal)
+
+
+def _submit_task_proposal(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+    proposal: ActionProposal,
+) -> ChannelResponse:
+    result = dependencies.proposal_submitter(proposal)
+
+    if not result.success:
+        data: dict[str, object] = {
+            "audit_persisted": result.audit_persisted,
+            "proposal_persisted": result.proposal_persisted,
+            "persisted_audit_event_count": (result.persisted_audit_event_count),
+        }
+
+        if result.proposal is not None:
+            data["proposal"] = proposal_to_dict(result.proposal)
+
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.APPLICATION_ERROR,
+                issues=tuple(
+                    CliIssue(
+                        code=issue.code,
+                        message=issue.message,
+                        field=issue.field,
+                    )
+                    for issue in result.issues
+                ),
+                data=cast(JsonValue, data),
+            ),
+            dependencies,
+            success_message="",
+        )
+
+    submitted = result.proposal
+
+    if submitted is None:
+        raise RuntimeError("Successful proposal submission returned no proposal.")
+
+    awaiting_confirmation = submitted.status is ActionStatus.AWAITING_CONFIRMATION
+    message = (
+        "Proposal awaiting confirmation."
+        if awaiting_confirmation
+        else "Proposal approved and awaiting explicit execution."
     )
-    return _mapped(request, result, dependencies, success_message=success_message)
+    next_operation = "confirm" if awaiting_confirmation else "execute"
+    response = _mapped(
+        request,
+        CliResult.succeeded(
+            data=cast(
+                JsonValue,
+                {
+                    "proposal": proposal_to_dict(submitted),
+                    "audit_persisted": result.audit_persisted,
+                    "proposal_persisted": result.proposal_persisted,
+                    "persisted_audit_event_count": (result.persisted_audit_event_count),
+                    "next_operation": next_operation,
+                },
+            )
+        ),
+        dependencies,
+        success_message=message,
+    )
+
+    if not awaiting_confirmation:
+        return response
+
+    return replace(
+        response,
+        controls=_confirmation_controls(
+            submitted.proposal_id,
+            dependencies,
+        ),
+    )
+
+
+def _confirmation_controls(
+    proposal_id: str,
+    dependencies: ChannelHandlerDependencies,
+) -> tuple[ChannelControl, ...]:
+    definitions = (
+        ("Approve", "proposal.approve"),
+        ("Reject", "proposal.reject"),
+        ("Cancel", "proposal.cancel"),
+    )
+    capability = ChannelCapability.PROPOSALS_CONFIRM.value
+
+    return tuple(
+        ChannelControl(
+            control_id=_next_identifier(
+                dependencies.control_id_source,
+                field="control_id",
+            ),
+            label=label,
+            control_type=ChannelControlType.ACTION,
+            action=action,
+            parameters={"proposal_id": proposal_id},
+            required_capability=capability,
+        )
+        for label, action in definitions
+    )
 
 
 def _proposals_list(
@@ -633,6 +785,38 @@ def _boolean(value: object, *, field: str) -> bool:
     if not isinstance(value, bool):
         raise TypeError(f"{field} must be a boolean.")
     return value
+
+
+def _optional_utc_datetime(
+    value: object,
+    *,
+    field: str,
+) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise TypeError(f"{field} must be an ISO timestamp string.")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"{field} must be a valid ISO timestamp.") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field} must be timezone-aware.")
+    if parsed.utcoffset() != UTC.utcoffset(parsed):
+        raise ValueError(f"{field} must use UTC.")
+    return parsed.astimezone(UTC)
+
+
+def _next_identifier(
+    source: IdentifierSource,
+    *,
+    field: str,
+) -> str:
+    return _canonical_uuid(source(), field=field)
+
+
+def _proposal_source(request: ChannelRequest) -> str:
+    return f"{request.identity.channel.value}:{request.identity.role}"
 
 
 def _canonical_uuid(value: object, *, field: str) -> str:

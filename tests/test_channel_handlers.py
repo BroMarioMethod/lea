@@ -3,8 +3,16 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from uuid import uuid4
 
+import pytest
+
+from lea.actions import (
+    ActionHandlerRegistry,
+    ActionProposal,
+    RiskLevel,
+)
+from lea.audit import JsonlAuditStore, generate_event_id
 from lea.channels import (
     ChannelIdentity,
     ChannelName,
@@ -17,8 +25,13 @@ from lea.channels.handlers import (
     build_default_channel_application,
 )
 from lea.cli import CliResult
+from lea.orchestration import ActionOrchestrator
+from lea.proposals import (
+    MarkdownProposalRepository,
+    ProposalSubmissionResult,
+    ProposalSubmissionService,
+)
 from lea.runtime import RuntimeProfile
-from lea.tasks import TaskCreateRequest, TaskModifyRequest
 
 NOW = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
 REQUEST_ID = "11111111-1111-4111-8111-111111111111"
@@ -56,6 +69,7 @@ def _request(command: str, parameters: dict[str, object]) -> ChannelRequest:
 def _dependencies(
     tmp_path: Path,
     calls: list[tuple[str, dict[str, object]]],
+    submitted: list[ActionProposal] | None = None,
 ) -> ChannelHandlerDependencies:
     def executor(name: str) -> Callable[..., CliResult]:
         def run(**kwargs: object) -> CliResult:
@@ -64,16 +78,34 @@ def _dependencies(
 
         return run
 
+    proposal_root = tmp_path / "proposals"
+    proposal_root.mkdir()
+    service = ProposalSubmissionService(
+        ActionOrchestrator(
+            ActionHandlerRegistry(),
+            JsonlAuditStore(tmp_path / "audit.jsonl"),
+            lambda: NOW,
+            generate_event_id,
+        ),
+        MarkdownProposalRepository(proposal_root),
+    )
+
+    def submit(
+        proposal: ActionProposal,
+    ) -> ProposalSubmissionResult:
+        if submitted is not None:
+            submitted.append(proposal)
+        return service.submit(proposal)
+
     return ChannelHandlerDependencies(
         config_path=(tmp_path / "lea.toml").resolve(),
         expected_profile=RuntimeProfile.TEST,
         clock=lambda: NOW,
+        proposal_submitter=submit,
+        proposal_id_source=lambda: PROPOSAL_ID,
+        control_id_source=lambda: str(uuid4()),
         status_executor=executor("status"),
         task_list_executor=executor("tasks.list"),
-        task_create_executor=executor("tasks.create"),
-        task_modify_executor=executor("tasks.modify"),
-        task_complete_executor=executor("tasks.complete"),
-        task_delete_executor=executor("tasks.delete"),
         proposal_list_executor=executor("proposals.list"),
         proposal_show_executor=executor("proposals.show"),
         proposal_approve_executor=executor("proposals.approve"),
@@ -94,9 +126,14 @@ def test_runtime_status_calls_reusable_service(tmp_path: Path) -> None:
     assert calls[0][0] == "status"
 
 
-def test_task_create_joins_telegram_arguments(tmp_path: Path) -> None:
+def test_task_create_submits_without_direct_execution(
+    tmp_path: Path,
+) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
-    application = build_default_channel_application(_dependencies(tmp_path, calls))
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
 
     result = application.handle(
         _request(
@@ -106,22 +143,46 @@ def test_task_create_joins_telegram_arguments(tmp_path: Path) -> None:
     )
 
     assert result.response is not None
-    request = cast(TaskCreateRequest, calls[0][1]["request"])
-    assert request.description == "Write Slice 12"
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert result.response.message == (
+        "Proposal approved and awaiting explicit execution."
+    )
+    assert result.response.controls == ()
+    assert calls == []
+    assert len(submitted) == 1
+    assert submitted[0].action == "task.create"
+    assert submitted[0].risk_level is RiskLevel.LOW
+    assert submitted[0].source == "telegram:owner"
+    assert submitted[0].parameters["description"] == "Write Slice 12"
 
 
-def test_task_modify_uses_uuid_and_description_arguments(tmp_path: Path) -> None:
+def test_task_modify_submits_confirmation_required_proposal(
+    tmp_path: Path,
+) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
-    application = build_default_channel_application(_dependencies(tmp_path, calls))
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
 
     result = application.handle(
         _request("tasks.modify", {"arguments": [TASK_ID, "Updated", "task"]})
     )
 
     assert result.response is not None
-    request = cast(TaskModifyRequest, calls[0][1]["request"])
-    assert request.task_uuid == TASK_ID
-    assert request.description == "Updated task"
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert result.response.message == "Proposal awaiting confirmation."
+    assert tuple(control.action for control in result.response.controls) == (
+        "proposal.approve",
+        "proposal.reject",
+        "proposal.cancel",
+    )
+    assert calls == []
+    assert len(submitted) == 1
+    assert submitted[0].action == "task.modify"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].parameters["uuid"] == TASK_ID
+    assert submitted[0].parameters["description"] == "Updated task"
 
 
 def test_proposal_actor_is_derived_from_identity(tmp_path: Path) -> None:
@@ -181,3 +242,34 @@ def test_deferred_command_remains_not_found(tmp_path: Path) -> None:
     assert result.response is not None
     assert result.response.outcome is ChannelResponseOutcome.NOT_FOUND
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("command", "action", "risk"),
+    [
+        ("tasks.complete", "task.complete", RiskLevel.MEDIUM),
+        ("tasks.delete", "task.delete", RiskLevel.HIGH),
+    ],
+)
+def test_exact_task_mutations_submit_without_provider_execution(
+    tmp_path: Path,
+    command: str,
+    action: str,
+    risk: RiskLevel,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(_request(command, {"arguments": [TASK_ID]}))
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert result.response.message == "Proposal awaiting confirmation."
+    assert calls == []
+    assert len(submitted) == 1
+    assert submitted[0].action == action
+    assert submitted[0].risk_level is risk
+    assert submitted[0].parameters["uuid"] == TASK_ID
