@@ -68,6 +68,25 @@ IdentifierSource = Callable[[], str]
 ProposalSubmitter = Callable[[ActionProposal], ProposalSubmissionResult]
 
 
+_SUPPORTED_EXPLICIT_COMMANDS = (
+    "/start",
+    "/help",
+    "/status",
+    "/tasks",
+    "/task_add <description>",
+    "/task_show <task-uuid>",
+    "/task_modify <task-uuid> <description>",
+    "/task_complete <task-uuid>",
+    "/task_delete <task-uuid>",
+    "/proposals",
+    "/proposal_show <proposal-id>",
+    "/proposal_approve <proposal-id>",
+    "/proposal_reject <proposal-id> [reason]",
+    "/proposal_cancel <proposal-id> [reason]",
+    "/proposal_execute <proposal-id>",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ChannelHandlerDependencies:
     """Dependencies shared by established channel command handlers."""
@@ -103,12 +122,24 @@ def build_default_channel_application(
     return DispatchingChannelApplication(
         (
             ChannelCommandDefinition(
+                "system.start",
+                lambda request: _system_start(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "system.help",
+                lambda request: _system_help(request, dependencies),
+            ),
+            ChannelCommandDefinition(
                 "runtime.status",
                 lambda request: _status(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "tasks.list",
                 lambda request: _tasks_list(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "tasks.show",
+                lambda request: _tasks_show(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "tasks.create",
@@ -172,6 +203,52 @@ def build_default_channel_application(
             ),
         ),
         clock=dependencies.clock,
+    )
+
+
+def _system_start(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Return a deterministic welcome and the supported command set."""
+    return _system_commands_response(
+        request,
+        dependencies,
+        message="LEA is ready. Use /help to review the supported commands.",
+    )
+
+
+def _system_help(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Return only commands implemented by the channel application."""
+    return _system_commands_response(
+        request,
+        dependencies,
+        message="Supported commands.",
+    )
+
+
+def _system_commands_response(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+    *,
+    message: str,
+) -> ChannelResponse:
+    """Build one deterministic system-command response."""
+    invalid = _require_only_metadata(request)
+
+    if invalid is not None:
+        return _validation_response(request, dependencies, invalid)
+
+    return _mapped(
+        request,
+        CliResult.succeeded(
+            data={"commands": list(_SUPPORTED_EXPLICIT_COMMANDS)},
+        ),
+        dependencies,
+        success_message=message,
     )
 
 
@@ -250,6 +327,129 @@ def _tasks_list(
         dependencies=dependencies.task_dependencies,
     )
     return _mapped(request, result, dependencies, success_message="Tasks loaded.")
+
+
+def _tasks_show(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Read one exact task across all supported provider statuses."""
+    identifier = _identifier_parameter(request, name="task_uuid")
+
+    if isinstance(identifier, CliIssue):
+        return _validation_response(request, dependencies, identifier)
+
+    result = dependencies.task_list_executor(
+        config_path=dependencies.config_path,
+        expected_profile=dependencies.expected_profile,
+        query=TaskListQuery(
+            uuid=identifier,
+            status=None,
+        ),
+        dependencies=dependencies.task_dependencies,
+    )
+
+    if not result.success:
+        return _mapped(
+            request,
+            result,
+            dependencies,
+            success_message="",
+        )
+
+    data = result.data
+
+    if not isinstance(data, Mapping):
+        return _task_show_data_failure(request, dependencies)
+
+    tasks = data.get("tasks")
+
+    if not isinstance(tasks, list):
+        return _task_show_data_failure(request, dependencies)
+
+    if not tasks:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.NOT_FOUND,
+                issues=(
+                    CliIssue(
+                        code="task_not_found",
+                        message="No task matched the supplied UUID.",
+                        field="task_uuid",
+                    ),
+                ),
+                data={"task": None},
+            ),
+            dependencies,
+            success_message="",
+        )
+
+    if len(tasks) != 1:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.APPLICATION_ERROR,
+                issues=(
+                    CliIssue(
+                        code="task_lookup_ambiguous",
+                        message=(
+                            "The task provider returned more than one task for "
+                            "an exact UUID lookup."
+                        ),
+                        field="task_uuid",
+                    ),
+                ),
+                data={"task": None},
+            ),
+            dependencies,
+            success_message="",
+        )
+
+    task = tasks[0]
+
+    if not isinstance(task, Mapping):
+        return _task_show_data_failure(request, dependencies)
+
+    return _mapped(
+        request,
+        CliResult.succeeded(
+            data=cast(
+                JsonValue,
+                {
+                    "task": dict(task),
+                },
+            ),
+        ),
+        dependencies,
+        success_message="Task loaded.",
+    )
+
+
+def _task_show_data_failure(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Return one safe failure for an invalid task-list result."""
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="task_lookup_data_invalid",
+                    message=(
+                        "The task provider returned invalid data for an exact "
+                        "task lookup."
+                    ),
+                    field="tasks",
+                ),
+            ),
+            data={"task": None},
+        ),
+        dependencies,
+        success_message="",
+    )
 
 
 def _tasks_create(

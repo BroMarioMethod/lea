@@ -1,6 +1,6 @@
 """Tests for established channel command handlers."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +38,7 @@ from lea.proposals import (
     ProposalSubmissionService,
 )
 from lea.runtime import RuntimeProfile
+from lea.tasks import TaskListQuery
 
 NOW = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
 REQUEST_ID = "11111111-1111-4111-8111-111111111111"
@@ -423,3 +424,151 @@ def test_critical_proposal_execution_fails_before_executor(
     assert result.response.issue is not None
     assert result.response.issue.code == ("proposal_execution_risk_unsupported")
     assert [name for name, _ in calls] == ["proposals.show"]
+
+
+@pytest.mark.parametrize(
+    ("command", "message"),
+    [
+        (
+            "system.start",
+            "LEA is ready. Use /help to review the supported commands.",
+        ),
+        (
+            "system.help",
+            "Supported commands.",
+        ),
+    ],
+)
+def test_system_commands_report_only_supported_commands(
+    tmp_path: Path,
+    command: str,
+    message: str,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    application = build_default_channel_application(_dependencies(tmp_path, calls))
+
+    result = application.handle(_request(command, {"arguments": []}))
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert result.response.message == message
+    assert result.response.data is not None
+    commands = result.response.data["commands"]
+    assert isinstance(commands, tuple)
+    assert commands == (
+        "/start",
+        "/help",
+        "/status",
+        "/tasks",
+        "/task_add <description>",
+        "/task_show <task-uuid>",
+        "/task_modify <task-uuid> <description>",
+        "/task_complete <task-uuid>",
+        "/task_delete <task-uuid>",
+        "/proposals",
+        "/proposal_show <proposal-id>",
+        "/proposal_approve <proposal-id>",
+        "/proposal_reject <proposal-id> [reason]",
+        "/proposal_cancel <proposal-id> [reason]",
+        "/proposal_execute <proposal-id>",
+    )
+    assert "/proposal_revise" not in commands
+    assert "/knowledge_show" not in commands
+    assert calls == []
+
+
+def test_task_show_reads_exact_uuid_without_status_filter(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    queries: list[TaskListQuery] = []
+
+    def task_list(**kwargs: object) -> CliResult:
+        query = cast(TaskListQuery, kwargs["query"])
+        queries.append(query)
+        return CliResult.succeeded(
+            data={
+                "tasks": [
+                    {
+                        "uuid": TASK_ID,
+                        "description": "Completed Telegram task",
+                        "status": "completed",
+                        "entry": NOW.isoformat(),
+                        "modified": NOW.isoformat(),
+                        "due": None,
+                        "project": "lea",
+                        "tags": [],
+                        "priority": None,
+                    }
+                ]
+            }
+        )
+
+    dependencies = replace(
+        _dependencies(tmp_path, calls),
+        task_list_executor=task_list,
+    )
+    result = build_default_channel_application(dependencies).handle(
+        _request("tasks.show", {"arguments": [TASK_ID]})
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert result.response.message == "Task loaded."
+    assert queries == [
+        TaskListQuery(
+            uuid=TASK_ID,
+            status=None,
+        )
+    ]
+    assert result.response.data is not None
+    task = result.response.data["task"]
+    assert isinstance(task, Mapping)
+    assert task["uuid"] == TASK_ID
+    assert task["status"] == "completed"
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("tasks", "outcome", "issue_code"),
+    [
+        (
+            [],
+            ChannelResponseOutcome.NOT_FOUND,
+            "task_not_found",
+        ),
+        (
+            [
+                {"uuid": TASK_ID},
+                {"uuid": TASK_ID},
+            ],
+            ChannelResponseOutcome.APPLICATION_FAILED,
+            "task_lookup_ambiguous",
+        ),
+    ],
+)
+def test_task_show_rejects_missing_or_ambiguous_results(
+    tmp_path: Path,
+    tasks: list[JsonValue],
+    outcome: ChannelResponseOutcome,
+    issue_code: str,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def task_list(**kwargs: object) -> CliResult:
+        del kwargs
+        return CliResult.succeeded(data={"tasks": tasks})
+
+    dependencies = replace(
+        _dependencies(tmp_path, calls),
+        task_list_executor=task_list,
+    )
+    result = build_default_channel_application(dependencies).handle(
+        _request("tasks.show", {"arguments": [TASK_ID]})
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is outcome
+    assert result.response.issue is not None
+    assert result.response.issue.code == issue_code
+    assert calls == []
