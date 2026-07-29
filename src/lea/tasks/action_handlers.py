@@ -36,11 +36,12 @@ def create_task_action_handler(provider: TaskProvider) -> ActionHandler:
     def handle(proposal: ActionProposal) -> Mapping[str, object]:
         parameters = _parameters(
             proposal,
-            allowed={"description", "project", "priority", "tags"},
+            allowed={"description", "due", "project", "priority", "tags"},
         )
         request = TaskCreateRequest(
             description=_required_string(parameters, "description"),
             project=_optional_string(parameters, "project"),
+            due=_optional_datetime(parameters, "due"),
             priority=_optional_priority(parameters, "priority"),
             tags=_optional_string_tuple(parameters, "tags"),
         )
@@ -59,7 +60,10 @@ def modify_task_action_handler(provider: TaskProvider) -> ActionHandler:
                 "uuid",
                 "description",
                 "project",
+                "due",
+                "clear_due",
                 "priority",
+                "clear_priority",
                 "add_tags",
                 "remove_tags",
             },
@@ -68,7 +72,10 @@ def modify_task_action_handler(provider: TaskProvider) -> ActionHandler:
             task_uuid=_required_string(parameters, "uuid"),
             description=_optional_string(parameters, "description"),
             project=_optional_string(parameters, "project"),
+            due=_optional_datetime(parameters, "due"),
+            clear_due=_optional_boolean(parameters, "clear_due"),
             priority=_optional_priority(parameters, "priority"),
+            clear_priority=_optional_boolean(parameters, "clear_priority"),
             add_tags=_optional_string_tuple(parameters, "add_tags"),
             remove_tags=_optional_string_tuple(parameters, "remove_tags"),
         )
@@ -156,6 +163,58 @@ def _optional_string(
         raise TaskActionHandlerError(
             code="task_action_parameter_invalid",
             message=f"{field} must be a non-empty string when provided.",
+        )
+
+    return value
+
+
+def _optional_datetime(
+    parameters: Mapping[str, object],
+    field: str,
+) -> datetime | None:
+    """Return one optional timezone-aware ISO timestamp."""
+    if field not in parameters:
+        return None
+
+    value = parameters[field]
+
+    if not isinstance(value, str) or not value.strip():
+        raise TaskActionHandlerError(
+            code="task_action_parameter_invalid",
+            message=f"{field} must be an ISO timestamp string.",
+        )
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise TaskActionHandlerError(
+            code="task_action_parameter_invalid",
+            message=f"{field} must be a valid ISO timestamp.",
+        ) from error
+
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise TaskActionHandlerError(
+            code="task_action_parameter_invalid",
+            message=f"{field} must be timezone-aware.",
+        )
+
+    return parsed
+
+
+def _optional_boolean(
+    parameters: Mapping[str, object],
+    field: str,
+) -> bool:
+    """Return one optional boolean defaulting to false."""
+    if field not in parameters:
+        return False
+
+    value = parameters[field]
+
+    if not isinstance(value, bool):
+        raise TaskActionHandlerError(
+            code="task_action_parameter_invalid",
+            message=f"{field} must be a boolean.",
         )
 
     return value

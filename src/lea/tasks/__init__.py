@@ -20,6 +20,12 @@ from lea.tasks.contracts import (
     TaskRecord,
     TaskStatus,
 )
+from lea.tasks.proposal_builders import (
+    build_task_complete_proposal,
+    build_task_create_proposal,
+    build_task_delete_proposal,
+    build_task_modify_proposal,
+)
 from lea.tasks.provider import TaskProvider
 from lea.tasks.tags import normalise_task_tag
 
@@ -36,6 +42,10 @@ __all__ = [
     "TaskProviderIssue",
     "TaskRecord",
     "TaskStatus",
+    "build_task_complete_proposal",
+    "build_task_create_proposal",
+    "build_task_delete_proposal",
+    "build_task_modify_proposal",
     "complete_task_action_handler",
     "create_task_action_handler",
     "delete_task_action_handler",
