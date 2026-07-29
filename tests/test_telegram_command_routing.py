@@ -359,3 +359,30 @@ def test_duplicate_command_definitions_fail_closed() -> None:
 
     assert result.success is False
     assert result.issues[0].code == "telegram_command_ambiguous"
+
+
+def test_proposal_execute_route_requires_read_not_low_risk_execution() -> None:
+    command = f"/proposal_execute {PROPOSAL_ID}"
+
+    without_low_risk = _route(
+        _message(command),
+        users=(
+            _owner(
+                remove_capabilities=(ChannelCapability.PROPOSALS_EXECUTE_LOW_RISK,),
+            ),
+        ),
+    )
+    without_read = _route(
+        _message(command),
+        users=(
+            _owner(
+                remove_capabilities=(ChannelCapability.PROPOSALS_READ,),
+            ),
+        ),
+    )
+
+    assert without_low_risk.success is True
+    assert without_low_risk.request is not None
+    assert without_low_risk.request.command == "proposals.execute"
+    assert without_read.success is False
+    assert without_read.issues[0].code == "telegram_capability_required"

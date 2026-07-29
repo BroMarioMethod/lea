@@ -1,8 +1,10 @@
 """Tests for established channel command handlers."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -10,10 +12,13 @@ import pytest
 from lea.actions import (
     ActionHandlerRegistry,
     ActionProposal,
+    ActionStatus,
     RiskLevel,
+    proposal_to_dict,
 )
 from lea.audit import JsonlAuditStore, generate_event_id
 from lea.channels import (
+    ChannelCapability,
     ChannelIdentity,
     ChannelName,
     ChannelRequest,
@@ -25,6 +30,7 @@ from lea.channels.handlers import (
     build_default_channel_application,
 )
 from lea.cli import CliResult
+from lea.cli.contracts import JsonValue
 from lea.orchestration import ActionOrchestrator
 from lea.proposals import (
     MarkdownProposalRepository,
@@ -39,7 +45,23 @@ TASK_ID = "22222222-2222-4222-8222-222222222222"
 PROPOSAL_ID = "33333333-3333-4333-8333-333333333333"
 
 
-def _request(command: str, parameters: dict[str, object]) -> ChannelRequest:
+DEFAULT_CAPABILITIES = (
+    "Runtime.Status.Read",
+    "Tasks.Read",
+    "Tasks.Write",
+    "Tasks.Delete",
+    "Proposals.Read",
+    "Proposals.Confirm",
+    "Proposals.Execute.LowRisk",
+)
+
+
+def _request(
+    command: str,
+    parameters: dict[str, object],
+    *,
+    capabilities: tuple[str, ...] = DEFAULT_CAPABILITIES,
+) -> ChannelRequest:
     return ChannelRequest(
         request_id=REQUEST_ID,
         source_update_id="telegram:42",
@@ -49,15 +71,7 @@ def _request(command: str, parameters: dict[str, object]) -> ChannelRequest:
             conversation_id="123456789",
             role="owner",
             display_name="Owner",
-            capabilities=(
-                "Runtime.Status.Read",
-                "Tasks.Read",
-                "Tasks.Write",
-                "Tasks.Delete",
-                "Proposals.Read",
-                "Proposals.Confirm",
-                "Proposals.Execute.LowRisk",
-            ),
+            capabilities=capabilities,
         ),
         request_type=ChannelRequestType.COMMAND,
         command=command,
@@ -273,3 +287,139 @@ def test_exact_task_mutations_submit_without_provider_execution(
     assert submitted[0].action == action
     assert submitted[0].risk_level is risk
     assert submitted[0].parameters["uuid"] == TASK_ID
+
+
+def _execution_dependencies(
+    tmp_path: Path,
+    calls: list[tuple[str, dict[str, object]]],
+    *,
+    risk_level: RiskLevel,
+) -> ChannelHandlerDependencies:
+    proposal = ActionProposal(
+        proposal_id=PROPOSAL_ID,
+        action="task.create",
+        parameters={"description": "Execute through channel"},
+        status=ActionStatus.APPROVED,
+        risk_level=risk_level,
+        source="telegram:owner",
+        created_at=NOW,
+    )
+
+    def show(**kwargs: object) -> CliResult:
+        calls.append(("proposals.show", dict(kwargs)))
+        return CliResult.succeeded(
+            data=cast(
+                JsonValue,
+                {"proposal": proposal_to_dict(proposal)},
+            )
+        )
+
+    def execute(**kwargs: object) -> CliResult:
+        calls.append(("proposals.execute", dict(kwargs)))
+        return CliResult.succeeded(data={"executed": True})
+
+    return replace(
+        _dependencies(tmp_path, calls),
+        proposal_show_executor=show,
+        proposal_execute_executor=execute,
+    )
+
+
+@pytest.mark.parametrize(
+    ("risk_level", "capability"),
+    [
+        (
+            RiskLevel.LOW,
+            "Proposals.Execute.LowRisk",
+        ),
+        (
+            RiskLevel.MEDIUM,
+            "Proposals.Execute.MediumRisk",
+        ),
+        (
+            RiskLevel.HIGH,
+            "Proposals.Execute.HighRisk",
+        ),
+    ],
+)
+def test_proposal_execution_requires_exact_risk_capability(
+    tmp_path: Path,
+    risk_level: RiskLevel,
+    capability: str,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    application = build_default_channel_application(
+        _execution_dependencies(
+            tmp_path,
+            calls,
+            risk_level=risk_level,
+        )
+    )
+
+    first = application.handle(
+        _request(
+            "proposals.execute",
+            {"arguments": [PROPOSAL_ID]},
+            capabilities=(
+                "Proposals.Read",
+                "Proposals.Execute.LowRisk",
+            ),
+        )
+    )
+
+    if risk_level is RiskLevel.LOW:
+        assert first.response is not None
+        assert first.response.outcome is ChannelResponseOutcome.SUCCEEDED
+        assert [name for name, _ in calls] == [
+            "proposals.show",
+            "proposals.execute",
+        ]
+    else:
+        assert first.response is not None
+        assert first.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+        assert first.response.issue is not None
+        assert first.response.issue.code == ("proposal_execution_capability_required")
+        assert [name for name, _ in calls] == ["proposals.show"]
+
+    calls.clear()
+    authorised = application.handle(
+        _request(
+            "proposals.execute",
+            {"arguments": [PROPOSAL_ID]},
+            capabilities=("Proposals.Read", capability),
+        )
+    )
+
+    assert authorised.response is not None
+    assert authorised.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert [name for name, _ in calls] == [
+        "proposals.show",
+        "proposals.execute",
+    ]
+
+
+def test_critical_proposal_execution_fails_before_executor(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    application = build_default_channel_application(
+        _execution_dependencies(
+            tmp_path,
+            calls,
+            risk_level=RiskLevel.CRITICAL,
+        )
+    )
+
+    result = application.handle(
+        _request(
+            "proposals.execute",
+            {"arguments": [PROPOSAL_ID]},
+            capabilities=tuple(capability.value for capability in ChannelCapability),
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert result.response.issue is not None
+    assert result.response.issue.code == ("proposal_execution_risk_unsupported")
+    assert [name for name, _ in calls] == ["proposals.show"]

@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import TypeGuard, cast
 from uuid import UUID
 
-from lea.actions import ActionProposal, ActionStatus, proposal_to_dict
+from lea.actions import (
+    ActionProposal,
+    ActionStatus,
+    RiskLevel,
+    proposal_to_dict,
+)
 from lea.channels.application import (
     ChannelCommandDefinition,
     DispatchingChannelApplication,
@@ -163,12 +168,7 @@ def build_default_channel_application(
             ),
             ChannelCommandDefinition(
                 "proposals.execute",
-                lambda request: _proposal_identifier_command(
-                    request,
-                    dependencies,
-                    executor=dependencies.proposal_execute_executor,
-                    success_message="Proposal executed.",
-                ),
+                lambda request: _proposal_execute(request, dependencies),
             ),
         ),
         clock=dependencies.clock,
@@ -584,6 +584,154 @@ def _proposals_list(
         dependencies=dependencies.proposal_dependencies,
     )
     return _mapped(request, result, dependencies, success_message="Proposals loaded.")
+
+
+def _proposal_execute(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Authorise execution from the stored proposal risk before execution."""
+    identifier = _identifier_parameter(request, name="proposal_id")
+
+    if isinstance(identifier, CliIssue):
+        return _validation_response(request, dependencies, identifier)
+
+    shown = dependencies.proposal_show_executor(
+        config_path=dependencies.config_path,
+        expected_profile=dependencies.expected_profile,
+        proposal_id=identifier,
+        dependencies=dependencies.proposal_dependencies,
+    )
+
+    if not shown.success:
+        return _mapped(
+            request,
+            shown,
+            dependencies,
+            success_message="",
+        )
+
+    data = shown.data
+
+    if not isinstance(data, Mapping):
+        return _proposal_execution_data_failure(request, dependencies)
+
+    raw_proposal = data.get("proposal")
+
+    if not isinstance(raw_proposal, Mapping):
+        return _proposal_execution_data_failure(request, dependencies)
+
+    try:
+        proposal = ActionProposal.from_dict(cast(Mapping[str, object], raw_proposal))
+    except Exception:
+        return _proposal_execution_data_failure(request, dependencies)
+
+    capability = _proposal_execution_capability(proposal.risk_level)
+
+    if capability is None:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.PERMISSION_DENIED,
+                issues=(
+                    CliIssue(
+                        code="proposal_execution_risk_unsupported",
+                        message=(
+                            "Critical-risk proposals cannot be executed "
+                            "through this channel."
+                        ),
+                        field="risk_level",
+                    ),
+                ),
+                data=cast(
+                    JsonValue,
+                    {
+                        "proposal_id": proposal.proposal_id,
+                        "risk_level": proposal.risk_level.value,
+                    },
+                ),
+            ),
+            dependencies,
+            success_message="",
+        )
+
+    if capability.value not in request.identity.capabilities:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.PERMISSION_DENIED,
+                issues=(
+                    CliIssue(
+                        code="proposal_execution_capability_required",
+                        message=(
+                            "The authenticated channel identity lacks the "
+                            "capability required to execute this proposal."
+                        ),
+                        field="capabilities",
+                    ),
+                ),
+                data=cast(
+                    JsonValue,
+                    {
+                        "proposal_id": proposal.proposal_id,
+                        "risk_level": proposal.risk_level.value,
+                        "required_capability": capability.value,
+                    },
+                ),
+            ),
+            dependencies,
+            success_message="",
+        )
+
+    result = dependencies.proposal_execute_executor(
+        config_path=dependencies.config_path,
+        expected_profile=dependencies.expected_profile,
+        proposal_id=identifier,
+        dependencies=dependencies.proposal_dependencies,
+    )
+    return _mapped(
+        request,
+        result,
+        dependencies,
+        success_message="Proposal executed.",
+    )
+
+
+def _proposal_execution_capability(
+    risk_level: RiskLevel,
+) -> ChannelCapability | None:
+    """Return the exact channel execution capability for one risk."""
+    return {
+        RiskLevel.LOW: ChannelCapability.PROPOSALS_EXECUTE_LOW_RISK,
+        RiskLevel.MEDIUM: ChannelCapability.PROPOSALS_EXECUTE_MEDIUM_RISK,
+        RiskLevel.HIGH: ChannelCapability.PROPOSALS_EXECUTE_HIGH_RISK,
+    }.get(risk_level)
+
+
+def _proposal_execution_data_failure(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Return one safe failure for invalid persistent proposal data."""
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.APPLICATION_ERROR,
+            issues=(
+                CliIssue(
+                    code="proposal_execution_data_invalid",
+                    message=(
+                        "The persistent proposal could not be inspected "
+                        "for execution authorisation."
+                    ),
+                    field="proposal",
+                ),
+            ),
+            data={"proposal": None},
+        ),
+        dependencies,
+        success_message="",
+    )
 
 
 def _proposal_identifier_command(

@@ -249,7 +249,7 @@ _DEFAULT_COMMAND_DEFINITIONS = (
     TelegramCommandDefinition(
         telegram_command="/proposal_execute",
         channel_command="proposals.execute",
-        required_capability=ChannelCapability.PROPOSALS_EXECUTE_LOW_RISK,
+        required_capability=ChannelCapability.PROPOSALS_READ,
         minimum_arguments=1,
         maximum_arguments=1,
     ),
