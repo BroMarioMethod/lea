@@ -122,18 +122,15 @@ def create_calendar_toolchain_environment_plan(
         "--no-progress",
     )
 
-    pip_install_arguments = (
+    pip_sync_arguments = (
         "pip",
-        "install",
+        "sync",
         "--python",
         str(environment_python),
-        "--requirements",
-        str(staged.requirements_lock),
         "--require-hashes",
         "--only-binary",
         ":all:",
         "--strict",
-        "--exact",
         "--no-sources",
     )
 
@@ -146,9 +143,10 @@ def create_calendar_toolchain_environment_plan(
         )
         install_packages_command = (
             *common_install_arguments,
-            *pip_install_arguments,
+            *pip_sync_arguments,
             "--default-index",
             package_index_url,
+            str(staged.requirements_lock),
         )
     else:
         wheelhouse_directory = staged.wheelhouse_directory
@@ -161,10 +159,11 @@ def create_calendar_toolchain_environment_plan(
         install_packages_command = (
             *common_install_arguments,
             "--offline",
-            *pip_install_arguments,
+            *pip_sync_arguments,
             "--no-index",
             "--find-links",
             str(wheelhouse_directory),
+            str(staged.requirements_lock),
         )
 
     return CalendarToolchainEnvironmentPlan(
