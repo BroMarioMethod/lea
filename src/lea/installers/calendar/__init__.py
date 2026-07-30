@@ -7,6 +7,10 @@ from lea.installers.calendar.contracts import (
     CalendarToolchainInstallFailureCode,
     CalendarToolchainInstallMode,
 )
+from lea.installers.calendar.environment_plan import (
+    CalendarToolchainEnvironmentPlan,
+    create_calendar_toolchain_environment_plan,
+)
 from lea.installers.calendar.preflight import (
     calculate_calendar_sha256,
     check_calendar_directory_parent_writable,
@@ -30,6 +34,7 @@ from lea.installers.calendar.validation import (
 )
 
 __all__ = [
+    "CalendarToolchainEnvironmentPlan",
     "CalendarToolchainInstallFailureCode",
     "CalendarToolchainInstallMode",
     "CalendarToolchainInstallerConfig",
@@ -39,6 +44,7 @@ __all__ = [
     "CalendarToolchainStagingResult",
     "calculate_calendar_sha256",
     "check_calendar_directory_parent_writable",
+    "create_calendar_toolchain_environment_plan",
     "create_calendar_toolchain_staging",
     "is_supported_khal_version",
     "is_supported_vdirsyncer_version",
