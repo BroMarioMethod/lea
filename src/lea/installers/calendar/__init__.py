@@ -1,5 +1,10 @@
 """Managed calendar toolchain installation."""
 
+from lea.installers.calendar.activation import (
+    CalendarToolchainActivatedLayout,
+    CalendarToolchainActivationResult,
+    activate_staged_calendar_toolchain,
+)
 from lea.installers.calendar.configuration import (
     CalendarToolchainConfigurationPlan,
     CalendarToolchainConfigurationResult,
@@ -65,6 +70,8 @@ from lea.installers.calendar.version_check import (
 )
 
 __all__ = [
+    "CalendarToolchainActivatedLayout",
+    "CalendarToolchainActivationResult",
     "CalendarToolchainConfigurationPlan",
     "CalendarToolchainConfigurationResult",
     "CalendarToolchainEnvironmentExecutionResult",
@@ -83,6 +90,7 @@ __all__ = [
     "CalendarToolchainStagingResult",
     "CalendarToolchainVersionCheckResult",
     "CalendarToolchainVersionStepResult",
+    "activate_staged_calendar_toolchain",
     "calculate_calendar_sha256",
     "check_calendar_directory_parent_writable",
     "create_calendar_toolchain_configuration_plan",
