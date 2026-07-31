@@ -22,6 +22,12 @@ from lea.installers.calendar.preflight import (
     run_calendar_toolchain_installer_preflight,
     verify_calendar_sha256,
 )
+from lea.installers.calendar.runtime_layout import (
+    CalendarToolchainRuntimeLayout,
+    CalendarToolchainRuntimeLayoutResult,
+    create_calendar_toolchain_runtime_layout,
+    provision_calendar_toolchain_runtime_layout,
+)
 from lea.installers.calendar.smoke_test import (
     CalendarToolchainSmokeStepResult,
     CalendarToolchainSmokeTestResult,
@@ -59,6 +65,8 @@ __all__ = [
     "CalendarToolchainInstallerConfig",
     "CalendarToolchainInstallerIssue",
     "CalendarToolchainInstallerValidationResult",
+    "CalendarToolchainRuntimeLayout",
+    "CalendarToolchainRuntimeLayoutResult",
     "CalendarToolchainSmokeStepResult",
     "CalendarToolchainSmokeTestResult",
     "CalendarToolchainStagingLayout",
@@ -68,6 +76,7 @@ __all__ = [
     "calculate_calendar_sha256",
     "check_calendar_directory_parent_writable",
     "create_calendar_toolchain_environment_plan",
+    "create_calendar_toolchain_runtime_layout",
     "create_calendar_toolchain_staging",
     "execute_calendar_toolchain_environment_plan",
     "is_supported_khal_version",
@@ -75,6 +84,7 @@ __all__ = [
     "is_valid_calendar_sha256",
     "is_valid_https_package_index_url",
     "normalise_calendar_platform",
+    "provision_calendar_toolchain_runtime_layout",
     "remove_calendar_toolchain_staging",
     "run_calendar_toolchain_installer_preflight",
     "run_calendar_toolchain_smoke_test",
