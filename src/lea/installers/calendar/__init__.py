@@ -35,6 +35,14 @@ from lea.installers.calendar.preflight import (
     run_calendar_toolchain_installer_preflight,
     verify_calendar_sha256,
 )
+from lea.installers.calendar.records import (
+    CalendarToolchainInstallationRecord,
+    calendar_toolchain_installation_record_matches,
+    create_calendar_toolchain_installation_record,
+    read_calendar_toolchain_installation_record,
+    render_calendar_toolchain_installation_record,
+    write_calendar_toolchain_installation_record,
+)
 from lea.installers.calendar.runtime_layout import (
     CalendarToolchainRuntimeLayout,
     CalendarToolchainRuntimeLayoutResult,
@@ -79,6 +87,7 @@ __all__ = [
     "CalendarToolchainEnvironmentStepResult",
     "CalendarToolchainInstallFailureCode",
     "CalendarToolchainInstallMode",
+    "CalendarToolchainInstallationRecord",
     "CalendarToolchainInstallerConfig",
     "CalendarToolchainInstallerIssue",
     "CalendarToolchainInstallerValidationResult",
@@ -92,9 +101,11 @@ __all__ = [
     "CalendarToolchainVersionStepResult",
     "activate_staged_calendar_toolchain",
     "calculate_calendar_sha256",
+    "calendar_toolchain_installation_record_matches",
     "check_calendar_directory_parent_writable",
     "create_calendar_toolchain_configuration_plan",
     "create_calendar_toolchain_environment_plan",
+    "create_calendar_toolchain_installation_record",
     "create_calendar_toolchain_runtime_layout",
     "create_calendar_toolchain_staging",
     "execute_calendar_toolchain_environment_plan",
@@ -105,8 +116,10 @@ __all__ = [
     "normalise_calendar_platform",
     "persist_calendar_toolchain_configuration",
     "provision_calendar_toolchain_runtime_layout",
+    "read_calendar_toolchain_installation_record",
     "remove_calendar_toolchain_staging",
     "render_calendar_khal_configuration",
+    "render_calendar_toolchain_installation_record",
     "render_calendar_vdirsyncer_configuration",
     "run_calendar_toolchain_installer_preflight",
     "run_calendar_toolchain_smoke_test",
@@ -116,4 +129,5 @@ __all__ = [
     "validate_calendar_toolchain_installer_config",
     "validate_staged_calendar_tool_versions",
     "verify_calendar_sha256",
+    "write_calendar_toolchain_installation_record",
 ]
