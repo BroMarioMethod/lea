@@ -77,6 +77,10 @@ from lea.installers.calendar.validation import (
     validate_calendar_executable_path,
     validate_calendar_toolchain_installer_config,
 )
+from lea.installers.calendar.verified_network import (
+    CalendarVerifiedNetworkInstallResult,
+    install_verified_network_calendar_toolchain,
+)
 from lea.installers.calendar.version_check import (
     CalendarToolchainVersionCheckResult,
     CalendarToolchainVersionStepResult,
@@ -107,6 +111,7 @@ __all__ = [
     "CalendarToolchainStagingResult",
     "CalendarToolchainVersionCheckResult",
     "CalendarToolchainVersionStepResult",
+    "CalendarVerifiedNetworkInstallResult",
     "activate_staged_calendar_toolchain",
     "calculate_calendar_sha256",
     "calendar_toolchain_installation_record_matches",
@@ -120,6 +125,7 @@ __all__ = [
     "inspect_activated_calendar_toolchain",
     "inspect_calendar_python_version",
     "inspect_staged_calendar_python_version",
+    "install_verified_network_calendar_toolchain",
     "is_supported_khal_version",
     "is_supported_vdirsyncer_version",
     "is_valid_calendar_sha256",
