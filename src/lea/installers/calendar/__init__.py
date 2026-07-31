@@ -1,5 +1,13 @@
 """Managed calendar toolchain installation."""
 
+from lea.installers.calendar.configuration import (
+    CalendarToolchainConfigurationPlan,
+    CalendarToolchainConfigurationResult,
+    create_calendar_toolchain_configuration_plan,
+    persist_calendar_toolchain_configuration,
+    render_calendar_khal_configuration,
+    render_calendar_vdirsyncer_configuration,
+)
 from lea.installers.calendar.contracts import (
     CalendarToolchainInstallerConfig,
     CalendarToolchainInstallerIssue,
@@ -57,6 +65,8 @@ from lea.installers.calendar.version_check import (
 )
 
 __all__ = [
+    "CalendarToolchainConfigurationPlan",
+    "CalendarToolchainConfigurationResult",
     "CalendarToolchainEnvironmentExecutionResult",
     "CalendarToolchainEnvironmentPlan",
     "CalendarToolchainEnvironmentStepResult",
@@ -75,6 +85,7 @@ __all__ = [
     "CalendarToolchainVersionStepResult",
     "calculate_calendar_sha256",
     "check_calendar_directory_parent_writable",
+    "create_calendar_toolchain_configuration_plan",
     "create_calendar_toolchain_environment_plan",
     "create_calendar_toolchain_runtime_layout",
     "create_calendar_toolchain_staging",
@@ -84,8 +95,11 @@ __all__ = [
     "is_valid_calendar_sha256",
     "is_valid_https_package_index_url",
     "normalise_calendar_platform",
+    "persist_calendar_toolchain_configuration",
     "provision_calendar_toolchain_runtime_layout",
     "remove_calendar_toolchain_staging",
+    "render_calendar_khal_configuration",
+    "render_calendar_vdirsyncer_configuration",
     "run_calendar_toolchain_installer_preflight",
     "run_calendar_toolchain_smoke_test",
     "run_staged_calendar_toolchain_smoke_test",
