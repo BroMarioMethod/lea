@@ -76,6 +76,10 @@ bundled-wheelhouse
 external-executables
 ```
 
+A mode-neutral dispatcher shall select exactly one corresponding coordinator,
+forward the shared deterministic options and preserve primary issues,
+installation evidence and non-fatal cleanup issues in one generic result.
+
 ### 3.1 Verified-network mode
 
 Verified-network mode is the normal online installation path.

@@ -26,6 +26,10 @@ from lea.installers.calendar.contracts import (
     CalendarToolchainInstallFailureCode,
     CalendarToolchainInstallMode,
 )
+from lea.installers.calendar.dispatch import (
+    CalendarToolchainInstallResult,
+    install_calendar_toolchain,
+)
 from lea.installers.calendar.environment_execution import (
     CalendarToolchainEnvironmentExecutionResult,
     CalendarToolchainEnvironmentStepResult,
@@ -116,6 +120,7 @@ __all__ = [
     "CalendarToolchainEnvironmentStepResult",
     "CalendarToolchainInstallFailureCode",
     "CalendarToolchainInstallMode",
+    "CalendarToolchainInstallResult",
     "CalendarToolchainInstallationRecord",
     "CalendarToolchainInstallerConfig",
     "CalendarToolchainInstallerIssue",
@@ -148,6 +153,7 @@ __all__ = [
     "inspect_calendar_python_version",
     "inspect_staged_calendar_python_version",
     "install_bundled_calendar_toolchain",
+    "install_calendar_toolchain",
     "install_external_calendar_toolchain",
     "install_verified_network_calendar_toolchain",
     "is_supported_khal_version",
