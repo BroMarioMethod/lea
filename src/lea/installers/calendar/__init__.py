@@ -22,6 +22,12 @@ from lea.installers.calendar.preflight import (
     run_calendar_toolchain_installer_preflight,
     verify_calendar_sha256,
 )
+from lea.installers.calendar.smoke_test import (
+    CalendarToolchainSmokeStepResult,
+    CalendarToolchainSmokeTestResult,
+    run_calendar_toolchain_smoke_test,
+    run_staged_calendar_toolchain_smoke_test,
+)
 from lea.installers.calendar.staging import (
     CalendarToolchainStagingLayout,
     CalendarToolchainStagingResult,
@@ -53,6 +59,8 @@ __all__ = [
     "CalendarToolchainInstallerConfig",
     "CalendarToolchainInstallerIssue",
     "CalendarToolchainInstallerValidationResult",
+    "CalendarToolchainSmokeStepResult",
+    "CalendarToolchainSmokeTestResult",
     "CalendarToolchainStagingLayout",
     "CalendarToolchainStagingResult",
     "CalendarToolchainVersionCheckResult",
@@ -69,6 +77,8 @@ __all__ = [
     "normalise_calendar_platform",
     "remove_calendar_toolchain_staging",
     "run_calendar_toolchain_installer_preflight",
+    "run_calendar_toolchain_smoke_test",
+    "run_staged_calendar_toolchain_smoke_test",
     "validate_calendar_executable_path",
     "validate_calendar_tool_versions",
     "validate_calendar_toolchain_installer_config",
