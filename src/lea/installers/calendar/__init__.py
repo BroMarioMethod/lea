@@ -4,6 +4,7 @@ from lea.installers.calendar.activation import (
     CalendarToolchainActivatedLayout,
     CalendarToolchainActivationResult,
     activate_staged_calendar_toolchain,
+    rollback_activated_calendar_toolchain,
 )
 from lea.installers.calendar.configuration import (
     CalendarToolchainConfigurationPlan,
@@ -34,6 +35,11 @@ from lea.installers.calendar.preflight import (
     check_calendar_directory_parent_writable,
     run_calendar_toolchain_installer_preflight,
     verify_calendar_sha256,
+)
+from lea.installers.calendar.python_version import (
+    CalendarToolchainPythonVersionResult,
+    inspect_calendar_python_version,
+    inspect_staged_calendar_python_version,
 )
 from lea.installers.calendar.records import (
     CalendarToolchainInstallationRecord,
@@ -91,6 +97,7 @@ __all__ = [
     "CalendarToolchainInstallerConfig",
     "CalendarToolchainInstallerIssue",
     "CalendarToolchainInstallerValidationResult",
+    "CalendarToolchainPythonVersionResult",
     "CalendarToolchainRuntimeLayout",
     "CalendarToolchainRuntimeLayoutResult",
     "CalendarToolchainSmokeStepResult",
@@ -109,6 +116,8 @@ __all__ = [
     "create_calendar_toolchain_runtime_layout",
     "create_calendar_toolchain_staging",
     "execute_calendar_toolchain_environment_plan",
+    "inspect_calendar_python_version",
+    "inspect_staged_calendar_python_version",
     "is_supported_khal_version",
     "is_supported_vdirsyncer_version",
     "is_valid_calendar_sha256",
@@ -121,6 +130,7 @@ __all__ = [
     "render_calendar_khal_configuration",
     "render_calendar_toolchain_installation_record",
     "render_calendar_vdirsyncer_configuration",
+    "rollback_activated_calendar_toolchain",
     "run_calendar_toolchain_installer_preflight",
     "run_calendar_toolchain_smoke_test",
     "run_staged_calendar_toolchain_smoke_test",

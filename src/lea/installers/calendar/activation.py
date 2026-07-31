@@ -719,6 +719,62 @@ def _normalise_activated_toolchain(
     apply_ownership(tools_root, "root", service_group)
 
 
+def rollback_activated_calendar_toolchain(
+    config: CalendarToolchainInstallerConfig,
+    activated: CalendarToolchainActivatedLayout,
+) -> tuple[CalendarToolchainInstallerIssue, ...]:
+    """Remove only the exact newly activated managed toolchain."""
+    if not isinstance(config, CalendarToolchainInstallerConfig):
+        raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if not isinstance(activated, CalendarToolchainActivatedLayout):
+        raise TypeError("activated must be a CalendarToolchainActivatedLayout value.")
+
+    if config.mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+        return (
+            CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=(
+                    "External-executables mode has no managed calendar "
+                    "toolchain activation to roll back."
+                ),
+                field="mode",
+            ),
+        )
+
+    final_root_issue, expected_root = _final_toolchain_root(config)
+
+    if final_root_issue is not None or expected_root is None:
+        return (
+            final_root_issue
+            or CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=("The configured calendar toolchain root is invalid."),
+                field="toolchain_version",
+            ),
+        )
+
+    if activated.toolchain_root != expected_root:
+        return (
+            CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=(
+                    "The activated calendar layout does not match the "
+                    "configured versioned toolchain root."
+                ),
+                field="tools_root",
+                path=activated.toolchain_root,
+            ),
+        )
+
+    issue = _rollback_activated_toolchain(activated.toolchain_root)
+
+    if issue is None:
+        return ()
+
+    return (issue,)
+
+
 def _rollback_activated_toolchain(
     final_root: Path,
 ) -> CalendarToolchainInstallerIssue | None:

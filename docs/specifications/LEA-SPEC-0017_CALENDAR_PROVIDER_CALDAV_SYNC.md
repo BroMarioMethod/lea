@@ -181,6 +181,7 @@ validate configuration
     → download exact locked distributions
     → verify hashes
     → install wheel-only dependency set
+    → inspect managed Python version
     → verify khal version
     → verify vdirsyncer version
     → run smoke tests
