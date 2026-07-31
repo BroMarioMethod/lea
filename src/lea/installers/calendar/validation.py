@@ -327,17 +327,69 @@ def _validate_external_inputs(
     issues: list[CalendarToolchainInstallerIssue],
 ) -> None:
     """Validate exact administrator-selected calendar executables."""
-    _extend_executable_issues(
+    _extend_external_executable_issues(
         config.external_khal_executable,
         field_name="external_khal_executable",
         tool_name="external khal",
         issues=issues,
     )
-    _extend_executable_issues(
+    _extend_external_executable_issues(
         config.external_vdirsyncer_executable,
         field_name="external_vdirsyncer_executable",
         tool_name="external vdirsyncer",
         issues=issues,
+    )
+
+
+def _extend_external_executable_issues(
+    path: Path | None,
+    *,
+    field_name: str,
+    tool_name: str,
+    issues: list[CalendarToolchainInstallerIssue],
+) -> None:
+    """Append strict non-symbolic external-executable issues."""
+    if path is None:
+        issues.append(
+            CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=f"The {tool_name} executable path is missing.",
+                field=field_name,
+            )
+        )
+        return
+
+    try:
+        if path.is_symlink():
+            issues.append(
+                CalendarToolchainInstallerIssue(
+                    code=(CalendarToolchainInstallFailureCode.INVALID_ARGUMENT),
+                    message=(
+                        f"The {tool_name} executable must be a regular "
+                        "non-symbolic file."
+                    ),
+                    field=field_name,
+                    path=path,
+                )
+            )
+            return
+    except OSError:
+        issues.append(
+            CalendarToolchainInstallerIssue(
+                code=(CalendarToolchainInstallFailureCode.PERMISSION_DENIED),
+                message=(f"The {tool_name} executable could not be inspected."),
+                field=field_name,
+                path=path,
+            )
+        )
+        return
+
+    issues.extend(
+        validate_calendar_executable_path(
+            path,
+            field_name=field_name,
+            tool_name=tool_name,
+        )
     )
 
 

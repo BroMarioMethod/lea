@@ -122,7 +122,7 @@ installation-record requirements as verified-network mode.
 External-executables mode is an explicit administrator-selected fallback.
 
 It must receive exact absolute paths to both khal and vdirsyncer and verify
-their compatibility before activation.
+their compatibility before registration and use.
 
 LEA shall not rely on whichever `khal` or `vdirsyncer` command occurs first in
 `PATH`.
@@ -234,11 +234,16 @@ their versioned toolchain root shall be created with relocatable entry points.
 
 ## 7. Installation records and activation
 
-For both managed installation modes, the initial installation record shall use
-the verified requirements-lock SHA-256 as `lock_or_manifest_sha256`. The
-bundled wheelhouse archive SHA-256 is acquisition and extraction evidence, not
-the installed dependency identity. Optional wheelhouse manifest files remain
-opaque until a strict manifest schema is introduced.
+For both managed installation modes, the installation record shall use the
+verified requirements-lock SHA-256 as `lock_or_manifest_sha256`, retain the
+managed Python version and leave the external executable digest fields null.
+The bundled wheelhouse archive SHA-256 is acquisition and extraction evidence,
+not the installed dependency identity. Optional wheelhouse manifest files
+remain opaque until a strict manifest schema is introduced.
+
+External-executables records shall leave the managed Python and lock fields
+null and shall instead identify both exact administrator-selected executable
+paths and their independently calculated SHA-256 digests.
 
 The installation record shall contain at least:
 

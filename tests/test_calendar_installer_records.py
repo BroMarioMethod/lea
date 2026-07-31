@@ -97,7 +97,7 @@ def test_record_creation_uses_verified_installer_evidence(
         installed_at=INSTALLED_AT,
     )
 
-    assert record.schema_version == 1
+    assert record.schema_version == 2
     assert record.component == "calendar-toolchain"
     assert record.toolchain_version == config.toolchain_version
     assert record.installation_mode is config.mode
@@ -108,6 +108,8 @@ def test_record_creation_uses_verified_installer_evidence(
     assert record.khal_executable == root / "khal"
     assert record.vdirsyncer_executable == root / "vdirsyncer"
     assert record.lock_or_manifest_sha256 == MATERIAL_SHA256
+    assert record.khal_executable_sha256 is None
+    assert record.vdirsyncer_executable_sha256 is None
     assert record.smoke_test == "passed"
     assert record.installed_at == INSTALLED_AT
 

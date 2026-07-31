@@ -20,7 +20,7 @@ from lea.installers.calendar.ownership import (
     ignore_calendar_ownership,
 )
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _COMPONENT = "calendar-toolchain"
 _SMOKE_TEST_PASSED = "passed"
 _RECORD_MODE = 0o640
@@ -36,12 +36,14 @@ class CalendarToolchainInstallationRecord:
     toolchain_version: str
     installation_mode: CalendarToolchainInstallMode
     platform: str
-    python_version: str
+    python_version: str | None
     khal_version: str
     vdirsyncer_version: str
     khal_executable: Path
     vdirsyncer_executable: Path
-    lock_or_manifest_sha256: str
+    lock_or_manifest_sha256: str | None
+    khal_executable_sha256: str | None
+    vdirsyncer_executable_sha256: str | None
     smoke_test: str
     installed_at: datetime
 
@@ -52,7 +54,7 @@ class CalendarToolchainInstallationRecord:
             or isinstance(self.schema_version, bool)
             or self.schema_version != _SCHEMA_VERSION
         ):
-            raise ValueError("schema_version must be 1.")
+            raise ValueError("schema_version must be 2.")
 
         if self.component != _COMPONENT:
             raise ValueError("component must be calendar-toolchain.")
@@ -68,12 +70,14 @@ class CalendarToolchainInstallationRecord:
         for field_name, value in (
             ("toolchain_version", self.toolchain_version),
             ("platform", self.platform),
-            ("python_version", self.python_version),
             ("khal_version", self.khal_version),
             ("vdirsyncer_version", self.vdirsyncer_version),
             ("smoke_test", self.smoke_test),
         ):
-            _validate_non_empty_string(value, field_name=field_name)
+            _validate_non_empty_string(
+                value,
+                field_name=field_name,
+            )
 
         for field_name, path in (
             ("khal_executable", self.khal_executable),
@@ -81,10 +85,10 @@ class CalendarToolchainInstallationRecord:
         ):
             _validate_absolute_path(path, field_name=field_name)
 
-        _validate_sha256(
-            self.lock_or_manifest_sha256,
-            field_name="lock_or_manifest_sha256",
-        )
+        if self.installation_mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+            _validate_external_record_material(self)
+        else:
+            _validate_managed_record_material(self)
 
         if self.smoke_test != _SMOKE_TEST_PASSED:
             raise ValueError("smoke_test must be passed.")
@@ -96,6 +100,74 @@ class CalendarToolchainInstallationRecord:
             raise ValueError("installed_at must be canonical UTC.")
 
 
+def _validate_managed_record_material(
+    record: CalendarToolchainInstallationRecord,
+) -> None:
+    """Require managed Python and lock evidence only."""
+    if record.python_version is None:
+        raise ValueError("Managed installation records require python_version.")
+
+    _validate_non_empty_string(
+        record.python_version,
+        field_name="python_version",
+    )
+
+    if record.lock_or_manifest_sha256 is None:
+        raise ValueError(
+            "Managed installation records require lock_or_manifest_sha256."
+        )
+
+    _validate_sha256(
+        record.lock_or_manifest_sha256,
+        field_name="lock_or_manifest_sha256",
+    )
+
+    if record.khal_executable_sha256 is not None:
+        raise ValueError(
+            "Managed installation records must not contain khal_executable_sha256."
+        )
+
+    if record.vdirsyncer_executable_sha256 is not None:
+        raise ValueError(
+            "Managed installation records must not contain "
+            "vdirsyncer_executable_sha256."
+        )
+
+
+def _validate_external_record_material(
+    record: CalendarToolchainInstallationRecord,
+) -> None:
+    """Require exact external executable digests without managed evidence."""
+    if record.python_version is not None:
+        raise ValueError(
+            "External installation records must not contain python_version."
+        )
+
+    if record.lock_or_manifest_sha256 is not None:
+        raise ValueError(
+            "External installation records must not contain lock_or_manifest_sha256."
+        )
+
+    if record.khal_executable_sha256 is None:
+        raise ValueError(
+            "External installation records require khal_executable_sha256."
+        )
+
+    if record.vdirsyncer_executable_sha256 is None:
+        raise ValueError(
+            "External installation records require vdirsyncer_executable_sha256."
+        )
+
+    _validate_sha256(
+        record.khal_executable_sha256,
+        field_name="khal_executable_sha256",
+    )
+    _validate_sha256(
+        record.vdirsyncer_executable_sha256,
+        field_name="vdirsyncer_executable_sha256",
+    )
+
+
 def create_calendar_toolchain_installation_record(
     config: CalendarToolchainInstallerConfig,
     *,
@@ -105,9 +177,14 @@ def create_calendar_toolchain_installation_record(
     lock_or_manifest_sha256: str,
     installed_at: datetime,
 ) -> CalendarToolchainInstallationRecord:
-    """Create one strict record from verified installer evidence."""
+    """Create one strict managed record from verified installer evidence."""
     if not isinstance(config, CalendarToolchainInstallerConfig):
         raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if config.mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+        raise ValueError(
+            "Managed record creation does not accept external-executables mode."
+        )
 
     return CalendarToolchainInstallationRecord(
         schema_version=_SCHEMA_VERSION,
@@ -121,6 +198,50 @@ def create_calendar_toolchain_installation_record(
         khal_executable=khal_executable,
         vdirsyncer_executable=vdirsyncer_executable,
         lock_or_manifest_sha256=lock_or_manifest_sha256,
+        khal_executable_sha256=None,
+        vdirsyncer_executable_sha256=None,
+        smoke_test=_SMOKE_TEST_PASSED,
+        installed_at=installed_at,
+    )
+
+
+def create_external_calendar_toolchain_installation_record(
+    config: CalendarToolchainInstallerConfig,
+    *,
+    khal_executable_sha256: str,
+    vdirsyncer_executable_sha256: str,
+    installed_at: datetime,
+) -> CalendarToolchainInstallationRecord:
+    """Create one strict record for exact external executables."""
+    if not isinstance(config, CalendarToolchainInstallerConfig):
+        raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if config.mode is not CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+        raise ValueError("External record creation requires external-executables mode.")
+
+    khal_executable = config.external_khal_executable
+    vdirsyncer_executable = config.external_vdirsyncer_executable
+
+    if khal_executable is None:
+        raise ValueError("external_khal_executable is required.")
+
+    if vdirsyncer_executable is None:
+        raise ValueError("external_vdirsyncer_executable is required.")
+
+    return CalendarToolchainInstallationRecord(
+        schema_version=_SCHEMA_VERSION,
+        component=_COMPONENT,
+        toolchain_version=config.toolchain_version,
+        installation_mode=config.mode,
+        platform=config.platform,
+        python_version=None,
+        khal_version=config.khal_version,
+        vdirsyncer_version=config.vdirsyncer_version,
+        khal_executable=khal_executable,
+        vdirsyncer_executable=vdirsyncer_executable,
+        lock_or_manifest_sha256=None,
+        khal_executable_sha256=khal_executable_sha256,
+        vdirsyncer_executable_sha256=(vdirsyncer_executable_sha256),
         smoke_test=_SMOKE_TEST_PASSED,
         installed_at=installed_at,
     )
@@ -144,7 +265,9 @@ def render_calendar_toolchain_installation_record(
         "vdirsyncer_version": record.vdirsyncer_version,
         "khal_executable": str(record.khal_executable),
         "vdirsyncer_executable": str(record.vdirsyncer_executable),
-        "lock_or_manifest_sha256": record.lock_or_manifest_sha256,
+        "lock_or_manifest_sha256": (record.lock_or_manifest_sha256),
+        "khal_executable_sha256": (record.khal_executable_sha256),
+        "vdirsyncer_executable_sha256": (record.vdirsyncer_executable_sha256),
         "smoke_test": record.smoke_test,
         "installed_at": _render_canonical_utc(record.installed_at),
     }
@@ -233,12 +356,17 @@ def calendar_toolchain_installation_record_matches(
     vdirsyncer_executable: Path,
     lock_or_manifest_sha256: str,
 ) -> bool:
-    """Return whether a record identifies the requested toolchain exactly."""
+    """Return whether a managed record identifies the toolchain exactly."""
     if not isinstance(record, CalendarToolchainInstallationRecord):
         raise TypeError("record must be a CalendarToolchainInstallationRecord value.")
 
     if not isinstance(config, CalendarToolchainInstallerConfig):
         raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if config.mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+        raise ValueError(
+            "Managed record matching does not accept external-executables mode."
+        )
 
     _validate_non_empty_string(
         python_version,
@@ -258,17 +386,86 @@ def calendar_toolchain_installation_record_matches(
     )
 
     return (
+        _record_common_identity_matches(
+            record,
+            config=config,
+            khal_executable=khal_executable,
+            vdirsyncer_executable=vdirsyncer_executable,
+        )
+        and record.python_version == python_version
+        and record.lock_or_manifest_sha256 == lock_or_manifest_sha256
+        and record.khal_executable_sha256 is None
+        and record.vdirsyncer_executable_sha256 is None
+    )
+
+
+def external_calendar_toolchain_installation_record_matches(
+    record: CalendarToolchainInstallationRecord,
+    *,
+    config: CalendarToolchainInstallerConfig,
+    khal_executable_sha256: str,
+    vdirsyncer_executable_sha256: str,
+) -> bool:
+    """Return whether a record identifies both external executables."""
+    if not isinstance(record, CalendarToolchainInstallationRecord):
+        raise TypeError("record must be a CalendarToolchainInstallationRecord value.")
+
+    if not isinstance(config, CalendarToolchainInstallerConfig):
+        raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if config.mode is not CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+        raise ValueError("External record matching requires external-executables mode.")
+
+    khal_executable = config.external_khal_executable
+    vdirsyncer_executable = config.external_vdirsyncer_executable
+
+    if khal_executable is None:
+        raise ValueError("external_khal_executable is required.")
+
+    if vdirsyncer_executable is None:
+        raise ValueError("external_vdirsyncer_executable is required.")
+
+    _validate_sha256(
+        khal_executable_sha256,
+        field_name="khal_executable_sha256",
+    )
+    _validate_sha256(
+        vdirsyncer_executable_sha256,
+        field_name="vdirsyncer_executable_sha256",
+    )
+
+    return (
+        _record_common_identity_matches(
+            record,
+            config=config,
+            khal_executable=khal_executable,
+            vdirsyncer_executable=vdirsyncer_executable,
+        )
+        and record.python_version is None
+        and record.lock_or_manifest_sha256 is None
+        and record.khal_executable_sha256 == khal_executable_sha256
+        and record.vdirsyncer_executable_sha256 == vdirsyncer_executable_sha256
+    )
+
+
+def _record_common_identity_matches(
+    record: CalendarToolchainInstallationRecord,
+    *,
+    config: CalendarToolchainInstallerConfig,
+    khal_executable: Path,
+    vdirsyncer_executable: Path,
+) -> bool:
+    """Compare fields shared by managed and external records."""
+    return (
         record.schema_version == _SCHEMA_VERSION
         and record.component == _COMPONENT
         and record.toolchain_version == config.toolchain_version
         and record.installation_mode is config.mode
         and record.platform == config.platform
-        and record.python_version == python_version
         and record.khal_version == config.khal_version
         and record.vdirsyncer_version == config.vdirsyncer_version
         and record.khal_executable == khal_executable
         and record.vdirsyncer_executable == vdirsyncer_executable
-        and record.lock_or_manifest_sha256 == lock_or_manifest_sha256
         and record.smoke_test == _SMOKE_TEST_PASSED
     )
 
@@ -418,6 +615,8 @@ def _parse_record(
         "khal_executable",
         "vdirsyncer_executable",
         "lock_or_manifest_sha256",
+        "khal_executable_sha256",
+        "vdirsyncer_executable_sha256",
         "smoke_test",
         "installed_at",
     }
@@ -427,7 +626,10 @@ def _parse_record(
 
     schema_version = payload["schema_version"]
 
-    if not isinstance(schema_version, int) or isinstance(schema_version, bool):
+    if not isinstance(schema_version, int) or isinstance(
+        schema_version,
+        bool,
+    ):
         raise TypeError("schema_version must be an integer.")
 
     installed_at_raw = _require_string(
@@ -452,8 +654,11 @@ def _parse_record(
             field_name="toolchain_version",
         ),
         installation_mode=CalendarToolchainInstallMode(mode_raw),
-        platform=_require_string(payload["platform"], field_name="platform"),
-        python_version=_require_string(
+        platform=_require_string(
+            payload["platform"],
+            field_name="platform",
+        ),
+        python_version=_require_optional_string(
             payload["python_version"],
             field_name="python_version",
         ),
@@ -477,15 +682,38 @@ def _parse_record(
                 field_name="vdirsyncer_executable",
             )
         ),
-        lock_or_manifest_sha256=_require_string(
+        lock_or_manifest_sha256=_require_optional_string(
             payload["lock_or_manifest_sha256"],
             field_name="lock_or_manifest_sha256",
+        ),
+        khal_executable_sha256=_require_optional_string(
+            payload["khal_executable_sha256"],
+            field_name="khal_executable_sha256",
+        ),
+        vdirsyncer_executable_sha256=_require_optional_string(
+            payload["vdirsyncer_executable_sha256"],
+            field_name="vdirsyncer_executable_sha256",
         ),
         smoke_test=_require_string(
             payload["smoke_test"],
             field_name="smoke_test",
         ),
         installed_at=installed_at,
+    )
+
+
+def _require_optional_string(
+    value: object,
+    *,
+    field_name: str,
+) -> str | None:
+    """Require JSON null or one non-empty string."""
+    if value is None:
+        return None
+
+    return _require_string(
+        value,
+        field_name=field_name,
     )
 
 
