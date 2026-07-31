@@ -87,8 +87,14 @@ from lea.installers.calendar.version_check import (
     validate_calendar_tool_versions,
     validate_staged_calendar_tool_versions,
 )
+from lea.installers.calendar.wheelhouse import (
+    CalendarExtractedWheelhouse,
+    CalendarWheelhouseExtractionResult,
+    extract_staged_calendar_wheelhouse,
+)
 
 __all__ = [
+    "CalendarExtractedWheelhouse",
     "CalendarToolchainActivatedLayout",
     "CalendarToolchainActivationResult",
     "CalendarToolchainConfigurationPlan",
@@ -112,6 +118,7 @@ __all__ = [
     "CalendarToolchainVersionCheckResult",
     "CalendarToolchainVersionStepResult",
     "CalendarVerifiedNetworkInstallResult",
+    "CalendarWheelhouseExtractionResult",
     "activate_staged_calendar_toolchain",
     "calculate_calendar_sha256",
     "calendar_toolchain_installation_record_matches",
@@ -122,6 +129,7 @@ __all__ = [
     "create_calendar_toolchain_runtime_layout",
     "create_calendar_toolchain_staging",
     "execute_calendar_toolchain_environment_plan",
+    "extract_staged_calendar_wheelhouse",
     "inspect_activated_calendar_toolchain",
     "inspect_calendar_python_version",
     "inspect_staged_calendar_python_version",

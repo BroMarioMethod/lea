@@ -193,6 +193,13 @@ validate configuration
 The bundled-wheelhouse workflow replaces the download phase with verification
 and safe extraction of the supplied wheelhouse archive.
 
+The initial bundled archive format shall be a TAR-compatible archive containing
+a flat set of regular `.whl` files, optionally beneath one common wrapper
+directory. It may additionally contain one `manifest.json` or
+`wheelhouse-manifest.json` regular file. Absolute paths, traversal, nested
+wheel directories, duplicate destinations, symbolic links, hard links and
+special filesystem objects shall be rejected.
+
 A command policy may resemble:
 
 ```text
