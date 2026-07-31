@@ -4,6 +4,7 @@ from lea.installers.calendar.activation import (
     CalendarToolchainActivatedLayout,
     CalendarToolchainActivationResult,
     activate_staged_calendar_toolchain,
+    inspect_activated_calendar_toolchain,
     rollback_activated_calendar_toolchain,
 )
 from lea.installers.calendar.configuration import (
@@ -116,6 +117,7 @@ __all__ = [
     "create_calendar_toolchain_runtime_layout",
     "create_calendar_toolchain_staging",
     "execute_calendar_toolchain_environment_plan",
+    "inspect_activated_calendar_toolchain",
     "inspect_calendar_python_version",
     "inspect_staged_calendar_python_version",
     "is_supported_khal_version",

@@ -719,6 +719,73 @@ def _normalise_activated_toolchain(
     apply_ownership(tools_root, "root", service_group)
 
 
+def inspect_activated_calendar_toolchain(
+    config: CalendarToolchainInstallerConfig,
+    activated: CalendarToolchainActivatedLayout,
+) -> tuple[CalendarToolchainInstallerIssue, ...]:
+    """Validate one exact activated managed calendar toolchain."""
+    if not isinstance(config, CalendarToolchainInstallerConfig):
+        raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if not isinstance(activated, CalendarToolchainActivatedLayout):
+        raise TypeError("activated must be a CalendarToolchainActivatedLayout value.")
+
+    if config.mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+        return (
+            CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=(
+                    "External-executables mode has no managed calendar "
+                    "toolchain activation to inspect."
+                ),
+                field="mode",
+            ),
+        )
+
+    final_root_issue, expected_root = _final_toolchain_root(config)
+
+    if final_root_issue is not None or expected_root is None:
+        return (
+            final_root_issue
+            or CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=("The configured calendar toolchain root is invalid."),
+                field="toolchain_version",
+            ),
+        )
+
+    if activated.toolchain_root != expected_root:
+        return (
+            CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=(
+                    "The activated calendar layout does not match the "
+                    "configured versioned toolchain root."
+                ),
+                field="tools_root",
+                path=activated.toolchain_root,
+            ),
+        )
+
+    tools_root_issue = _inspect_tools_root(config.tools_root)
+
+    if tools_root_issue is not None:
+        return (tools_root_issue,)
+
+    toolchain_issue = _inspect_managed_toolchain(
+        toolchain_root=activated.toolchain_root,
+        environment_root=activated.environment_root,
+        khal_executable=activated.khal_executable,
+        vdirsyncer_executable=activated.vdirsyncer_executable,
+        trusted_python=config.python_executable,
+    )
+
+    if toolchain_issue is not None:
+        return (toolchain_issue,)
+
+    return ()
+
+
 def rollback_activated_calendar_toolchain(
     config: CalendarToolchainInstallerConfig,
     activated: CalendarToolchainActivatedLayout,
