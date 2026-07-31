@@ -7,6 +7,10 @@ from lea.installers.calendar.activation import (
     inspect_activated_calendar_toolchain,
     rollback_activated_calendar_toolchain,
 )
+from lea.installers.calendar.bundled import (
+    CalendarBundledWheelhouseInstallResult,
+    install_bundled_calendar_toolchain,
+)
 from lea.installers.calendar.configuration import (
     CalendarToolchainConfigurationPlan,
     CalendarToolchainConfigurationResult,
@@ -94,6 +98,7 @@ from lea.installers.calendar.wheelhouse import (
 )
 
 __all__ = [
+    "CalendarBundledWheelhouseInstallResult",
     "CalendarExtractedWheelhouse",
     "CalendarToolchainActivatedLayout",
     "CalendarToolchainActivationResult",
@@ -133,6 +138,7 @@ __all__ = [
     "inspect_activated_calendar_toolchain",
     "inspect_calendar_python_version",
     "inspect_staged_calendar_python_version",
+    "install_bundled_calendar_toolchain",
     "install_verified_network_calendar_toolchain",
     "is_supported_khal_version",
     "is_supported_vdirsyncer_version",

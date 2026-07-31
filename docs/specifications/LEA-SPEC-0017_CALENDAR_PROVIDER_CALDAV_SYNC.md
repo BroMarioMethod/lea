@@ -234,6 +234,12 @@ their versioned toolchain root shall be created with relocatable entry points.
 
 ## 7. Installation records and activation
 
+For both managed installation modes, the initial installation record shall use
+the verified requirements-lock SHA-256 as `lock_or_manifest_sha256`. The
+bundled wheelhouse archive SHA-256 is acquisition and extraction evidence, not
+the installed dependency identity. Optional wheelhouse manifest files remain
+opaque until a strict manifest schema is introduced.
+
 The installation record shall contain at least:
 
 - schema version;
