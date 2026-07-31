@@ -226,12 +226,22 @@ def run_calendar_toolchain_installer_preflight(
 
     issues: list[CalendarToolchainInstallerIssue] = []
 
-    for field_name, path in (
-        ("tools_root", config.tools_root),
+    managed_paths: tuple[tuple[str, Path], ...] = (
         ("configuration_dir", config.configuration_dir),
         ("state_root", config.state_root),
         ("installation_record", config.installation_record),
+    )
+
+    if config.mode in (
+        CalendarToolchainInstallMode.VERIFIED_NETWORK,
+        CalendarToolchainInstallMode.BUNDLED_WHEELHOUSE,
     ):
+        managed_paths = (
+            ("tools_root", config.tools_root),
+            *managed_paths,
+        )
+
+    for field_name, path in managed_paths:
         issues.extend(
             check_calendar_directory_parent_writable(
                 path,
@@ -275,13 +285,13 @@ def run_calendar_toolchain_installer_preflight(
         )
 
     if config.mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
-        _extend_executable_issues(
+        _extend_external_executable_issues(
             config.external_khal_executable,
             field_name="external_khal_executable",
             tool_name="external khal",
             issues=issues,
         )
-        _extend_executable_issues(
+        _extend_external_executable_issues(
             config.external_vdirsyncer_executable,
             field_name="external_vdirsyncer_executable",
             tool_name="external vdirsyncer",
@@ -289,6 +299,57 @@ def run_calendar_toolchain_installer_preflight(
         )
 
     return tuple(issues)
+
+
+def _extend_external_executable_issues(
+    path: Path | None,
+    *,
+    field_name: str,
+    tool_name: str,
+    issues: list[CalendarToolchainInstallerIssue],
+) -> None:
+    """Append current non-symbolic external-executable issues."""
+    if path is None:
+        issues.append(
+            CalendarToolchainInstallerIssue(
+                code=CalendarToolchainInstallFailureCode.INVALID_ARGUMENT,
+                message=f"The {tool_name} executable path is missing.",
+                field=field_name,
+            )
+        )
+        return
+
+    try:
+        if path.is_symlink():
+            issues.append(
+                CalendarToolchainInstallerIssue(
+                    code=(CalendarToolchainInstallFailureCode.INVALID_ARGUMENT),
+                    message=(
+                        f"The {tool_name} executable must be a regular "
+                        "non-symbolic file."
+                    ),
+                    field=field_name,
+                    path=path,
+                )
+            )
+            return
+    except OSError:
+        issues.append(
+            CalendarToolchainInstallerIssue(
+                code=(CalendarToolchainInstallFailureCode.PERMISSION_DENIED),
+                message=(f"The {tool_name} executable could not be inspected."),
+                field=field_name,
+                path=path,
+            )
+        )
+        return
+
+    _extend_executable_issues(
+        path,
+        field_name=field_name,
+        tool_name=tool_name,
+        issues=issues,
+    )
 
 
 def _extend_executable_issues(

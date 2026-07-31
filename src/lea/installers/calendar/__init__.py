@@ -35,6 +35,10 @@ from lea.installers.calendar.environment_plan import (
     CalendarToolchainEnvironmentPlan,
     create_calendar_toolchain_environment_plan,
 )
+from lea.installers.calendar.external import (
+    CalendarExternalInstallResult,
+    install_external_calendar_toolchain,
+)
 from lea.installers.calendar.preflight import (
     calculate_calendar_sha256,
     check_calendar_directory_parent_writable,
@@ -101,6 +105,7 @@ from lea.installers.calendar.wheelhouse import (
 
 __all__ = [
     "CalendarBundledWheelhouseInstallResult",
+    "CalendarExternalInstallResult",
     "CalendarExtractedWheelhouse",
     "CalendarToolchainActivatedLayout",
     "CalendarToolchainActivationResult",
@@ -143,6 +148,7 @@ __all__ = [
     "inspect_calendar_python_version",
     "inspect_staged_calendar_python_version",
     "install_bundled_calendar_toolchain",
+    "install_external_calendar_toolchain",
     "install_verified_network_calendar_toolchain",
     "is_supported_khal_version",
     "is_supported_vdirsyncer_version",

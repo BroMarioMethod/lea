@@ -193,6 +193,13 @@ validate configuration
 The bundled-wheelhouse workflow replaces the download phase with verification
 and safe extraction of the supplied wheelhouse archive.
 
+The external-executables workflow shall not create, stage, copy or activate a
+toolchain. It shall validate and hash both exact non-symbolic executables,
+verify their pinned versions, run the disposable local calendar smoke test,
+provision only LEA-owned runtime state and configuration, and atomically
+register both executable paths and SHA-256 digests. Executable hashes shall be
+rechecked after command execution and immediately before registration.
+
 The initial bundled archive format shall be a TAR-compatible archive containing
 a flat set of regular `.whl` files, optionally beneath one common wrapper
 directory. It may additionally contain one `manifest.json` or
