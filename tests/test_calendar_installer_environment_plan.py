@@ -132,6 +132,7 @@ def test_network_plan_uses_exact_non_shell_uv_commands(
         "venv",
         "--no-project",
         "--no-managed-python",
+        "--relocatable",
         "--python",
         str(config.python_executable),
         str(staged.environment_root),

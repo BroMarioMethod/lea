@@ -108,6 +108,7 @@ def create_calendar_toolchain_environment_plan(
         "venv",
         "--no-project",
         "--no-managed-python",
+        "--relocatable",
         "--python",
         str(python_executable),
         str(staged.environment_root),

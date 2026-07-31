@@ -198,6 +198,7 @@ A command policy may resemble:
 uv venv
     --no-project
     --no-python-downloads
+    --relocatable
     <staged-environment>
 
 uv pip sync
@@ -219,6 +220,9 @@ Bundled-wheelhouse mode shall additionally use:
 ```
 
 Exact arguments remain private to the installer and shall be covered by tests.
+
+Managed environments that will be atomically moved from private staging into
+their versioned toolchain root shall be created with relocatable entry points.
 
 ## 7. Installation records and activation
 
