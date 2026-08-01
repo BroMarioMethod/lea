@@ -22,6 +22,11 @@ from lea.calendars.contracts import (
     CalendarProviderIssue,
     CalendarShowEventResult,
 )
+from lea.calendars.proposal_builders import (
+    build_calendar_list_calendars_proposal,
+    build_calendar_list_events_proposal,
+    build_calendar_show_event_proposal,
+)
 from lea.calendars.provider import CalendarProvider
 
 __all__ = [
@@ -40,6 +45,9 @@ __all__ = [
     "CalendarProviderInspectionResult",
     "CalendarProviderIssue",
     "CalendarShowEventResult",
+    "build_calendar_list_calendars_proposal",
+    "build_calendar_list_events_proposal",
+    "build_calendar_show_event_proposal",
     "calendar_action_handler_registry",
     "list_calendar_events_action_handler",
     "list_calendars_action_handler",

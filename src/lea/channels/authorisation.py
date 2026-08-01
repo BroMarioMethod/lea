@@ -23,6 +23,8 @@ class ChannelCapability(StrEnum):
 
     RUNTIME_STATUS_READ = "Runtime.Status.Read"
 
+    CALENDAR_READ = "Calendar.Read"
+
     TASKS_READ = "Tasks.Read"
     TASKS_WRITE = "Tasks.Write"
     TASKS_DELETE = "Tasks.Delete"
@@ -154,6 +156,7 @@ _DEFAULT_ROLE_POLICIES = (
         role=ChannelRole.TESTER,
         capabilities=(
             ChannelCapability.RUNTIME_STATUS_READ,
+            ChannelCapability.CALENDAR_READ,
             ChannelCapability.TASKS_READ,
             ChannelCapability.TASKS_WRITE,
             ChannelCapability.PROPOSALS_READ,
@@ -166,6 +169,7 @@ _DEFAULT_ROLE_POLICIES = (
         role=ChannelRole.READ_ONLY,
         capabilities=(
             ChannelCapability.RUNTIME_STATUS_READ,
+            ChannelCapability.CALENDAR_READ,
             ChannelCapability.TASKS_READ,
             ChannelCapability.PROPOSALS_READ,
             ChannelCapability.KNOWLEDGE_READ_LOW,
