@@ -16,6 +16,7 @@ from lea.adapters.khal.icalendar_parser import (
     read_khal_calendar_item,
 )
 from lea.adapters.khal.inspection import inspect_khal
+from lea.adapters.khal.provider import KhalCalendarProvider
 from lea.adapters.khal.runner import KhalRunner
 from lea.adapters.khal.vdirs import (
     KHAL_MAX_DISPLAY_NAME_BYTES,
@@ -26,6 +27,7 @@ __all__ = [
     "KHAL_MAX_DISPLAY_NAME_BYTES",
     "KHAL_MAX_ICALENDAR_ITEM_BYTES",
     "KhalCalendarItemParseResult",
+    "KhalCalendarProvider",
     "KhalCommandResult",
     "KhalConfig",
     "KhalRunResult",
