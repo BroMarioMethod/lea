@@ -337,6 +337,17 @@ class KhalRunner:
                 field="configuration",
             )
 
+        vdirs_issue = self._inspect_directory(
+            self._config.vdirs_directory,
+            field="vdirs_directory",
+            missing_code="khal_vdirs_directory_missing",
+            invalid_code="khal_vdirs_directory_invalid",
+            operation=operation,
+        )
+
+        if vdirs_issue is not None:
+            return vdirs_issue
+
         return self._inspect_directory(
             self._config.state_directory,
             field="state_directory",

@@ -3,7 +3,10 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from lea.calendars import CalendarProviderIssue
+from lea.calendars import (
+    CalendarEvent,
+    CalendarProviderIssue,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,6 +15,7 @@ class KhalConfig:
 
     executable: Path
     configuration: Path
+    vdirs_directory: Path
     state_directory: Path
     working_directory: Path
     expected_version: str
@@ -22,6 +26,7 @@ class KhalConfig:
         for field_name, path in (
             ("executable", self.executable),
             ("configuration", self.configuration),
+            ("vdirs_directory", self.vdirs_directory),
             ("state_directory", self.state_directory),
             ("working_directory", self.working_directory),
         ):
@@ -111,6 +116,39 @@ class KhalRunResult:
         if self.command is not None and self.command.return_code == 0:
             raise ValueError(
                 "A failed khal run command result must have a non-zero return code."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class KhalCalendarItemParseResult:
+    """Immutable result of parsing one local vdir item."""
+
+    success: bool
+    event: CalendarEvent | None
+    issues: tuple[CalendarProviderIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Validate item-parse result consistency."""
+        if not isinstance(self.success, bool):
+            raise TypeError("success must be a boolean.")
+
+        if self.success:
+            if self.event is None:
+                raise ValueError("A successful khal item parse must contain an event.")
+
+            if self.issues:
+                raise ValueError(
+                    "A successful khal item parse must not contain issues."
+                )
+
+            return
+
+        if self.event is not None:
+            raise ValueError("A failed khal item parse must not contain an event.")
+
+        if not self.issues:
+            raise ValueError(
+                "A failed khal item parse must contain at least one issue."
             )
 
 

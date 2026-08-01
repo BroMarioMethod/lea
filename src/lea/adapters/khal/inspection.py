@@ -153,6 +153,7 @@ def _inspect_runtime_paths(
         )
 
     for field, path in (
+        ("vdirs_directory", config.vdirs_directory),
         ("state_directory", config.state_directory),
         ("working_directory", config.working_directory),
     ):

@@ -36,6 +36,7 @@ def make_config(
 ) -> KhalConfig:
     """Return one explicit isolated khal configuration."""
     configuration = tmp_path / "config" / "khal.conf"
+    vdirs_directory = tmp_path / "vdirs"
     state_directory = tmp_path / "state"
     working_directory = tmp_path / "working"
     configuration.parent.mkdir(parents=True)
@@ -43,12 +44,14 @@ def make_config(
         "[locale]\nlocal_timezone = UTC\n",
         encoding="utf-8",
     )
+    vdirs_directory.mkdir()
     state_directory.mkdir()
     working_directory.mkdir()
 
     return KhalConfig(
         executable=executable,
         configuration=configuration,
+        vdirs_directory=vdirs_directory,
         state_directory=state_directory,
         working_directory=working_directory,
         expected_version=expected_version,
@@ -71,6 +74,7 @@ def test_config_is_immutable_and_requires_absolute_paths(
         KhalConfig(
             executable=Path("khal"),
             configuration=config.configuration,
+            vdirs_directory=config.vdirs_directory,
             state_directory=config.state_directory,
             working_directory=config.working_directory,
             expected_version="0.11.4",
@@ -89,6 +93,7 @@ def test_config_rejects_blank_version_and_invalid_timeout(
         KhalConfig(
             executable=config.executable,
             configuration=config.configuration,
+            vdirs_directory=config.vdirs_directory,
             state_directory=config.state_directory,
             working_directory=config.working_directory,
             expected_version=" ",
@@ -98,6 +103,7 @@ def test_config_rejects_blank_version_and_invalid_timeout(
         KhalConfig(
             executable=config.executable,
             configuration=config.configuration,
+            vdirs_directory=config.vdirs_directory,
             state_directory=config.state_directory,
             working_directory=config.working_directory,
             expected_version="0.11.4",
@@ -225,6 +231,7 @@ def test_runner_reports_missing_and_symbolic_executables(
     symbolic_config = KhalConfig(
         executable=symbolic,
         configuration=config.configuration,
+        vdirs_directory=config.vdirs_directory,
         state_directory=config.state_directory,
         working_directory=config.working_directory,
         expected_version="0.11.4",
