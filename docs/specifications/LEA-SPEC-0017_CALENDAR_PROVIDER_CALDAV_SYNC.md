@@ -433,6 +433,16 @@ LEA shall distinguish:
 - floating times, which shall initially be rejected unless explicitly
   supported.
 
+Calendar event queries use half-open local-date ranges. All-day events are
+compared directly as date intervals. Timed event query boundaries are midnight
+at the start and end dates in the configured display timezone, converted to
+canonical UTC before interval comparison. A timed event ending exactly at the
+start boundary or starting exactly at the end boundary does not overlap.
+
+Read results are ordered by start in the configured display timezone, with
+all-day events before timed events at the same local start, followed by end,
+calendar identifier and event UID.
+
 Presentation uses the configured display timezone without changing the stored
 instant.
 

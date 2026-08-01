@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from lea.calendars import (
     CalendarEvent,
@@ -19,6 +20,7 @@ class KhalConfig:
     state_directory: Path
     working_directory: Path
     expected_version: str
+    display_timezone: str = "UTC"
     timeout_seconds: float = 10.0
 
     def __post_init__(self) -> None:
@@ -37,6 +39,22 @@ class KhalConfig:
 
         if not self.expected_version.strip():
             raise ValueError("expected_version must be non-empty.")
+
+        if not isinstance(self.display_timezone, str):
+            raise TypeError("display_timezone must be a string.")
+
+        if not self.display_timezone.strip():
+            raise ValueError("display_timezone must be non-empty.")
+
+        try:
+            display_zone = ZoneInfo(self.display_timezone)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError(
+                "display_timezone must be a valid IANA timezone."
+            ) from error
+
+        if display_zone.key != self.display_timezone:
+            raise ValueError("display_timezone must use its canonical IANA identifier.")
 
         if not isinstance(self.timeout_seconds, (int, float)) or isinstance(
             self.timeout_seconds, bool
