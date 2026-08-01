@@ -6,6 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from lea.installers.release_candidate.calendar import (
+    ReleaseCandidateCalendarInputs,
+    ReleaseCandidateCalendarResult,
+    create_calendar_toolchain_installation_plan,
+    install_release_candidate_calendar_toolchain,
+)
 from lea.installers.release_candidate.configuration import (
     BaseConfigurationResult,
     create_base_configuration_plan,
@@ -77,6 +83,19 @@ TaskwarriorAcceptanceTester = Callable[..., TaskwarriorSmokeTestResult]
 TelegramAcceptanceValidator = Callable[[], TelegramBotValidationResult]
 AcceptanceNotifier = Callable[[str], bool]
 
+
+def _apply_calendar_posix_ownership(
+    path: Path,
+    owner: str,
+    group: str,
+) -> bool:
+    """Apply ownership and report whether uid or gid changed."""
+    before = path.stat()
+    apply_posix_ownership(path, owner, group)
+    after = path.stat()
+    return (before.st_uid, before.st_gid) != (after.st_uid, after.st_gid)
+
+
 PreflightRunner = Callable[[ReleaseCandidateInstallRequest], HostPreflightResult]
 ProvisioningRunner = Callable[
     [ReleaseCandidateInstallRequest],
@@ -85,6 +104,13 @@ ProvisioningRunner = Callable[
 BaseConfigurationRunner = Callable[
     [ReleaseCandidateInstallRequest, str],
     BaseConfigurationResult,
+]
+CalendarRunner = Callable[
+    [
+        ReleaseCandidateInstallRequest,
+        ReleaseCandidateCalendarInputs,
+    ],
+    ReleaseCandidateCalendarResult,
 ]
 TaskwarriorRunner = Callable[
     [
@@ -134,6 +160,7 @@ class ReleaseCandidateOrchestrationDependencies:
     systemd_service: SystemdServiceRunner
     health: HealthRunner
     acceptance: AcceptanceRunner
+    calendar: CalendarRunner | None = None
 
 
 def create_release_candidate_orchestration_dependencies(
@@ -168,6 +195,19 @@ def create_release_candidate_orchestration_dependencies(
                 inputs,
             ),
             progress=progress,
+        )
+
+    def install_calendar(
+        request: ReleaseCandidateInstallRequest,
+        inputs: ReleaseCandidateCalendarInputs,
+    ) -> ReleaseCandidateCalendarResult:
+        return install_release_candidate_calendar_toolchain(
+            create_calendar_toolchain_installation_plan(
+                request,
+                inputs,
+            ),
+            display_timezone=request.display_timezone,
+            apply_ownership=_apply_calendar_posix_ownership,
         )
 
     def verify_onboarding(
@@ -250,6 +290,7 @@ def create_release_candidate_orchestration_dependencies(
         systemd_service=deploy_systemd,
         health=run_health,
         acceptance=run_acceptance,
+        calendar=install_calendar,
     )
 
 
@@ -493,6 +534,73 @@ def run_release_candidate_orchestration(
             else "The managed Taskwarrior installation completed."
         ),
     )
+
+    calendar_inputs = request.calendar
+    if calendar_inputs is not None:
+        cancelled_result = _check_cancellation(
+            request,
+            completed,
+            cancelled,
+        )
+        if cancelled_result is not None:
+            return cancelled_result
+
+        _report_step_started(
+            reporter,
+            InstallerStepId.CALENDAR_TOOLCHAIN,
+            "Installing the managed khal and vdirsyncer toolchain.",
+        )
+
+        calendar_runner = runners.calendar
+        if calendar_runner is None:
+            return _failed_orchestration(
+                request,
+                completed,
+                _failed_step(
+                    InstallerStepId.CALENDAR_TOOLCHAIN,
+                    "Calendar toolchain installation is unavailable.",
+                    (
+                        _issue(
+                            InstallerStepId.CALENDAR_TOOLCHAIN,
+                            "The calendar installer runner was not configured.",
+                            field="calendar",
+                        ),
+                    ),
+                ),
+            )
+
+        calendar, failure = _call_boundary(
+            InstallerStepId.CALENDAR_TOOLCHAIN,
+            lambda: calendar_runner(
+                request.installation,
+                calendar_inputs,
+            ),
+        )
+        if failure is not None:
+            return _failed_orchestration(request, completed, failure)
+
+        assert isinstance(calendar, ReleaseCandidateCalendarResult)
+        if not calendar.success:
+            return _failed_orchestration(
+                request,
+                completed,
+                _failed_step(
+                    InstallerStepId.CALENDAR_TOOLCHAIN,
+                    "Calendar toolchain installation failed.",
+                    calendar.issues,
+                ),
+            )
+
+        _append_completed_step(
+            completed,
+            reporter,
+            InstallerStepId.CALENDAR_TOOLCHAIN,
+            (
+                "The managed calendar toolchain was already current."
+                if calendar.already_installed
+                else "The managed calendar toolchain installation completed."
+            ),
+        )
 
     if selected:
         interaction_result = _resolve_telegram_inputs(

@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from lea.installers.release_candidate.calendar import (
+    ReleaseCandidateCalendarInputs,
+)
 from lea.installers.release_candidate.contracts import (
     InstallerIssue,
     InstallerStepId,
@@ -76,6 +79,7 @@ class ReleaseCandidateOrchestrationRequest:
     lea_version: str
     plan_approved: bool
     replacement_approved: bool = False
+    calendar: ReleaseCandidateCalendarInputs | None = None
 
     def __post_init__(self) -> None:
         """Validate orchestration inputs."""
@@ -90,6 +94,14 @@ class ReleaseCandidateOrchestrationRequest:
         ):
             raise TypeError(
                 "taskwarrior must be a ReleaseCandidateTaskwarriorInputs value."
+            )
+
+        if self.calendar is not None and not isinstance(
+            self.calendar,
+            ReleaseCandidateCalendarInputs,
+        ):
+            raise TypeError(
+                "calendar must be a ReleaseCandidateCalendarInputs value when supplied."
             )
 
         if not self.lea_version.strip():
