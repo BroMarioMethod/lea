@@ -158,6 +158,23 @@ def _archive(tmp_path: Path) -> Path:
     return archive
 
 
+def _calendar_lock(tmp_path: Path) -> Path:
+    lock = tmp_path / "calendar-requirements.txt"
+    lock.write_text(
+        "khal==0.11.4\nvdirsyncer==0.19.3\n",
+        encoding="utf-8",
+    )
+    return lock
+
+
+def _executable(tmp_path: Path, name: str) -> Path:
+    executable = tmp_path / "bin" / name
+    executable.parent.mkdir(exist_ok=True)
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    return executable
+
+
 def _base_arguments(
     tmp_path: Path,
     *,
@@ -175,6 +192,14 @@ def _base_arguments(
         "a" * 64,
         "--taskwarrior-build-directory",
         str(tmp_path / "build"),
+        "--calendar-requirements-lock",
+        str(_calendar_lock(tmp_path)),
+        "--calendar-requirements-sha256",
+        "b" * 64,
+        "--calendar-uv-executable",
+        str(_executable(tmp_path, "uv")),
+        "--calendar-python-executable",
+        str(_executable(tmp_path, "python")),
         "--approve",
     ]
 
@@ -200,7 +225,13 @@ def test_non_telegram_guided_run_succeeds(tmp_path: Path) -> None:
     assert exit_code == EXIT_SUCCESS
     assert len(orchestrator.calls) == 1
     assert orchestrator.calls[0][1] is None
+    request = orchestrator.calls[0][0]
+    assert request.calendar is not None
+    assert request.calendar.khal_version == "0.11.4"
+    assert request.calendar.vdirsyncer_version == "0.19.3"
+    assert request.calendar.package_index_url == "https://pypi.org/simple"
     assert "LEA release-candidate installation plan" in stdout.getvalue()
+    assert "calendar-toolchain" in stdout.getvalue()
     assert "acceptance: PASSED" in stdout.getvalue()
     assert stderr.getvalue() == ""
 
@@ -280,6 +311,25 @@ def test_relative_source_archive_is_usage_error(tmp_path: Path) -> None:
     assert "must be an absolute path" in stderr.getvalue()
 
 
+def test_relative_calendar_lock_is_usage_error(tmp_path: Path) -> None:
+    """Calendar lock selection must not depend on the working directory."""
+    stderr = StringIO()
+    arguments = _base_arguments(tmp_path, telegram=False)
+    lock_index = arguments.index("--calendar-requirements-lock") + 1
+    arguments[lock_index] = "calendar-requirements.txt"
+
+    exit_code = execute_release_candidate_cli(
+        arguments,
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_USAGE_ERROR
+    assert "--calendar-requirements-lock must be an absolute path" in (
+        stderr.getvalue()
+    )
+
+
 def test_non_interactive_telegram_is_rejected(tmp_path: Path) -> None:
     stderr = StringIO()
     arguments = [
@@ -307,6 +357,14 @@ def test_output_mode_defaults_to_normal() -> None:
             "/tmp/task-3.4.2.tar.gz",
             "--taskwarrior-sha256",
             "a" * 64,
+            "--calendar-requirements-lock",
+            "/tmp/calendar-requirements.txt",
+            "--calendar-requirements-sha256",
+            "b" * 64,
+            "--calendar-uv-executable",
+            "/tmp/uv",
+            "--calendar-python-executable",
+            "/tmp/python",
         ]
     )
 
@@ -328,6 +386,14 @@ def test_output_modes_are_mutually_exclusive() -> None:
                     "/tmp/task-3.4.2.tar.gz",
                     "--taskwarrior-sha256",
                     "a" * 64,
+                    "--calendar-requirements-lock",
+                    "/tmp/calendar-requirements.txt",
+                    "--calendar-requirements-sha256",
+                    "b" * 64,
+                    "--calendar-uv-executable",
+                    "/tmp/uv",
+                    "--calendar-python-executable",
+                    "/tmp/python",
                 ]
             )
     except SystemExit as error:

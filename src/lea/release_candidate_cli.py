@@ -17,6 +17,7 @@ from lea.installers.release_candidate import (
     InstallerOutputMode,
     InstallerProgressReporter,
     InstallerStepId,
+    ReleaseCandidateCalendarInputs,
     ReleaseCandidateInstallMode,
     ReleaseCandidateInstallRequest,
     ReleaseCandidateOrchestrationRequest,
@@ -275,6 +276,59 @@ def create_release_candidate_parser() -> argparse.ArgumentParser:
         help="Taskwarrior build concurrency. Defaults to one.",
     )
     parser.add_argument(
+        "--calendar-requirements-lock",
+        required=True,
+        type=Path,
+        metavar="PATH",
+        help="Absolute path to the hash-pinned calendar requirements lock.",
+    )
+    parser.add_argument(
+        "--calendar-requirements-sha256",
+        required=True,
+        metavar="SHA256",
+        help="Expected lower-case SHA-256 for the calendar requirements lock.",
+    )
+    parser.add_argument(
+        "--calendar-uv-executable",
+        required=True,
+        type=Path,
+        metavar="PATH",
+        help="Absolute path to the exact uv executable used for calendar setup.",
+    )
+    parser.add_argument(
+        "--calendar-python-executable",
+        required=True,
+        type=Path,
+        metavar="PATH",
+        help="Absolute path to the exact Python executable used for calendar setup.",
+    )
+    parser.add_argument(
+        "--calendar-package-index-url",
+        default="https://pypi.org/simple",
+        metavar="URL",
+        help="Explicit HTTPS package index for verified calendar installation.",
+    )
+    parser.add_argument(
+        "--calendar-toolchain-version",
+        default="1.0.0",
+        help="Managed calendar toolchain layout version.",
+    )
+    parser.add_argument(
+        "--calendar-platform",
+        default="linux-aarch64",
+        help="Pinned calendar toolchain platform identifier.",
+    )
+    parser.add_argument(
+        "--calendar-khal-version",
+        default="0.11.4",
+        help="Pinned khal version.",
+    )
+    parser.add_argument(
+        "--calendar-vdirsyncer-version",
+        default="0.19.3",
+        help="Pinned vdirsyncer version.",
+    )
+    parser.add_argument(
         "--approve",
         action="store_true",
         help="Approve the rendered plan without an interactive prompt.",
@@ -328,6 +382,7 @@ def execute_release_candidate_cli(
             text_input=resolved.text_input,
         )
         taskwarrior = _taskwarrior_inputs(namespace)
+        calendar = _calendar_inputs(namespace)
     except _UserCancelled:
         stdout.write("Installation cancelled.\n")
         return EXIT_CANCELLED
@@ -356,6 +411,7 @@ def execute_release_candidate_cli(
         plan = create_release_candidate_install_plan(
             install_request,
             taskwarrior,
+            calendar,
         )
         if output_mode is not InstallerOutputMode.QUIET:
             stdout.write(render_release_candidate_install_plan(plan))
@@ -410,6 +466,7 @@ def execute_release_candidate_cli(
             lea_version=resolved.version_reader(),
             plan_approved=True,
             replacement_approved=replacement_approved,
+            calendar=calendar,
         )
         progress = TerminalInstallerProgressReporter(
             mode=output_mode,
@@ -698,6 +755,43 @@ def _taskwarrior_inputs(
         expected_sha256=namespace.taskwarrior_sha256,
         build_directory=build_directory,
         build_concurrency=namespace.taskwarrior_build_concurrency,
+    )
+
+
+def _calendar_inputs(
+    namespace: argparse.Namespace,
+) -> ReleaseCandidateCalendarInputs:
+    """Resolve explicit verified-network calendar inputs."""
+    requirements_lock: Path = namespace.calendar_requirements_lock
+    uv_executable: Path = namespace.calendar_uv_executable
+    python_executable: Path = namespace.calendar_python_executable
+
+    if not requirements_lock.is_absolute():
+        raise ValueError("--calendar-requirements-lock must be an absolute path.")
+    if not requirements_lock.is_file() or requirements_lock.is_symlink():
+        raise ValueError("--calendar-requirements-lock must be a regular file.")
+
+    for option, executable in (
+        ("--calendar-uv-executable", uv_executable),
+        ("--calendar-python-executable", python_executable),
+    ):
+        if not executable.is_absolute():
+            raise ValueError(f"{option} must be an absolute path.")
+        if not executable.is_file():
+            raise ValueError(f"{option} must identify a regular file.")
+        if not executable.stat().st_mode & 0o111:
+            raise ValueError(f"{option} must identify an executable file.")
+
+    return ReleaseCandidateCalendarInputs(
+        toolchain_version=namespace.calendar_toolchain_version,
+        platform=namespace.calendar_platform,
+        requirements_lock=requirements_lock,
+        expected_lock_sha256=namespace.calendar_requirements_sha256,
+        uv_executable=uv_executable,
+        python_executable=python_executable,
+        package_index_url=namespace.calendar_package_index_url,
+        khal_version=namespace.calendar_khal_version,
+        vdirsyncer_version=namespace.calendar_vdirsyncer_version,
     )
 
 
