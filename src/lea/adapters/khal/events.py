@@ -15,6 +15,7 @@ from lea.calendars import (
     CalendarEventQuery,
     CalendarListEventsResult,
     CalendarProviderIssue,
+    CalendarShowEventResult,
 )
 
 _PROVIDER = "khal"
@@ -143,6 +144,126 @@ def list_khal_calendar_events(
     return CalendarListEventsResult(
         success=True,
         events=tuple(events),
+        issues=(),
+    )
+
+
+def show_khal_calendar_event(
+    config: KhalConfig,
+    calendar_id: str,
+    event_uid: str,
+    *,
+    maximum_item_bytes: int = KHAL_MAX_ICALENDAR_ITEM_BYTES,
+) -> CalendarShowEventResult:
+    """Read one exact event by stable calendar and event identity."""
+    if not isinstance(config, KhalConfig):
+        raise TypeError("config must be a KhalConfig value.")
+
+    _validate_identifier(calendar_id, field_name="calendar_id")
+    _validate_identifier(event_uid, field_name="event_uid")
+    _validate_maximum_item_bytes(maximum_item_bytes)
+
+    collections_result = discover_khal_calendar_collections(config)
+
+    if not collections_result.success:
+        return CalendarShowEventResult(
+            success=False,
+            event=None,
+            issues=_with_show_operation(collections_result.issues),
+        )
+
+    available_ids = {
+        collection.calendar_id for collection in collections_result.calendars
+    }
+
+    if calendar_id not in available_ids:
+        return _show_failure(
+            _show_issue(
+                code="khal_calendar_not_found",
+                message=(
+                    "The requested calendar was not present below the "
+                    "configured vdirs root."
+                ),
+                calendar_id=calendar_id,
+                field="calendar_id",
+            )
+        )
+
+    item_result = _calendar_item_paths(
+        config.vdirs_directory / calendar_id,
+        calendar_id=calendar_id,
+    )
+
+    if isinstance(item_result, CalendarProviderIssue):
+        return CalendarShowEventResult(
+            success=False,
+            event=None,
+            issues=_with_show_operation((item_result,)),
+        )
+
+    matches: list[CalendarEvent] = []
+
+    for item in item_result:
+        parsed = read_khal_calendar_item(
+            item,
+            calendar_id=calendar_id,
+            maximum_bytes=maximum_item_bytes,
+        )
+
+        if not parsed.success:
+            return CalendarShowEventResult(
+                success=False,
+                event=None,
+                issues=_with_show_operation(parsed.issues),
+            )
+
+        event = parsed.event
+
+        if event is None:
+            return _show_failure(
+                _show_issue(
+                    code="khal_calendar_item_parse_incomplete",
+                    message=(
+                        "A successful calendar-item parse did not contain an event."
+                    ),
+                    calendar_id=calendar_id,
+                    field="event",
+                )
+            )
+
+        if event.event_uid == event_uid:
+            matches.append(event)
+
+    if not matches:
+        return _show_failure(
+            _show_issue(
+                code="khal_calendar_event_not_found",
+                message=(
+                    "No event matched the requested stable calendar and event identity."
+                ),
+                calendar_id=calendar_id,
+                event_uid=event_uid,
+                field="event_uid",
+            )
+        )
+
+    if len(matches) != 1:
+        return _show_failure(
+            _show_issue(
+                code="khal_calendar_event_identity_duplicate",
+                message=(
+                    "Multiple local vdir items claimed the requested "
+                    "calendar and event identity."
+                ),
+                calendar_id=calendar_id,
+                event_uid=event_uid,
+                field="event_uid",
+            )
+        )
+
+    return CalendarShowEventResult(
+        success=True,
+        event=matches[0],
         issues=(),
     )
 
@@ -315,6 +436,77 @@ def _with_list_operation(
             return_code=issue.return_code,
         )
         for issue in issues
+    )
+
+
+def _with_show_operation(
+    issues: tuple[CalendarProviderIssue, ...],
+) -> tuple[CalendarProviderIssue, ...]:
+    """Preserve structured diagnostics under the public show operation."""
+    return tuple(
+        CalendarProviderIssue(
+            code=issue.code,
+            message=issue.message,
+            provider=issue.provider or _PROVIDER,
+            operation="show_event",
+            calendar_id=issue.calendar_id,
+            event_uid=issue.event_uid,
+            field=issue.field,
+            return_code=issue.return_code,
+        )
+        for issue in issues
+    )
+
+
+def _validate_identifier(
+    value: str,
+    *,
+    field_name: str,
+) -> None:
+    """Validate one exact provider identity value."""
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string.")
+
+    if not value.strip():
+        raise ValueError(f"{field_name} must be non-empty.")
+
+    if value != value.strip():
+        raise ValueError(
+            f"{field_name} must not contain leading or trailing whitespace."
+        )
+
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError(f"{field_name} must not contain control characters.")
+
+
+def _show_failure(
+    issue: CalendarProviderIssue,
+) -> CalendarShowEventResult:
+    """Construct one failed exact-event lookup result."""
+    return CalendarShowEventResult(
+        success=False,
+        event=None,
+        issues=(issue,),
+    )
+
+
+def _show_issue(
+    *,
+    code: str,
+    message: str,
+    field: str,
+    calendar_id: str | None = None,
+    event_uid: str | None = None,
+) -> CalendarProviderIssue:
+    """Construct one structured khal exact-event issue."""
+    return CalendarProviderIssue(
+        code=code,
+        message=message,
+        provider=_PROVIDER,
+        operation="show_event",
+        calendar_id=calendar_id,
+        event_uid=event_uid,
+        field=field,
     )
 
 
