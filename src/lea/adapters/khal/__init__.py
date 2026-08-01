@@ -10,6 +10,11 @@ from lea.adapters.khal.events import (
     list_khal_calendar_events,
     show_khal_calendar_event,
 )
+from lea.adapters.khal.factory import (
+    KhalCalendarProviderBuildResult,
+    KhalCalendarProviderFactoryConfig,
+    build_khal_calendar_provider,
+)
 from lea.adapters.khal.icalendar_parser import (
     KHAL_MAX_ICALENDAR_ITEM_BYTES,
     parse_khal_calendar_item,
@@ -28,10 +33,13 @@ __all__ = [
     "KHAL_MAX_ICALENDAR_ITEM_BYTES",
     "KhalCalendarItemParseResult",
     "KhalCalendarProvider",
+    "KhalCalendarProviderBuildResult",
+    "KhalCalendarProviderFactoryConfig",
     "KhalCommandResult",
     "KhalConfig",
     "KhalRunResult",
     "KhalRunner",
+    "build_khal_calendar_provider",
     "discover_khal_calendar_collections",
     "inspect_khal",
     "list_khal_calendar_events",
