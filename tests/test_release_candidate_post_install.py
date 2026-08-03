@@ -4,6 +4,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from lea.installers.calendar.contracts import (
+    CalendarToolchainInstallMode,
+)
+from lea.installers.calendar.records import (
+    CalendarToolchainInstallationRecord,
+)
+from lea.installers.calendar.smoke_test import (
+    CalendarToolchainSmokeStepResult,
+    CalendarToolchainSmokeTestResult,
+)
+from lea.installers.calendar.version_check import (
+    CalendarToolchainVersionCheckResult,
+    CalendarToolchainVersionStepResult,
+)
 from lea.installers.release_candidate import (
     PostInstallCheck,
     PostInstallCheckState,
@@ -74,14 +88,110 @@ def _record(tmp_path: Path) -> TaskwarriorInstallationRecord:
     )
 
 
+def _calendar_record(
+    tmp_path: Path,
+) -> CalendarToolchainInstallationRecord:
+    return CalendarToolchainInstallationRecord(
+        schema_version=2,
+        component="calendar-toolchain",
+        toolchain_version="1.0.0",
+        installation_mode=(CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES),
+        platform="linux-aarch64",
+        python_version=None,
+        khal_version="0.11.4",
+        vdirsyncer_version="0.20.0",
+        khal_executable=tmp_path / "calendar" / "bin" / "khal",
+        vdirsyncer_executable=(tmp_path / "calendar" / "bin" / "vdirsyncer"),
+        lock_or_manifest_sha256=None,
+        khal_executable_sha256="b" * 64,
+        vdirsyncer_executable_sha256="c" * 64,
+        smoke_test="passed",
+        installed_at=datetime(2026, 8, 1, tzinfo=UTC),
+    )
+
+
+def _calendar_version_result(
+    record: CalendarToolchainInstallationRecord,
+) -> CalendarToolchainVersionCheckResult:
+    return CalendarToolchainVersionCheckResult(
+        passed=True,
+        khal_version=record.khal_version,
+        vdirsyncer_version=record.vdirsyncer_version,
+        steps=(
+            CalendarToolchainVersionStepResult(
+                tool="khal",
+                command=(str(record.khal_executable), "--version"),
+                returncode=0,
+                stdout=f"khal, version {record.khal_version}\n",
+                stderr="",
+                duration_seconds=0.01,
+                timed_out=False,
+                discovered_version=record.khal_version,
+            ),
+            CalendarToolchainVersionStepResult(
+                tool="vdirsyncer",
+                command=(
+                    str(record.vdirsyncer_executable),
+                    "--version",
+                ),
+                returncode=0,
+                stdout=f"vdirsyncer, version {record.vdirsyncer_version}\n",
+                stderr="",
+                duration_seconds=0.01,
+                timed_out=False,
+                discovered_version=record.vdirsyncer_version,
+            ),
+        ),
+        issues=(),
+    )
+
+
+def _calendar_smoke_result(
+    record: CalendarToolchainInstallationRecord,
+) -> CalendarToolchainSmokeTestResult:
+    phases = (
+        "discover",
+        "sync",
+        "list",
+        "create",
+        "verify",
+    )
+
+    return CalendarToolchainSmokeTestResult(
+        passed=True,
+        steps=tuple(
+            CalendarToolchainSmokeStepResult(
+                phase=phase,
+                command=(
+                    str(
+                        record.vdirsyncer_executable
+                        if phase in {"discover", "sync"}
+                        else record.khal_executable
+                    ),
+                    phase,
+                ),
+                returncode=0,
+                stdout="",
+                stderr="",
+                duration_seconds=0.01,
+                timed_out=False,
+            )
+            for phase in phases
+        ),
+        issues=(),
+    )
+
+
 def _prepare(
     tmp_path: Path,
     *,
     telegram: bool = False,
+    calendar: bool = False,
 ) -> tuple[PostInstallHealthPlan, RuntimeConfig]:
     request = _request(tmp_path, telegram=telegram)
     plan = create_post_install_health_plan(
         request,
+        calendar_enabled=calendar,
         systemctl=tmp_path / "usr" / "bin" / "systemctl",
     )
     runtime = isolated_test_runtime_config(
@@ -118,6 +228,140 @@ def _failed_configuration(path: Path) -> ConfigurationResult:
             ),
         ),
     )
+
+
+def test_plan_omits_calendar_paths_when_not_selected(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+
+    plan = create_post_install_health_plan(request)
+
+    assert plan.calendar_record_file is None
+    assert plan.calendar_acceptance_work_directory is None
+
+
+def test_plan_includes_canonical_calendar_paths_when_selected(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+
+    plan = create_post_install_health_plan(
+        request,
+        calendar_enabled=True,
+    )
+
+    assert plan.calendar_record_file == (
+        request.state_root / "install" / "calendar-toolchain.json"
+    )
+    assert plan.calendar_acceptance_work_directory == (
+        request.state_root / "acceptance" / "calendar"
+    )
+
+
+def test_calendar_health_validates_record_and_exact_versions(
+    tmp_path: Path,
+) -> None:
+    plan, runtime = _prepare(tmp_path, calendar=True)
+    taskwarrior_record = _record(tmp_path)
+    calendar_record = _calendar_record(tmp_path)
+    captured: dict[str, object] = {}
+
+    def validate_versions(
+        **arguments: object,
+    ) -> CalendarToolchainVersionCheckResult:
+        captured.update(arguments)
+        return _calendar_version_result(calendar_record)
+
+    result = run_post_install_health(
+        plan,
+        runtime_loader=lambda _path: ConfigurationResult(
+            success=True,
+            config=runtime,
+            issues=(),
+        ),
+        runtime_health_checker=lambda _config: RuntimeHealthResult(
+            healthy=True,
+            issues=(),
+        ),
+        taskwarrior_record_reader=lambda _path: (
+            taskwarrior_record,
+            (),
+        ),
+        taskwarrior_inspector=lambda _config: TaskProviderInspectionResult(
+            available=True,
+            provider="taskwarrior",
+            version="3.4.2",
+            issues=(),
+        ),
+        calendar_record_reader=lambda _path: (
+            calendar_record,
+            (),
+        ),
+        calendar_version_validator=validate_versions,
+    )
+
+    assert result.healthy is True
+
+    checks = {check.code: check for check in result.checks}
+
+    assert checks["calendar_record_valid"].state is PostInstallCheckState.PASSED
+    assert checks["calendar_versions"].state is PostInstallCheckState.PASSED
+    assert captured == {
+        "khal_executable": calendar_record.khal_executable,
+        "expected_khal_version": calendar_record.khal_version,
+        "vdirsyncer_executable": (calendar_record.vdirsyncer_executable),
+        "expected_vdirsyncer_version": (calendar_record.vdirsyncer_version),
+        "working_directory": runtime.paths.run_dir,
+        "timeout_seconds": 10.0,
+    }
+
+
+def test_calendar_health_fails_for_invalid_record(
+    tmp_path: Path,
+) -> None:
+    plan, runtime = _prepare(tmp_path, calendar=True)
+    taskwarrior_record = _record(tmp_path)
+
+    def unexpected_version_check(
+        **_arguments: object,
+    ) -> CalendarToolchainVersionCheckResult:
+        raise AssertionError("The version check must not run for an invalid record.")
+
+    result = run_post_install_health(
+        plan,
+        runtime_loader=lambda _path: ConfigurationResult(
+            success=True,
+            config=runtime,
+            issues=(),
+        ),
+        runtime_health_checker=lambda _config: RuntimeHealthResult(
+            healthy=True,
+            issues=(),
+        ),
+        taskwarrior_record_reader=lambda _path: (
+            taskwarrior_record,
+            (),
+        ),
+        taskwarrior_inspector=lambda _config: TaskProviderInspectionResult(
+            available=True,
+            provider="taskwarrior",
+            version="3.4.2",
+            issues=(),
+        ),
+        calendar_record_reader=lambda _path: (
+            None,
+            (object(),),
+        ),
+        calendar_version_validator=unexpected_version_check,
+    )
+
+    assert result.healthy is False
+
+    checks = {check.code: check for check in result.checks}
+
+    assert checks["calendar_record_invalid"].state is PostInstallCheckState.FAILED
+    assert "calendar_versions" not in checks
 
 
 def test_health_accepts_canonical_release_candidate_record(
@@ -298,6 +542,156 @@ remove_capabilities = []
     codes = {check.code for check in result.checks}
     assert "telegram_token_permissions" in codes
     assert "telegram_service_is-active" in codes
+
+
+def test_calendar_acceptance_runs_disposable_lifecycle(
+    tmp_path: Path,
+) -> None:
+    plan, _runtime = _prepare(tmp_path, calendar=True)
+    taskwarrior_record = _record(tmp_path)
+    calendar_record = _calendar_record(tmp_path)
+    captured: dict[str, object] = {}
+
+    def accept_taskwarrior(
+        _executable: Path,
+        *,
+        temporary_parent: Path,
+        timeout_seconds: float,
+    ) -> TaskwarriorSmokeTestResult:
+        assert temporary_parent == plan.acceptance_work_directory
+        assert timeout_seconds == 15.0
+        return TaskwarriorSmokeTestResult(
+            passed=True,
+            version="3.4.2",
+            issues=(),
+        )
+
+    def accept_calendar(
+        **arguments: object,
+    ) -> CalendarToolchainSmokeTestResult:
+        captured.update(arguments)
+        return _calendar_smoke_result(calendar_record)
+
+    result = run_release_candidate_acceptance(
+        plan,
+        PostInstallHealthResult(
+            healthy=True,
+            checks=(),
+            issues=(),
+        ),
+        taskwarrior_record_reader=lambda _path: (
+            taskwarrior_record,
+            (),
+        ),
+        taskwarrior_acceptance=accept_taskwarrior,
+        calendar_record_reader=lambda _path: (
+            calendar_record,
+            (),
+        ),
+        calendar_acceptance=accept_calendar,
+    )
+
+    assert result.accepted is True
+
+    checks = {check.code: check for check in result.checks}
+
+    assert checks["calendar_lifecycle"].state is PostInstallCheckState.PASSED
+    assert captured == {
+        "khal_executable": calendar_record.khal_executable,
+        "vdirsyncer_executable": (calendar_record.vdirsyncer_executable),
+        "working_directory": (plan.calendar_acceptance_work_directory),
+        "timeout_seconds": 15.0,
+    }
+
+    working_directory = plan.calendar_acceptance_work_directory
+
+    assert working_directory is not None
+    assert working_directory.is_dir()
+    assert not working_directory.is_symlink()
+    assert working_directory.stat().st_mode & 0o777 == 0o700
+
+
+def test_calendar_acceptance_fails_when_record_cannot_be_reloaded(
+    tmp_path: Path,
+) -> None:
+    plan, _runtime = _prepare(tmp_path, calendar=True)
+    taskwarrior_record = _record(tmp_path)
+
+    result = run_release_candidate_acceptance(
+        plan,
+        PostInstallHealthResult(
+            healthy=True,
+            checks=(),
+            issues=(),
+        ),
+        taskwarrior_record_reader=lambda _path: (
+            taskwarrior_record,
+            (),
+        ),
+        taskwarrior_acceptance=lambda *_args, **_kwargs: TaskwarriorSmokeTestResult(
+            passed=True,
+            version="3.4.2",
+            issues=(),
+        ),
+        calendar_record_reader=lambda _path: (
+            None,
+            (object(),),
+        ),
+    )
+
+    assert result.accepted is False
+    assert result.checks[0].code == "calendar_record_invalid"
+    assert (
+        result.checks[0].message
+        == "Calendar acceptance could not load the installation record."
+    )
+
+
+def test_calendar_acceptance_contains_boundary_exceptions(
+    tmp_path: Path,
+) -> None:
+    plan, _runtime = _prepare(tmp_path, calendar=True)
+    taskwarrior_record = _record(tmp_path)
+    calendar_record = _calendar_record(tmp_path)
+
+    def fail_calendar(
+        **_arguments: object,
+    ) -> CalendarToolchainSmokeTestResult:
+        raise RuntimeError("sensitive calendar boundary detail")
+
+    result = run_release_candidate_acceptance(
+        plan,
+        PostInstallHealthResult(
+            healthy=True,
+            checks=(),
+            issues=(),
+        ),
+        taskwarrior_record_reader=lambda _path: (
+            taskwarrior_record,
+            (),
+        ),
+        taskwarrior_acceptance=lambda *_args, **_kwargs: TaskwarriorSmokeTestResult(
+            passed=True,
+            version="3.4.2",
+            issues=(),
+        ),
+        calendar_record_reader=lambda _path: (
+            calendar_record,
+            (),
+        ),
+        calendar_acceptance=fail_calendar,
+    )
+
+    assert result.accepted is False
+
+    checks = {check.code: check for check in result.checks}
+
+    assert checks["calendar_lifecycle"].state is PostInstallCheckState.FAILED
+    assert (
+        checks["calendar_lifecycle"].message
+        == "The disposable calendar lifecycle failed."
+    )
+    assert "sensitive calendar boundary detail" not in result.summary
 
 
 def test_acceptance_runs_disposable_taskwarrior_and_telegram(

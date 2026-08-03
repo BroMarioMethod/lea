@@ -164,6 +164,8 @@ def _confirmation(
 def _dependencies(
     tmp_path: Path,
     calls: list[str],
+    *,
+    calendar_selections: list[bool] | None = None,
 ) -> ReleaseCandidateOrchestrationDependencies:
     record = _record(tmp_path)
 
@@ -256,8 +258,11 @@ def _dependencies(
 
     def health(
         _request: ReleaseCandidateInstallRequest,
+        calendar_enabled: bool,
     ) -> PostInstallHealthResult:
         calls.append("health")
+        if calendar_selections is not None:
+            calendar_selections.append(calendar_enabled)
         return PostInstallHealthResult(
             healthy=True,
             checks=(),
@@ -266,9 +271,12 @@ def _dependencies(
 
     def acceptance(
         _request: ReleaseCandidateInstallRequest,
+        calendar_enabled: bool,
         _health: PostInstallHealthResult,
     ) -> ReleaseCandidateAcceptanceResult:
         calls.append("acceptance")
+        if calendar_selections is not None:
+            calendar_selections.append(calendar_enabled)
         return ReleaseCandidateAcceptanceResult(
             accepted=True,
             checks=(),
@@ -490,7 +498,7 @@ def test_health_failure_stops_before_acceptance(tmp_path: Path) -> None:
     )
     dependencies = replace(
         dependencies,
-        health=lambda _request: PostInstallHealthResult(
+        health=lambda _request, _calendar_enabled: PostInstallHealthResult(
             healthy=False,
             checks=(),
             issues=(issue,),
@@ -630,15 +638,21 @@ def test_successful_orchestration_reports_step_progress(
 ) -> None:
     """Successful orchestration should report starts and completions."""
     calls: list[str] = []
+    calendar_selections: list[bool] = []
     progress = RecordingProgressReporter()
 
     result = run_release_candidate_orchestration(
         _request(tmp_path),
-        dependencies=_dependencies(tmp_path, calls),
+        dependencies=_dependencies(
+            tmp_path,
+            calls,
+            calendar_selections=calendar_selections,
+        ),
         progress=progress,
     )
 
     assert result.state is ReleaseCandidateOrchestrationState.SUCCEEDED
+    assert calendar_selections == [False, False]
 
     started = [step for event, step, _message in progress.events if event == "started"]
     completed = [
@@ -723,7 +737,12 @@ def test_selected_calendar_runs_between_taskwarrior_and_telegram(
 ) -> None:
     """Selected calendar provisioning should precede Telegram onboarding."""
     calls: list[str] = []
-    dependencies = _dependencies(tmp_path, calls)
+    calendar_selections: list[bool] = []
+    dependencies = _dependencies(
+        tmp_path,
+        calls,
+        calendar_selections=calendar_selections,
+    )
 
     def calendar(
         request: ReleaseCandidateInstallRequest,
@@ -783,6 +802,7 @@ def test_selected_calendar_runs_between_taskwarrior_and_telegram(
     assert InstallerStepId.CALENDAR_TOOLCHAIN in {
         step.step for step in result.step_results
     }
+    assert calendar_selections == [True, True]
 
 
 def test_calendar_failure_stops_before_telegram(

@@ -138,11 +138,15 @@ SystemdServiceRunner = Callable[
     TelegramSystemdServiceResult,
 ]
 HealthRunner = Callable[
-    [ReleaseCandidateInstallRequest],
+    [ReleaseCandidateInstallRequest, bool],
     PostInstallHealthResult,
 ]
 AcceptanceRunner = Callable[
-    [ReleaseCandidateInstallRequest, PostInstallHealthResult],
+    [
+        ReleaseCandidateInstallRequest,
+        bool,
+        PostInstallHealthResult,
+    ],
     ReleaseCandidateAcceptanceResult,
 ]
 
@@ -263,15 +267,25 @@ def create_release_candidate_orchestration_dependencies(
 
     def run_health(
         request: ReleaseCandidateInstallRequest,
+        calendar_enabled: bool,
     ) -> PostInstallHealthResult:
-        return run_post_install_health(create_post_install_health_plan(request))
+        return run_post_install_health(
+            create_post_install_health_plan(
+                request,
+                calendar_enabled=calendar_enabled,
+            )
+        )
 
     def run_acceptance(
         request: ReleaseCandidateInstallRequest,
+        calendar_enabled: bool,
         health: PostInstallHealthResult,
     ) -> ReleaseCandidateAcceptanceResult:
         return run_release_candidate_acceptance(
-            create_post_install_health_plan(request),
+            create_post_install_health_plan(
+                request,
+                calendar_enabled=calendar_enabled,
+            ),
             health,
             taskwarrior_acceptance=taskwarrior_acceptance,
             telegram_validation=telegram_validation,
@@ -308,6 +322,7 @@ def run_release_candidate_orchestration(
         raise TypeError("request must be a ReleaseCandidateOrchestrationRequest value.")
 
     selected = request.installation.enable_telegram
+    calendar_selected = request.calendar is not None
     completed: list[InstallerStepResult] = []
     runners = dependencies or create_release_candidate_orchestration_dependencies()
     reporter = progress or NullInstallerProgressReporter()
@@ -756,7 +771,10 @@ def run_release_candidate_orchestration(
     )
     health, failure = _call_boundary(
         InstallerStepId.HEALTH,
-        lambda: runners.health(request.installation),
+        lambda: runners.health(
+            request.installation,
+            calendar_selected,
+        ),
     )
     if failure is not None:
         return _failed_orchestration(request, completed, failure)
@@ -793,6 +811,7 @@ def run_release_candidate_orchestration(
         InstallerStepId.ACCEPTANCE,
         lambda: runners.acceptance(
             request.installation,
+            calendar_selected,
             health,
         ),
     )

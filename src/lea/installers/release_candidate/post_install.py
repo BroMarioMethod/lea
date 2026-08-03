@@ -10,6 +10,18 @@ from pathlib import Path
 
 from lea.adapters.taskwarrior import TaskwarriorConfig, inspect_taskwarrior
 from lea.channels import load_authorised_channel_users
+from lea.installers.calendar.records import (
+    CalendarToolchainInstallationRecord,
+    read_calendar_toolchain_installation_record,
+)
+from lea.installers.calendar.smoke_test import (
+    CalendarToolchainSmokeTestResult,
+    run_calendar_toolchain_smoke_test,
+)
+from lea.installers.calendar.version_check import (
+    CalendarToolchainVersionCheckResult,
+    validate_calendar_tool_versions,
+)
 from lea.installers.release_candidate.configuration import (
     read_installation_record,
 )
@@ -45,6 +57,12 @@ from lea.telegram_main import load_telegram_runtime_config
 
 RuntimeLoader = Callable[[Path], ConfigurationResult]
 RuntimeHealthChecker = Callable[[RuntimeConfig], RuntimeHealthResult]
+CalendarRecordReader = Callable[
+    [Path],
+    tuple[CalendarToolchainInstallationRecord | None, tuple[object, ...]],
+]
+CalendarVersionValidator = Callable[..., CalendarToolchainVersionCheckResult]
+CalendarAcceptanceTester = Callable[..., CalendarToolchainSmokeTestResult]
 TaskwarriorRecordReader = Callable[
     [Path],
     tuple[TaskwarriorInstallationRecord | None, tuple[object, ...]],
@@ -96,6 +114,8 @@ class PostInstallHealthPlan:
     systemctl: Path
     telegram_service_name: str
     telegram_enabled: bool
+    calendar_record_file: Path | None = None
+    calendar_acceptance_work_directory: Path | None = None
 
     def __post_init__(self) -> None:
         """Validate health-plan fields."""
@@ -111,6 +131,27 @@ class PostInstallHealthPlan:
 
         if not self.telegram_service_name.strip():
             raise ValueError("telegram_service_name must be non-empty.")
+
+        if (self.calendar_record_file is None) != (
+            self.calendar_acceptance_work_directory is None
+        ):
+            raise ValueError(
+                "calendar_record_file and "
+                "calendar_acceptance_work_directory must be provided together."
+            )
+
+        for field_name, optional_path in (
+            ("calendar_record_file", self.calendar_record_file),
+            (
+                "calendar_acceptance_work_directory",
+                self.calendar_acceptance_work_directory,
+            ),
+        ):
+            if optional_path is not None:
+                _validate_absolute_path(
+                    optional_path,
+                    field_name=field_name,
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,11 +201,15 @@ class ReleaseCandidateAcceptanceResult:
 def create_post_install_health_plan(
     request: ReleaseCandidateInstallRequest,
     *,
+    calendar_enabled: bool = False,
     systemctl: Path = Path("/usr/bin/systemctl"),
 ) -> PostInstallHealthPlan:
     """Create the deterministic post-install verification plan."""
     if not isinstance(request, ReleaseCandidateInstallRequest):
         raise TypeError("request must be a ReleaseCandidateInstallRequest value.")
+
+    if not isinstance(calendar_enabled, bool):
+        raise TypeError("calendar_enabled must be a boolean.")
 
     return PostInstallHealthPlan(
         runtime_config_file=request.configuration_root / "lea.toml",
@@ -179,6 +224,14 @@ def create_post_install_health_plan(
         systemctl=systemctl,
         telegram_service_name="lea-telegram.service",
         telegram_enabled=request.enable_telegram,
+        calendar_record_file=(
+            request.state_root / "install" / "calendar-toolchain.json"
+            if calendar_enabled
+            else None
+        ),
+        calendar_acceptance_work_directory=(
+            request.state_root / "acceptance" / "calendar" if calendar_enabled else None
+        ),
     )
 
 
@@ -191,6 +244,12 @@ def run_post_install_health(
         read_taskwarrior_installation_record
     ),
     taskwarrior_inspector: TaskwarriorInspector = inspect_taskwarrior,
+    calendar_record_reader: CalendarRecordReader = (
+        read_calendar_toolchain_installation_record
+    ),
+    calendar_version_validator: CalendarVersionValidator = (
+        validate_calendar_tool_versions
+    ),
     telegram_config_loader: TelegramConfigLoader = (load_telegram_runtime_config),
     systemd_execute: SystemdExecutor | None = None,
 ) -> PostInstallHealthResult:
@@ -272,6 +331,15 @@ def run_post_install_health(
             )
         )
 
+    if plan.calendar_record_file is not None:
+        _check_calendar_health(
+            plan,
+            runtime=runtime,
+            checks=checks,
+            calendar_record_reader=calendar_record_reader,
+            calendar_version_validator=calendar_version_validator,
+        )
+
     _check_installation_record(
         plan.installation_record_file,
         checks=checks,
@@ -320,6 +388,100 @@ def _render_taskwarrior_inspection_failure(
     return message
 
 
+def _check_calendar_health(
+    plan: PostInstallHealthPlan,
+    *,
+    runtime: RuntimeConfig,
+    checks: list[PostInstallCheck],
+    calendar_record_reader: CalendarRecordReader,
+    calendar_version_validator: CalendarVersionValidator,
+) -> None:
+    """Validate the installed calendar record and exact tool versions."""
+    record_path = plan.calendar_record_file
+
+    if record_path is None:
+        raise ValueError("Calendar health requires a calendar record path.")
+
+    try:
+        record, record_issues = calendar_record_reader(record_path)
+    except Exception:
+        record = None
+        record_issues = (object(),)
+
+    if record is None or record_issues:
+        checks.append(
+            PostInstallCheck(
+                code="calendar_record_invalid",
+                message=(
+                    "The calendar toolchain installation record failed validation."
+                ),
+                state=PostInstallCheckState.FAILED,
+                path=record_path,
+            )
+        )
+        return
+
+    checks.append(
+        PostInstallCheck(
+            code="calendar_record_valid",
+            message="The calendar toolchain installation record is valid.",
+            state=PostInstallCheckState.PASSED,
+            path=record_path,
+        )
+    )
+
+    try:
+        version_result = calendar_version_validator(
+            khal_executable=record.khal_executable,
+            expected_khal_version=record.khal_version,
+            vdirsyncer_executable=record.vdirsyncer_executable,
+            expected_vdirsyncer_version=record.vdirsyncer_version,
+            working_directory=runtime.paths.run_dir,
+            timeout_seconds=10.0,
+        )
+    except Exception:
+        checks.append(
+            PostInstallCheck(
+                code="calendar_versions",
+                message=("The installed calendar toolchain version check failed."),
+                state=PostInstallCheckState.FAILED,
+                path=record_path,
+            )
+        )
+        return
+
+    checks.append(
+        PostInstallCheck(
+            code="calendar_versions",
+            message=(
+                "The installed calendar toolchain versions are valid."
+                if version_result.passed
+                else _render_calendar_version_failure(version_result)
+            ),
+            state=(
+                PostInstallCheckState.PASSED
+                if version_result.passed
+                else PostInstallCheckState.FAILED
+            ),
+            path=record_path,
+        )
+    )
+
+
+def _render_calendar_version_failure(
+    result: CalendarToolchainVersionCheckResult,
+) -> str:
+    """Render bounded structured calendar version diagnostics."""
+    details = "; ".join(f"[{issue.code}] {issue.message}" for issue in result.issues)
+
+    message = "The installed calendar toolchain version check failed."
+
+    if details:
+        return f"{message} {details}"
+
+    return message
+
+
 def run_release_candidate_acceptance(
     plan: PostInstallHealthPlan,
     health: PostInstallHealthResult,
@@ -328,6 +490,10 @@ def run_release_candidate_acceptance(
         read_taskwarrior_installation_record
     ),
     taskwarrior_acceptance: TaskwarriorAcceptanceTester | None = None,
+    calendar_record_reader: CalendarRecordReader = (
+        read_calendar_toolchain_installation_record
+    ),
+    calendar_acceptance: CalendarAcceptanceTester | None = None,
     telegram_validation: TelegramAcceptanceValidator | None = None,
     notifier: AcceptanceNotifier | None = None,
 ) -> ReleaseCandidateAcceptanceResult:
@@ -377,6 +543,34 @@ def run_release_candidate_acceptance(
             tester=tester,
         )
     ]
+
+    if plan.calendar_record_file is not None:
+        try:
+            calendar_record, calendar_record_issues = calendar_record_reader(
+                plan.calendar_record_file
+            )
+        except Exception:
+            return _acceptance_failure(
+                "calendar_record_invalid",
+                "Calendar acceptance could not load the installation record.",
+                path=plan.calendar_record_file,
+            )
+
+        if calendar_record is None or calendar_record_issues:
+            return _acceptance_failure(
+                "calendar_record_invalid",
+                "Calendar acceptance could not load the installation record.",
+                path=plan.calendar_record_file,
+            )
+
+        calendar_tester = calendar_acceptance or run_calendar_toolchain_smoke_test
+        checks.append(
+            _run_calendar_acceptance(
+                plan,
+                record=calendar_record,
+                tester=calendar_tester,
+            )
+        )
 
     if plan.telegram_enabled:
         checks.append(_run_telegram_acceptance(telegram_validation))
@@ -448,6 +642,58 @@ def _run_taskwarrior_acceptance(
             PostInstallCheckState.PASSED if passed else PostInstallCheckState.FAILED
         ),
         path=record.executable,
+    )
+
+
+def _run_calendar_acceptance(
+    plan: PostInstallHealthPlan,
+    *,
+    record: CalendarToolchainInstallationRecord,
+    tester: CalendarAcceptanceTester,
+) -> PostInstallCheck:
+    """Run the disposable calendar lifecycle through a safe boundary."""
+    working_directory = plan.calendar_acceptance_work_directory
+
+    if working_directory is None:
+        raise ValueError(
+            "Calendar acceptance requires an acceptance working directory."
+        )
+
+    try:
+        if working_directory.is_symlink():
+            passed = False
+        else:
+            working_directory.mkdir(
+                parents=True,
+                exist_ok=True,
+                mode=0o700,
+            )
+
+            if not working_directory.is_dir():
+                passed = False
+            else:
+                working_directory.chmod(0o700)
+                smoke = tester(
+                    khal_executable=record.khal_executable,
+                    vdirsyncer_executable=record.vdirsyncer_executable,
+                    working_directory=working_directory,
+                    timeout_seconds=15.0,
+                )
+                passed = smoke.passed
+    except Exception:
+        passed = False
+
+    return PostInstallCheck(
+        code="calendar_lifecycle",
+        message=(
+            "The disposable calendar lifecycle passed."
+            if passed
+            else "The disposable calendar lifecycle failed."
+        ),
+        state=(
+            PostInstallCheckState.PASSED if passed else PostInstallCheckState.FAILED
+        ),
+        path=working_directory,
     )
 
 
