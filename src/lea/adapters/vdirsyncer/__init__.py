@@ -6,8 +6,10 @@ from lea.adapters.vdirsyncer.contracts import (
     VdirsyncerRunResult,
 )
 from lea.adapters.vdirsyncer.runner import VdirsyncerRunner
+from lea.adapters.vdirsyncer.synchronizer import VdirsyncerCalendarSynchronizer
 
 __all__ = [
+    "VdirsyncerCalendarSynchronizer",
     "VdirsyncerCommandResult",
     "VdirsyncerConfig",
     "VdirsyncerRunResult",

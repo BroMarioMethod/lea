@@ -34,6 +34,11 @@ from lea.calendars.proposal_builders import (
     build_calendar_show_event_proposal,
 )
 from lea.calendars.provider import CalendarProvider
+from lea.calendars.synchronization import (
+    CalendarSynchronizationInspectionResult,
+    CalendarSynchronizationResult,
+    CalendarSynchronizer,
+)
 
 __all__ = [
     "CalendarActionHandlerError",
@@ -51,6 +56,9 @@ __all__ = [
     "CalendarProviderInspectionResult",
     "CalendarProviderIssue",
     "CalendarShowEventResult",
+    "CalendarSynchronizationInspectionResult",
+    "CalendarSynchronizationResult",
+    "CalendarSynchronizer",
     "build_calendar_cancel_event_proposal",
     "build_calendar_create_event_proposal",
     "build_calendar_list_calendars_proposal",
