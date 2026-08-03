@@ -6,7 +6,10 @@ from lea.adapters.khal.events import (
     show_khal_calendar_event,
 )
 from lea.adapters.khal.inspection import inspect_khal
-from lea.adapters.khal.mutations import create_khal_calendar_event
+from lea.adapters.khal.mutations import (
+    create_khal_calendar_event,
+    modify_khal_calendar_event,
+)
 from lea.adapters.khal.runner import KhalRunner
 from lea.adapters.khal.vdirs import discover_khal_calendar_collections
 from lea.calendars import (
@@ -97,19 +100,11 @@ class KhalCalendarProvider:
         self,
         request: CalendarModifyRequest,
     ) -> CalendarMutationResult:
-        """Report that modification is not implemented in this read-only slice."""
+        """Modify one exact event through an atomic local-vdir mutation."""
         if not isinstance(request, CalendarModifyRequest):
             raise TypeError("request must be a CalendarModifyRequest value.")
 
-        return _unsupported_mutation(
-            operation="modify_event",
-            message=(
-                "Calendar event modification is not implemented by this "
-                "read-only khal provider."
-            ),
-            calendar_id=request.calendar_id,
-            event_uid=request.event_uid,
-        )
+        return modify_khal_calendar_event(self._config, request)
 
     def cancel_event(
         self,

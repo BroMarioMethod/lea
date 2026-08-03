@@ -18,6 +18,8 @@ from lea.adapters.khal.icalendar_parser import read_khal_calendar_item
 from lea.adapters.khal.vdirs import discover_khal_calendar_collections
 from lea.calendars import (
     CalendarCreateRequest,
+    CalendarEvent,
+    CalendarModifyRequest,
     CalendarMutationResult,
     CalendarProviderIssue,
 )
@@ -121,30 +123,219 @@ def create_khal_calendar_event(
     return CalendarMutationResult(success=True, event=parsed.event, issues=())
 
 
+def modify_khal_calendar_event(
+    config: KhalConfig,
+    request: CalendarModifyRequest,
+) -> CalendarMutationResult:
+    """Atomically modify one event selected by exact stable identity."""
+    if not isinstance(config, KhalConfig):
+        raise TypeError("config must be a KhalConfig value.")
+    if not isinstance(request, CalendarModifyRequest):
+        raise TypeError("request must be a CalendarModifyRequest value.")
+
+    found = _find_event_item(config, request.calendar_id, request.event_uid)
+    if isinstance(found, CalendarMutationResult):
+        return found
+    destination, existing = found
+    updated = CalendarEvent(
+        calendar_id=existing.calendar_id,
+        event_uid=existing.event_uid,
+        summary=request.summary if request.summary is not None else existing.summary,
+        timing=request.timing if request.timing is not None else existing.timing,
+        description=(
+            None
+            if request.clear_description
+            else request.description
+            if request.description is not None
+            else existing.description
+        ),
+        location=(
+            None
+            if request.clear_location
+            else request.location
+            if request.location is not None
+            else existing.location
+        ),
+        cancelled=existing.cancelled,
+    )
+
+    staged: Path | None = None
+    try:
+        original = destination.read_bytes()
+        staged = _write_staged_document(
+            destination.parent,
+            _render_event_values(updated),
+        )
+        parsed = read_khal_calendar_item(staged, calendar_id=request.calendar_id)
+        if not parsed.success or parsed.event != updated:
+            return _failure(
+                code="khal_calendar_event_readback_failed",
+                message="The modified calendar event failed canonical validation.",
+                calendar_id=request.calendar_id,
+                event_uid=request.event_uid,
+                operation="modify_event",
+            )
+        os.replace(staged, destination)
+        staged = None
+        _fsync_directory(destination.parent)
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
+        return _failure(
+            code="khal_calendar_event_modify_failed",
+            message="The local calendar event could not be replaced atomically.",
+            calendar_id=request.calendar_id,
+            event_uid=request.event_uid,
+            operation="modify_event",
+        )
+    finally:
+        if staged is not None:
+            with suppress(OSError):
+                staged.unlink(missing_ok=True)
+
+    readback = read_khal_calendar_item(destination, calendar_id=request.calendar_id)
+    if not readback.success or readback.event != updated:
+        with suppress(OSError):
+            replacement = _write_staged_document(destination.parent, original)
+            os.replace(replacement, destination)
+            _fsync_directory(destination.parent)
+        return _failure(
+            code="khal_calendar_event_readback_failed",
+            message=(
+                "The modified calendar event failed canonical read-back validation."
+            ),
+            calendar_id=request.calendar_id,
+            event_uid=request.event_uid,
+            operation="modify_event",
+        )
+    return CalendarMutationResult(success=True, event=readback.event, issues=())
+
+
+def _find_event_item(
+    config: KhalConfig,
+    calendar_id: str,
+    event_uid: str,
+) -> tuple[Path, CalendarEvent] | CalendarMutationResult:
+    """Resolve exactly one safe vdir item by stable composite identity."""
+    collections = discover_khal_calendar_collections(config)
+    if not collections.success:
+        return _failure_from_issues(collections.issues, operation="modify_event")
+    if calendar_id not in {item.calendar_id for item in collections.calendars}:
+        return _failure(
+            code="khal_calendar_not_found",
+            message="The requested calendar was not found.",
+            calendar_id=calendar_id,
+            event_uid=event_uid,
+            field="calendar_id",
+            operation="modify_event",
+        )
+
+    collection = config.vdirs_directory / calendar_id
+    try:
+        paths = tuple(
+            sorted(
+                (
+                    path
+                    for path in collection.iterdir()
+                    if not path.name.startswith(".") and path.suffix.lower() == ".ics"
+                ),
+                key=lambda path: path.name,
+            )
+        )
+    except OSError:
+        return _failure(
+            code="khal_calendar_collection_unreadable",
+            message="The selected calendar collection could not be enumerated.",
+            calendar_id=calendar_id,
+            event_uid=event_uid,
+            operation="modify_event",
+        )
+
+    matches: list[tuple[Path, CalendarEvent]] = []
+    for path in paths:
+        parsed = read_khal_calendar_item(path, calendar_id=calendar_id)
+        if not parsed.success:
+            return _failure_from_issues(parsed.issues, operation="modify_event")
+        if parsed.event is not None and parsed.event.event_uid == event_uid:
+            matches.append((path, parsed.event))
+    if not matches:
+        return _failure(
+            code="khal_calendar_event_not_found",
+            message=(
+                "No event matched the requested stable calendar and event identity."
+            ),
+            calendar_id=calendar_id,
+            event_uid=event_uid,
+            field="event_uid",
+            operation="modify_event",
+        )
+    if len(matches) != 1:
+        return _failure(
+            code="khal_calendar_event_identity_duplicate",
+            message="Multiple local vdir items claimed the requested event identity.",
+            calendar_id=calendar_id,
+            event_uid=event_uid,
+            field="event_uid",
+            operation="modify_event",
+        )
+    return matches[0]
+
+
+def _write_staged_document(directory: Path, document: bytes) -> Path:
+    """Write and sync one private replacement beside its destination."""
+    with NamedTemporaryFile(
+        mode="wb",
+        prefix=".lea-modify-",
+        suffix=".ics",
+        dir=directory,
+        delete=False,
+    ) as stream:
+        path = Path(stream.name)
+        os.chmod(path, 0o600)
+        stream.write(document)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return path
+
+
 def _render_event(request: CalendarCreateRequest, *, event_uid: str) -> bytes:
     """Render one standards-compliant single-event iCalendar document."""
+    return _render_event_values(
+        CalendarEvent(
+            calendar_id=request.calendar_id,
+            event_uid=event_uid,
+            summary=request.summary,
+            timing=request.timing,
+            description=request.description,
+            location=request.location,
+        )
+    )
+
+
+def _render_event_values(event: CalendarEvent) -> bytes:
+    """Render one canonical event projection as iCalendar."""
     module = import_module("icalendar")
     calendar: Any = vars(module)["Calendar"]()
     component: Any = vars(module)["Event"]()
     calendar.add("prodid", "-//LEA//Local calendar provider//EN")
     calendar.add("version", "2.0")
-    component.add("uid", event_uid)
-    component.add("summary", request.summary)
+    component.add("uid", event.event_uid)
+    component.add("summary", event.summary)
 
-    start = request.timing.start
-    end = request.timing.end
+    start = event.timing.start
+    end = event.timing.end
     if isinstance(start, datetime):
         assert isinstance(end, datetime)
-        zone = ZoneInfo(request.timing.timezone or "UTC")
+        zone = ZoneInfo(event.timing.timezone or "UTC")
         component.add("dtstart", start.astimezone(zone))
         component.add("dtend", end.astimezone(zone))
     else:
         component.add("dtstart", start)
         component.add("dtend", end)
-    if request.description is not None:
-        component.add("description", request.description)
-    if request.location is not None:
-        component.add("location", request.location)
+    if event.description is not None:
+        component.add("description", event.description)
+    if event.location is not None:
+        component.add("location", event.location)
+    if event.cancelled:
+        component.add("status", "CANCELLED")
     calendar.add_component(component)
     document = calendar.to_ical()
     if not isinstance(document, bytes):
@@ -177,6 +368,8 @@ def _fsync_directory(path: Path) -> None:
 
 def _failure_from_issues(
     issues: tuple[CalendarProviderIssue, ...],
+    *,
+    operation: str = _OPERATION,
 ) -> CalendarMutationResult:
     return CalendarMutationResult(
         success=False,
@@ -186,7 +379,7 @@ def _failure_from_issues(
                 code=issue.code,
                 message=issue.message,
                 provider=issue.provider,
-                operation=_OPERATION,
+                operation=operation,
                 calendar_id=issue.calendar_id,
                 event_uid=issue.event_uid,
                 field=issue.field,
@@ -204,6 +397,7 @@ def _failure(
     calendar_id: str,
     event_uid: str | None = None,
     field: str | None = None,
+    operation: str = _OPERATION,
 ) -> CalendarMutationResult:
     return CalendarMutationResult(
         success=False,
@@ -213,7 +407,7 @@ def _failure(
                 code=code,
                 message=message,
                 provider=_PROVIDER,
-                operation=_OPERATION,
+                operation=operation,
                 calendar_id=calendar_id,
                 event_uid=event_uid,
                 field=field,

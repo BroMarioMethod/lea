@@ -174,7 +174,7 @@ def test_provider_preserves_read_failure_results(
     assert result.issues[0].operation == "list_events"
 
 
-def test_provider_creates_events_but_other_mutations_remain_unsupported(
+def test_provider_creates_and_modifies_events_but_cancel_remains_unsupported(
     tmp_path: Path,
 ) -> None:
     """The read-only provider should satisfy the protocol without mutation."""
@@ -182,7 +182,6 @@ def test_provider_creates_events_but_other_mutations_remain_unsupported(
     collection = config.vdirs_directory / "personal"
     collection.mkdir()
     item = write_event(collection)
-    original = item.read_bytes()
     provider = KhalCalendarProvider(config)
     timing = CalendarEventTiming(
         start=date(2026, 8, 2),
@@ -215,10 +214,11 @@ def test_provider_creates_events_but_other_mutations_remain_unsupported(
     assert created.event.calendar_id == "personal"
     assert created.event.summary == "New event"
 
-    for result, operation in (
-        (modified, "modify_event"),
-        (cancelled, "cancel_event"),
-    ):
+    assert modified.success is True
+    assert modified.event is not None
+    assert modified.event.summary == "Changed event"
+
+    for result, operation in ((cancelled, "cancel_event"),):
         assert result.success is False
         assert result.event is None
         assert result.issues[0].code == "khal_operation_unsupported"
@@ -226,9 +226,8 @@ def test_provider_creates_events_but_other_mutations_remain_unsupported(
         assert result.issues[0].operation == operation
         assert result.issues[0].calendar_id == "personal"
 
-    assert modified.issues[0].event_uid == "event-uid"
     assert cancelled.issues[0].event_uid == "event-uid"
-    assert item.read_bytes() == original
+    assert b"SUMMARY:Changed event" in item.read_bytes()
     assert len(tuple(collection.glob("*.ics"))) == 2
 
 

@@ -3,8 +3,16 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from lea.adapters.khal import KhalConfig, create_khal_calendar_event
-from lea.calendars import CalendarCreateRequest, CalendarEventTiming
+from lea.adapters.khal import (
+    KhalConfig,
+    create_khal_calendar_event,
+    modify_khal_calendar_event,
+)
+from lea.calendars import (
+    CalendarCreateRequest,
+    CalendarEventTiming,
+    CalendarModifyRequest,
+)
 
 
 def _config(tmp_path: Path) -> KhalConfig:
@@ -131,3 +139,76 @@ def test_create_rejects_unsafe_generated_uid(tmp_path: Path) -> None:
     assert result.success is False
     assert result.issues[0].code == "khal_calendar_uid_generation_failed"
     assert not tuple(config.vdirs_directory.rglob("*.ics"))
+
+
+def test_modify_exact_event_preserves_identity_and_unmodified_fields(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    (config.vdirs_directory / "personal").mkdir()
+    created = create_khal_calendar_event(
+        config,
+        CalendarCreateRequest(
+            "personal",
+            "Original",
+            CalendarEventTiming(date(2026, 8, 2), date(2026, 8, 3)),
+            description="Description",
+            location="Office",
+        ),
+        uid_factory=lambda: "event-5@lea.local",
+    )
+    assert created.success
+
+    result = modify_khal_calendar_event(
+        config,
+        CalendarModifyRequest(
+            "personal",
+            "event-5@lea.local",
+            summary="Changed",
+            clear_location=True,
+        ),
+    )
+
+    assert result.success is True
+    assert result.event is not None
+    assert result.event.event_uid == "event-5@lea.local"
+    assert result.event.summary == "Changed"
+    assert result.event.description == "Description"
+    assert result.event.location is None
+    assert not tuple(config.vdirs_directory.rglob(".lea-modify-*"))
+
+
+def test_modify_fails_closed_for_missing_or_duplicate_identity(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    collection = config.vdirs_directory / "personal"
+    collection.mkdir()
+    request = CalendarCreateRequest(
+        "personal",
+        "Original",
+        CalendarEventTiming(date(2026, 8, 2), date(2026, 8, 3)),
+    )
+    created = create_khal_calendar_event(
+        config,
+        request,
+        uid_factory=lambda: "event-6@lea.local",
+    )
+    assert created.success
+    source = collection / "event-6@lea.local.ics"
+    duplicate = collection / "duplicate.ics"
+    duplicate.write_bytes(source.read_bytes())
+    original = source.read_bytes()
+
+    duplicate_result = modify_khal_calendar_event(
+        config,
+        CalendarModifyRequest("personal", "event-6@lea.local", summary="Changed"),
+    )
+    missing_result = modify_khal_calendar_event(
+        config,
+        CalendarModifyRequest("personal", "missing", summary="Changed"),
+    )
+
+    assert duplicate_result.success is False
+    assert duplicate_result.issues[0].code == ("khal_calendar_event_identity_duplicate")
+    assert missing_result.success is False
+    assert missing_result.issues[0].code == "khal_calendar_event_not_found"
+    assert source.read_bytes() == original
