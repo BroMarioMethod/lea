@@ -17,6 +17,7 @@ from lea.adapters.khal.contracts import KhalConfig
 from lea.adapters.khal.icalendar_parser import read_khal_calendar_item
 from lea.adapters.khal.vdirs import discover_khal_calendar_collections
 from lea.calendars import (
+    CalendarCancelRequest,
     CalendarCreateRequest,
     CalendarEvent,
     CalendarModifyRequest,
@@ -209,15 +210,96 @@ def modify_khal_calendar_event(
     return CalendarMutationResult(success=True, event=readback.event, issues=())
 
 
+def cancel_khal_calendar_event(
+    config: KhalConfig,
+    request: CalendarCancelRequest,
+) -> CalendarMutationResult:
+    """Atomically mark one exact local event as cancelled."""
+    if not isinstance(config, KhalConfig):
+        raise TypeError("config must be a KhalConfig value.")
+    if not isinstance(request, CalendarCancelRequest):
+        raise TypeError("request must be a CalendarCancelRequest value.")
+
+    found = _find_event_item(
+        config,
+        request.calendar_id,
+        request.event_uid,
+        operation="cancel_event",
+    )
+    if isinstance(found, CalendarMutationResult):
+        return found
+    destination, existing = found
+    cancelled = CalendarEvent(
+        calendar_id=existing.calendar_id,
+        event_uid=existing.event_uid,
+        summary=existing.summary,
+        timing=existing.timing,
+        description=existing.description,
+        location=existing.location,
+        cancelled=True,
+    )
+    if existing.cancelled:
+        return CalendarMutationResult(success=True, event=existing, issues=())
+
+    staged: Path | None = None
+    try:
+        original = destination.read_bytes()
+        staged = _write_staged_document(
+            destination.parent,
+            _render_event_values(cancelled),
+        )
+        parsed = read_khal_calendar_item(staged, calendar_id=request.calendar_id)
+        if not parsed.success or parsed.event != cancelled:
+            return _failure(
+                code="khal_calendar_event_readback_failed",
+                message="The cancelled event failed canonical validation.",
+                calendar_id=request.calendar_id,
+                event_uid=request.event_uid,
+                operation="cancel_event",
+            )
+        os.replace(staged, destination)
+        staged = None
+        _fsync_directory(destination.parent)
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
+        return _failure(
+            code="khal_calendar_event_cancel_failed",
+            message="The local calendar event could not be cancelled atomically.",
+            calendar_id=request.calendar_id,
+            event_uid=request.event_uid,
+            operation="cancel_event",
+        )
+    finally:
+        if staged is not None:
+            with suppress(OSError):
+                staged.unlink(missing_ok=True)
+
+    readback = read_khal_calendar_item(destination, calendar_id=request.calendar_id)
+    if not readback.success or readback.event != cancelled:
+        with suppress(OSError):
+            replacement = _write_staged_document(destination.parent, original)
+            os.replace(replacement, destination)
+            _fsync_directory(destination.parent)
+        return _failure(
+            code="khal_calendar_event_readback_failed",
+            message="The cancelled event failed canonical read-back validation.",
+            calendar_id=request.calendar_id,
+            event_uid=request.event_uid,
+            operation="cancel_event",
+        )
+    return CalendarMutationResult(success=True, event=readback.event, issues=())
+
+
 def _find_event_item(
     config: KhalConfig,
     calendar_id: str,
     event_uid: str,
+    *,
+    operation: str = "modify_event",
 ) -> tuple[Path, CalendarEvent] | CalendarMutationResult:
     """Resolve exactly one safe vdir item by stable composite identity."""
     collections = discover_khal_calendar_collections(config)
     if not collections.success:
-        return _failure_from_issues(collections.issues, operation="modify_event")
+        return _failure_from_issues(collections.issues, operation=operation)
     if calendar_id not in {item.calendar_id for item in collections.calendars}:
         return _failure(
             code="khal_calendar_not_found",
@@ -225,7 +307,7 @@ def _find_event_item(
             calendar_id=calendar_id,
             event_uid=event_uid,
             field="calendar_id",
-            operation="modify_event",
+            operation=operation,
         )
 
     collection = config.vdirs_directory / calendar_id
@@ -246,14 +328,14 @@ def _find_event_item(
             message="The selected calendar collection could not be enumerated.",
             calendar_id=calendar_id,
             event_uid=event_uid,
-            operation="modify_event",
+            operation=operation,
         )
 
     matches: list[tuple[Path, CalendarEvent]] = []
     for path in paths:
         parsed = read_khal_calendar_item(path, calendar_id=calendar_id)
         if not parsed.success:
-            return _failure_from_issues(parsed.issues, operation="modify_event")
+            return _failure_from_issues(parsed.issues, operation=operation)
         if parsed.event is not None and parsed.event.event_uid == event_uid:
             matches.append((path, parsed.event))
     if not matches:
@@ -265,7 +347,7 @@ def _find_event_item(
             calendar_id=calendar_id,
             event_uid=event_uid,
             field="event_uid",
-            operation="modify_event",
+            operation=operation,
         )
     if len(matches) != 1:
         return _failure(
@@ -274,7 +356,7 @@ def _find_event_item(
             calendar_id=calendar_id,
             event_uid=event_uid,
             field="event_uid",
-            operation="modify_event",
+            operation=operation,
         )
     return matches[0]
 

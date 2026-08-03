@@ -7,6 +7,7 @@ from lea.adapters.khal.events import (
 )
 from lea.adapters.khal.inspection import inspect_khal
 from lea.adapters.khal.mutations import (
+    cancel_khal_calendar_event,
     create_khal_calendar_event,
     modify_khal_calendar_event,
 )
@@ -110,19 +111,11 @@ class KhalCalendarProvider:
         self,
         request: CalendarCancelRequest,
     ) -> CalendarMutationResult:
-        """Report that cancellation is not implemented in this read-only slice."""
+        """Mark one exact local event as cancelled."""
         if not isinstance(request, CalendarCancelRequest):
             raise TypeError("request must be a CalendarCancelRequest value.")
 
-        return _unsupported_mutation(
-            operation="cancel_event",
-            message=(
-                "Calendar event cancellation is not implemented by this "
-                "read-only khal provider."
-            ),
-            calendar_id=request.calendar_id,
-            event_uid=request.event_uid,
-        )
+        return cancel_khal_calendar_event(self._config, request)
 
 
 def _unsupported_mutation(

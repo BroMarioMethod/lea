@@ -5,10 +5,12 @@ from pathlib import Path
 
 from lea.adapters.khal import (
     KhalConfig,
+    cancel_khal_calendar_event,
     create_khal_calendar_event,
     modify_khal_calendar_event,
 )
 from lea.calendars import (
+    CalendarCancelRequest,
     CalendarCreateRequest,
     CalendarEventTiming,
     CalendarModifyRequest,
@@ -212,3 +214,28 @@ def test_modify_fails_closed_for_missing_or_duplicate_identity(tmp_path: Path) -
     assert missing_result.success is False
     assert missing_result.issues[0].code == "khal_calendar_event_not_found"
     assert source.read_bytes() == original
+
+
+def test_cancel_exact_event_is_persistent_and_idempotent(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    (config.vdirs_directory / "personal").mkdir()
+    created = create_khal_calendar_event(
+        config,
+        CalendarCreateRequest(
+            "personal",
+            "Event",
+            CalendarEventTiming(date(2026, 8, 2), date(2026, 8, 3)),
+        ),
+        uid_factory=lambda: "event-7@lea.local",
+    )
+    assert created.success
+    request = CalendarCancelRequest("personal", "event-7@lea.local")
+
+    first = cancel_khal_calendar_event(config, request)
+    second = cancel_khal_calendar_event(config, request)
+
+    assert first.success is True
+    assert first.event is not None and first.event.cancelled is True
+    assert second == first
+    document = config.vdirs_directory / "personal" / "event-7@lea.local.ics"
+    assert b"STATUS:CANCELLED" in document.read_bytes()

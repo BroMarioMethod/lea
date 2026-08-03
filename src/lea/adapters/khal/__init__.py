@@ -22,6 +22,7 @@ from lea.adapters.khal.icalendar_parser import (
 )
 from lea.adapters.khal.inspection import inspect_khal
 from lea.adapters.khal.mutations import (
+    cancel_khal_calendar_event,
     create_khal_calendar_event,
     modify_khal_calendar_event,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "KhalRunResult",
     "KhalRunner",
     "build_khal_calendar_provider",
+    "cancel_khal_calendar_event",
     "create_khal_calendar_event",
     "discover_khal_calendar_collections",
     "inspect_khal",

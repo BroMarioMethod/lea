@@ -174,7 +174,7 @@ def test_provider_preserves_read_failure_results(
     assert result.issues[0].operation == "list_events"
 
 
-def test_provider_creates_and_modifies_events_but_cancel_remains_unsupported(
+def test_provider_executes_complete_local_mutation_lifecycle(
     tmp_path: Path,
 ) -> None:
     """The read-only provider should satisfy the protocol without mutation."""
@@ -218,15 +218,10 @@ def test_provider_creates_and_modifies_events_but_cancel_remains_unsupported(
     assert modified.event is not None
     assert modified.event.summary == "Changed event"
 
-    for result, operation in ((cancelled, "cancel_event"),):
-        assert result.success is False
-        assert result.event is None
-        assert result.issues[0].code == "khal_operation_unsupported"
-        assert result.issues[0].provider == "khal"
-        assert result.issues[0].operation == operation
-        assert result.issues[0].calendar_id == "personal"
-
-    assert cancelled.issues[0].event_uid == "event-uid"
+    assert cancelled.success is True
+    assert cancelled.event is not None
+    assert cancelled.event.cancelled is True
+    assert cancelled.event.event_uid == "event-uid"
     assert b"SUMMARY:Changed event" in item.read_bytes()
     assert len(tuple(collection.glob("*.ics"))) == 2
 
