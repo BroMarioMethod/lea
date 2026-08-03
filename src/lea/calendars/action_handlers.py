@@ -19,6 +19,7 @@ from lea.calendars.contracts import (
     CalendarShowEventResult,
 )
 from lea.calendars.provider import CalendarProvider
+from lea.calendars.synchronization import CalendarSynchronizer
 
 
 class CalendarActionHandlerError(RuntimeError):
@@ -170,6 +171,21 @@ def cancel_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
             event_uid=_required_identifier(parameters, "event_uid"),
         )
         return _mutation_output(provider.cancel_event(request))
+
+    return handle
+
+
+def synchronize_calendars_action_handler(
+    synchronizer: CalendarSynchronizer,
+) -> ActionHandler:
+    """Return a handler for one explicit ``calendar.sync`` proposal."""
+
+    def handle(proposal: ActionProposal) -> Mapping[str, object]:
+        _parameters(proposal, allowed=set())
+        result = synchronizer.synchronize()
+        if not result.success:
+            _raise_provider_failure(result.issues)
+        return {"synchronized": True}
 
     return handle
 

@@ -190,6 +190,24 @@ def build_calendar_cancel_event_proposal(
     )
 
 
+def build_calendar_sync_proposal(
+    *,
+    proposal_id: str,
+    source: str,
+    created_at: datetime,
+) -> ActionProposal:
+    """Build one medium-risk proposal for explicit calendar synchronization."""
+    return _proposal(
+        action="calendar.sync",
+        parameters={},
+        proposal_id=proposal_id,
+        source=source,
+        created_at=created_at,
+        reason="Synchronize configured calendars.",
+        risk_level=RiskLevel.MEDIUM,
+    )
+
+
 def _proposal(
     *,
     action: str,

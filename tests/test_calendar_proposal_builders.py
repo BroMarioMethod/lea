@@ -21,6 +21,7 @@ from lea.calendars import (
     build_calendar_list_events_proposal,
     build_calendar_modify_event_proposal,
     build_calendar_show_event_proposal,
+    build_calendar_sync_proposal,
 )
 
 PROPOSAL_ID = "11111111-1111-4111-8111-111111111111"
@@ -174,6 +175,20 @@ def test_modify_and_cancel_builders_are_medium_risk() -> None:
         "calendar_id": "personal",
         "event_uid": "event-1",
     }
+
+
+def test_sync_builder_is_explicit_medium_risk_action() -> None:
+    proposal = build_calendar_sync_proposal(
+        proposal_id=PROPOSAL_ID,
+        source=SOURCE,
+        created_at=CREATED_AT,
+    )
+
+    assert proposal.action == "calendar.sync"
+    assert proposal.risk_level is RiskLevel.MEDIUM
+    assert proposal.confirmation_policy is ConfirmationPolicy.WHEN_REQUIRED
+    assert proposal.reason == "Synchronize configured calendars."
+    assert dict(proposal.parameters) == {}
 
 
 @pytest.mark.parametrize(

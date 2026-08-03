@@ -24,6 +24,8 @@ from lea.calendars import (
     CalendarProviderInspectionResult,
     CalendarProviderIssue,
     CalendarShowEventResult,
+    CalendarSynchronizationInspectionResult,
+    CalendarSynchronizationResult,
     calendar_action_handler_registry,
     cancel_calendar_event_action_handler,
     create_calendar_event_action_handler,
@@ -31,6 +33,7 @@ from lea.calendars import (
     list_calendars_action_handler,
     modify_calendar_event_action_handler,
     show_calendar_event_action_handler,
+    synchronize_calendars_action_handler,
 )
 
 PROPOSAL_ID = "11111111-1111-4111-8111-111111111111"
@@ -281,6 +284,44 @@ def test_invalid_mutation_timing_fails_before_provider_call() -> None:
             )
         )
     assert provider.created == []
+
+
+def test_sync_handler_invokes_only_explicit_execution_boundary() -> None:
+    class Synchronizer:
+        calls = 0
+
+        def inspect(self) -> CalendarSynchronizationInspectionResult:
+            return CalendarSynchronizationInspectionResult(True, "test", "1", ())
+
+        def synchronize(self) -> CalendarSynchronizationResult:
+            self.calls += 1
+            return CalendarSynchronizationResult(True, ())
+
+    synchronizer = Synchronizer()
+    handler = synchronize_calendars_action_handler(synchronizer)
+    assert synchronizer.calls == 0
+
+    output = handler(_proposal("calendar.sync", {}))
+
+    assert synchronizer.calls == 1
+    assert output == {"synchronized": True}
+
+
+def test_sync_handler_propagates_structured_failure() -> None:
+    class FailedSynchronizer:
+        def inspect(self) -> CalendarSynchronizationInspectionResult:
+            raise AssertionError
+
+        def synchronize(self) -> CalendarSynchronizationResult:
+            return CalendarSynchronizationResult(
+                False,
+                (CalendarProviderIssue("sync_conflict", "Synchronization failed."),),
+            )
+
+    with pytest.raises(CalendarActionHandlerError, match="sync_conflict"):
+        synchronize_calendars_action_handler(FailedSynchronizer())(
+            _proposal("calendar.sync", {})
+        )
 
 
 def test_list_calendars_serialises_provider_projections() -> None:

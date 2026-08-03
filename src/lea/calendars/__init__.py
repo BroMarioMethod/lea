@@ -9,6 +9,7 @@ from lea.calendars.action_handlers import (
     list_calendars_action_handler,
     modify_calendar_event_action_handler,
     show_calendar_event_action_handler,
+    synchronize_calendars_action_handler,
 )
 from lea.calendars.contracts import (
     CalendarCancelRequest,
@@ -32,6 +33,7 @@ from lea.calendars.proposal_builders import (
     build_calendar_list_events_proposal,
     build_calendar_modify_event_proposal,
     build_calendar_show_event_proposal,
+    build_calendar_sync_proposal,
 )
 from lea.calendars.provider import CalendarProvider
 from lea.calendars.synchronization import (
@@ -65,6 +67,7 @@ __all__ = [
     "build_calendar_list_events_proposal",
     "build_calendar_modify_event_proposal",
     "build_calendar_show_event_proposal",
+    "build_calendar_sync_proposal",
     "calendar_action_handler_registry",
     "cancel_calendar_event_action_handler",
     "create_calendar_event_action_handler",
@@ -72,4 +75,5 @@ __all__ = [
     "list_calendars_action_handler",
     "modify_calendar_event_action_handler",
     "show_calendar_event_action_handler",
+    "synchronize_calendars_action_handler",
 ]
