@@ -24,6 +24,9 @@ class ChannelCapability(StrEnum):
     RUNTIME_STATUS_READ = "Runtime.Status.Read"
 
     CALENDAR_READ = "Calendar.Read"
+    CALENDAR_WRITE = "Calendar.Write"
+    CALENDAR_DELETE = "Calendar.Delete"
+    CALENDAR_SYNC = "Calendar.Sync"
 
     TASKS_READ = "Tasks.Read"
     TASKS_WRITE = "Tasks.Write"
@@ -157,6 +160,7 @@ _DEFAULT_ROLE_POLICIES = (
         capabilities=(
             ChannelCapability.RUNTIME_STATUS_READ,
             ChannelCapability.CALENDAR_READ,
+            ChannelCapability.CALENDAR_WRITE,
             ChannelCapability.TASKS_READ,
             ChannelCapability.TASKS_WRITE,
             ChannelCapability.PROPOSALS_READ,
