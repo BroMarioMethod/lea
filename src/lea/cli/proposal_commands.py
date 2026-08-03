@@ -8,12 +8,22 @@ from typing import cast
 
 from lea.actions import (
     ActionHandlerRegistry,
+    ActionProposal,
     ActionStatus,
     ConfirmationDecision,
     action_execution_result_to_dict,
     proposal_to_dict,
 )
+from lea.adapters.khal import (
+    KhalCalendarProviderFactoryConfig,
+    build_khal_calendar_provider,
+)
+from lea.adapters.vdirsyncer import build_vdirsyncer_calendar_synchronizer
 from lea.audit import IntegrityJsonlAuditStore, generate_event_id
+from lea.calendars import (
+    calendar_action_handler_registry,
+    synchronize_calendars_action_handler,
+)
 from lea.cli.contracts import CliIssue, CliResult, JsonValue, LocalCliExitCode
 from lea.cli.task_provider import (
     TaskProviderDependencies,
@@ -44,6 +54,15 @@ ExecutionOrchestratorFactory = Callable[
     [ActionHandlerRegistry, IntegrityJsonlAuditStore],
     ActionOrchestrator,
 ]
+CalendarRegistryBuilder = Callable[
+    [RuntimeConfig, ActionProposal],
+    ActionHandlerRegistry | CliResult,
+]
+
+_CALENDAR_INSTALLATION_RECORD = Path("/var/lib/lea/install/calendar-toolchain.json")
+_CALENDAR_TOOLS_ROOT = Path("/opt/lea-tools/calendar")
+_CALENDAR_CONFIGURATION_DIRECTORY = Path("/etc/lea/calendar")
+_CALENDAR_STATE_ROOT = Path("/var/lib/lea/calendar")
 
 
 def _runtime_audit_store(config: RuntimeConfig) -> IntegrityJsonlAuditStore:
@@ -85,6 +104,7 @@ class ProposalCommandDependencies:
         _runtime_execution_orchestrator
     )
     task_provider_dependencies: TaskProviderDependencies | None = None
+    build_calendar_registry: CalendarRegistryBuilder | None = None
 
 
 def execute_proposal_list(
@@ -320,15 +340,17 @@ def execute_proposal_execute(
             },
         )
 
-    provider_result = load_task_provider(
+    registry_result = _execution_registry(
+        proposal,
+        config=config,
         config_path=config_path,
         expected_profile=expected_profile,
-        dependencies=resolved.task_provider_dependencies,
+        dependencies=resolved,
     )
-    if isinstance(provider_result, CliResult):
+    if isinstance(registry_result, CliResult):
         return CliResult.failed(
-            exit_code=provider_result.exit_code,
-            issues=provider_result.issues,
+            exit_code=registry_result.exit_code,
+            issues=registry_result.issues,
             data={
                 "proposal": proposal_to_dict(proposal),
                 "execution": None,
@@ -338,7 +360,7 @@ def execute_proposal_execute(
         )
 
     try:
-        registry = task_action_handler_registry(provider_result)
+        registry = registry_result
         audit_store = resolved.create_audit_store(config)
         orchestrator = resolved.create_execution_orchestrator(registry, audit_store)
         orchestration = orchestrator.execute(proposal)
@@ -451,6 +473,81 @@ def execute_proposal_execute(
             ),
         ),
         data=cast(JsonValue, data),
+    )
+
+
+def _execution_registry(
+    proposal: ActionProposal,
+    *,
+    config: RuntimeConfig,
+    config_path: Path,
+    expected_profile: RuntimeProfile | None,
+    dependencies: ProposalCommandDependencies,
+) -> ActionHandlerRegistry | CliResult:
+    """Build only the provider registry required by the proposal namespace."""
+    if proposal.action.startswith("task."):
+        provider = load_task_provider(
+            config_path=config_path,
+            expected_profile=expected_profile,
+            dependencies=dependencies.task_provider_dependencies,
+        )
+        if isinstance(provider, CliResult):
+            return provider
+        return task_action_handler_registry(provider)
+    if proposal.action.startswith("calendar."):
+        builder = dependencies.build_calendar_registry or _calendar_registry
+        return builder(config, proposal)
+    return CliResult.failed(
+        exit_code=LocalCliExitCode.APPLICATION_ERROR,
+        issues=(
+            CliIssue(
+                code="proposal_action_unsupported",
+                message="The proposal action namespace is not executable.",
+                field="action",
+            ),
+        ),
+    )
+
+
+def _calendar_registry(
+    config: RuntimeConfig,
+    proposal: ActionProposal,
+) -> ActionHandlerRegistry | CliResult:
+    """Construct verified system calendar handlers without repair."""
+    if config.profile is not RuntimeProfile.SYSTEM:
+        return _calendar_registry_failure(
+            "calendar_runtime_unavailable",
+            "Calendar proposal execution requires the system runtime profile.",
+        )
+    factory_config = KhalCalendarProviderFactoryConfig(
+        installation_record=_CALENDAR_INSTALLATION_RECORD,
+        tools_root=_CALENDAR_TOOLS_ROOT,
+        configuration_directory=_CALENDAR_CONFIGURATION_DIRECTORY,
+        state_root=_CALENDAR_STATE_ROOT,
+        working_directory=_CALENDAR_STATE_ROOT,
+        display_timezone=config.display_timezone,
+    )
+    built = build_khal_calendar_provider(factory_config)
+    if not built.success or built.provider is None:
+        issue = built.issues[0]
+        return _calendar_registry_failure(issue.code, issue.message)
+    registry = calendar_action_handler_registry(built.provider)
+    if proposal.action == "calendar.sync":
+        synchronized = build_vdirsyncer_calendar_synchronizer(factory_config)
+        if not synchronized.success or synchronized.synchronizer is None:
+            issue = synchronized.issues[0]
+            return _calendar_registry_failure(issue.code, issue.message)
+        registry.register(
+            "calendar.sync",
+            synchronize_calendars_action_handler(synchronized.synchronizer),
+        )
+    return registry
+
+
+def _calendar_registry_failure(code: str, message: str) -> CliResult:
+    return CliResult.failed(
+        exit_code=LocalCliExitCode.CONFIGURATION_ERROR,
+        issues=(CliIssue(code=code, message=message),),
     )
 
 

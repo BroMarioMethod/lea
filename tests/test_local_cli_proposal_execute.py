@@ -3,8 +3,15 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from lea.actions import ActionProposal, ActionStatus
+from lea.actions import ActionHandlerRegistry, ActionProposal, ActionStatus
 from lea.audit import IntegrityJsonlAuditStore
+from lea.calendars import (
+    CalendarCreateRequest,
+    CalendarEvent,
+    CalendarEventTiming,
+    CalendarMutationResult,
+    create_calendar_event_action_handler,
+)
 from lea.cli import LocalCliExitCode
 from lea.cli.proposal_commands import (
     ProposalCommandDependencies,
@@ -96,6 +103,9 @@ def _dependencies(
     provider: RecordingProvider,
     *,
     status: ActionStatus = ActionStatus.APPROVED,
+    action: str = "task.create",
+    parameters: dict[str, object] | None = None,
+    calendar_registry: ActionHandlerRegistry | None = None,
 ) -> ProposalCommandDependencies:
     configuration = _configuration(tmp_path)
     assert configuration.config is not None
@@ -103,8 +113,8 @@ def _dependencies(
     repository = MarkdownProposalRepository(config.paths.proposal_dir)
     proposal = ActionProposal(
         proposal_id=PROPOSAL_ID,
-        action="task.create",
-        parameters={"description": "Execute proposal task"},
+        action=action,
+        parameters=parameters or {"description": "Execute proposal task"},
         status=status,
         source="test",
         created_at=datetime(2026, 7, 22, 10, 0, tzinfo=UTC),
@@ -124,6 +134,11 @@ def _dependencies(
             load_configuration=lambda path: configuration,
             read_installation_record=lambda path: (_record(tmp_path), ()),
             create_provider=lambda provider_config: provider,
+        ),
+        build_calendar_registry=(
+            (lambda _runtime, _proposal: calendar_registry)
+            if calendar_registry is not None
+            else None
         ),
     )
 
@@ -169,3 +184,67 @@ def test_execute_rejects_non_approved_proposal(tmp_path: Path) -> None:
     )
     assert result.exit_code is LocalCliExitCode.APPLICATION_ERROR
     assert result.issues[0].code == "execution_rejected"
+
+
+def test_execute_calendar_proposal_without_loading_task_provider(
+    tmp_path: Path,
+) -> None:
+    class CalendarProvider:
+        def __init__(self) -> None:
+            self.requests: list[CalendarCreateRequest] = []
+
+        def create_event(
+            self, request: CalendarCreateRequest
+        ) -> CalendarMutationResult:
+            self.requests.append(request)
+            return CalendarMutationResult(
+                True,
+                CalendarEvent(
+                    request.calendar_id,
+                    "calendar-event",
+                    request.summary,
+                    request.timing,
+                ),
+                (),
+            )
+
+    provider = CalendarProvider()
+    registry = ActionHandlerRegistry()
+    registry.register(
+        "calendar.create",
+        create_calendar_event_action_handler(provider),  # type: ignore[arg-type]
+    )
+    timing = {
+        "start": "2026-08-02",
+        "end": "2026-08-03",
+        "all_day": True,
+        "timezone": None,
+    }
+    result = execute_proposal_execute(
+        config_path=tmp_path / "lea.toml",
+        expected_profile=RuntimeProfile.TEST,
+        proposal_id=PROPOSAL_ID,
+        dependencies=_dependencies(
+            tmp_path,
+            _provider(),
+            action="calendar.create",
+            parameters={
+                "calendar_id": "personal",
+                "summary": "Calendar event",
+                "timing": timing,
+            },
+            calendar_registry=registry,
+        ),
+    )
+
+    assert result.success is True
+    assert provider.requests == [
+        CalendarCreateRequest(
+            "personal",
+            "Calendar event",
+            CalendarEventTiming(
+                datetime(2026, 8, 2).date(),
+                datetime(2026, 8, 3).date(),
+            ),
+        )
+    ]
