@@ -174,7 +174,7 @@ def test_provider_preserves_read_failure_results(
     assert result.issues[0].operation == "list_events"
 
 
-def test_mutations_return_explicit_unsupported_results_without_writing(
+def test_provider_creates_events_but_other_mutations_remain_unsupported(
     tmp_path: Path,
 ) -> None:
     """The read-only provider should satisfy the protocol without mutation."""
@@ -210,8 +210,12 @@ def test_mutations_return_explicit_unsupported_results_without_writing(
         )
     )
 
+    assert created.success is True
+    assert created.event is not None
+    assert created.event.calendar_id == "personal"
+    assert created.event.summary == "New event"
+
     for result, operation in (
-        (created, "create_event"),
         (modified, "modify_event"),
         (cancelled, "cancel_event"),
     ):
@@ -222,11 +226,10 @@ def test_mutations_return_explicit_unsupported_results_without_writing(
         assert result.issues[0].operation == operation
         assert result.issues[0].calendar_id == "personal"
 
-    assert created.issues[0].event_uid is None
     assert modified.issues[0].event_uid == "event-uid"
     assert cancelled.issues[0].event_uid == "event-uid"
     assert item.read_bytes() == original
-    assert tuple(path.name for path in collection.iterdir()) == ("event.ics",)
+    assert len(tuple(collection.glob("*.ics"))) == 2
 
 
 def test_provider_rejects_mismatched_runner_configuration(

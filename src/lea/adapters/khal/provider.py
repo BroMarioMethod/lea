@@ -1,4 +1,4 @@
-"""Read-only provider-neutral calendar access through khal and local vdirs."""
+"""Provider-neutral calendar access through khal and local vdirs."""
 
 from lea.adapters.khal.contracts import KhalConfig
 from lea.adapters.khal.events import (
@@ -6,6 +6,7 @@ from lea.adapters.khal.events import (
     show_khal_calendar_event,
 )
 from lea.adapters.khal.inspection import inspect_khal
+from lea.adapters.khal.mutations import create_khal_calendar_event
 from lea.adapters.khal.runner import KhalRunner
 from lea.adapters.khal.vdirs import discover_khal_calendar_collections
 from lea.calendars import (
@@ -86,19 +87,11 @@ class KhalCalendarProvider:
         self,
         request: CalendarCreateRequest,
     ) -> CalendarMutationResult:
-        """Report that creation is not implemented in this read-only slice."""
+        """Create one event through an atomic local-vdir mutation."""
         if not isinstance(request, CalendarCreateRequest):
             raise TypeError("request must be a CalendarCreateRequest value.")
 
-        return _unsupported_mutation(
-            operation="create_event",
-            message=(
-                "Calendar event creation is not implemented by this "
-                "read-only khal provider."
-            ),
-            calendar_id=request.calendar_id,
-            event_uid=None,
-        )
+        return create_khal_calendar_event(self._config, request)
 
     def modify_event(
         self,
