@@ -12,6 +12,7 @@ from lea.adapters.khal import (
     KhalCalendarProviderFactoryConfig,
     build_khal_calendar_provider,
 )
+from lea.adapters.vdirsyncer import build_vdirsyncer_calendar_synchronizer
 from lea.calendars import CalendarProviderIssue
 from lea.installers.calendar.configuration import (
     render_calendar_khal_configuration,
@@ -208,7 +209,47 @@ def test_builds_managed_provider_from_exact_record_and_runtime(
     assert result.provider.config.vdirs_directory == (config.state_root / "vdirs")
     assert result.provider.config.state_directory == (config.state_root / "khal")
     assert result.provider.config.display_timezone == "Africa/Gaborone"
-    assert result.issues == ()
+
+
+def test_builds_synchronizer_from_same_verified_runtime_evidence(
+    tmp_path: Path,
+) -> None:
+    config = make_factory_config(tmp_path)
+    record = managed_record(config)
+    make_executable(
+        record.vdirsyncer_executable,
+        (f"#!{sys.executable}\nprint('vdirsyncer, version {VDIRSYNCER_VERSION}')\n"),
+    )
+    write_record(config, record)
+    (config.configuration_directory / "vdirsyncer.conf").write_text(
+        "[general]\n",
+        encoding="utf-8",
+    )
+
+    result = build_vdirsyncer_calendar_synchronizer(config)
+
+    assert result.success is True
+    assert result.synchronizer is not None
+    assert result.synchronizer.inspect().available is True
+    assert not tuple(config.working_directory.iterdir())
+
+
+def test_synchronizer_factory_requires_managed_configuration(
+    tmp_path: Path,
+) -> None:
+    config = make_factory_config(tmp_path)
+    record = managed_record(config)
+    make_executable(
+        record.vdirsyncer_executable,
+        (f"#!{sys.executable}\nprint('vdirsyncer, version {VDIRSYNCER_VERSION}')\n"),
+    )
+    write_record(config, record)
+
+    result = build_vdirsyncer_calendar_synchronizer(config)
+
+    assert result.success is False
+    assert result.synchronizer is None
+    assert result.issues[0].code == "vdirsyncer_configuration_invalid"
 
 
 def test_builds_external_provider_after_digest_verification(
