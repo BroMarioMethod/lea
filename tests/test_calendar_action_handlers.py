@@ -1,4 +1,4 @@
-"""Tests for provider-neutral read-only calendar action handlers."""
+"""Tests for provider-neutral calendar action handlers."""
 
 from datetime import UTC, date, datetime
 
@@ -25,8 +25,11 @@ from lea.calendars import (
     CalendarProviderIssue,
     CalendarShowEventResult,
     calendar_action_handler_registry,
+    cancel_calendar_event_action_handler,
+    create_calendar_event_action_handler,
     list_calendar_events_action_handler,
     list_calendars_action_handler,
+    modify_calendar_event_action_handler,
     show_calendar_event_action_handler,
 )
 
@@ -36,12 +39,15 @@ COMPLETED_AT = datetime(2026, 8, 1, 8, 1, tzinfo=UTC)
 
 
 class RecordingProvider:
-    """Record read-only calendar action calls."""
+    """Record calendar action calls."""
 
     def __init__(self) -> None:
         self.calendar_list_calls = 0
         self.event_queries: list[CalendarEventQuery] = []
         self.shown: list[tuple[str, str]] = []
+        self.created: list[CalendarCreateRequest] = []
+        self.modified: list[CalendarModifyRequest] = []
+        self.cancelled: list[CalendarCancelRequest] = []
         self.failure: CalendarProviderIssue | None = None
 
     def inspect(self) -> CalendarProviderInspectionResult:
@@ -124,19 +130,22 @@ class RecordingProvider:
         self,
         request: CalendarCreateRequest,
     ) -> CalendarMutationResult:
-        raise AssertionError("Read-action tests must not create events.")
+        self.created.append(request)
+        return CalendarMutationResult(True, _timed_event(), ())
 
     def modify_event(
         self,
         request: CalendarModifyRequest,
     ) -> CalendarMutationResult:
-        raise AssertionError("Read-action tests must not modify events.")
+        self.modified.append(request)
+        return CalendarMutationResult(True, _timed_event(), ())
 
     def cancel_event(
         self,
         request: CalendarCancelRequest,
     ) -> CalendarMutationResult:
-        raise AssertionError("Read-action tests must not cancel events.")
+        self.cancelled.append(request)
+        return CalendarMutationResult(True, _all_day_event(), ())
 
 
 def _proposal(
@@ -186,15 +195,92 @@ def _all_day_event() -> CalendarEvent:
     )
 
 
-def test_registry_contains_three_read_only_calendar_handlers() -> None:
-    """The calendar namespace should expose only completed read actions."""
+def test_registry_contains_calendar_read_and_mutation_handlers() -> None:
+    """The calendar namespace should expose completed provider actions."""
     registry = calendar_action_handler_registry(RecordingProvider())
 
-    assert len(registry) == 3
+    assert len(registry) == 6
     assert "calendar.list_calendars" in registry
     assert "calendar.list_events" in registry
     assert "calendar.show_event" in registry
-    assert "calendar.create" not in registry
+    assert "calendar.create" in registry
+    assert "calendar.modify" in registry
+    assert "calendar.cancel" in registry
+
+
+def test_create_handler_reconstructs_canonical_request() -> None:
+    provider = RecordingProvider()
+    output = create_calendar_event_action_handler(provider)(
+        _proposal(
+            "calendar.create",
+            {
+                "calendar_id": "personal",
+                "summary": "Appointment",
+                "timing": {
+                    "start": "2026-08-02",
+                    "end": "2026-08-03",
+                    "all_day": True,
+                    "timezone": None,
+                },
+            },
+        )
+    )
+
+    assert provider.created == [
+        CalendarCreateRequest(
+            "personal",
+            "Appointment",
+            CalendarEventTiming(date(2026, 8, 2), date(2026, 8, 3)),
+        )
+    ]
+    assert output is not None
+    assert output["event"] is not None
+
+
+def test_modify_and_cancel_handlers_preserve_exact_identity() -> None:
+    provider = RecordingProvider()
+    modify_calendar_event_action_handler(provider)(
+        _proposal(
+            "calendar.modify",
+            {
+                "calendar_id": "personal",
+                "event_uid": "event-1",
+                "clear_location": True,
+            },
+        )
+    )
+    cancel_calendar_event_action_handler(provider)(
+        _proposal(
+            "calendar.cancel",
+            {"calendar_id": "personal", "event_uid": "event-1"},
+        )
+    )
+
+    assert provider.modified == [
+        CalendarModifyRequest("personal", "event-1", clear_location=True)
+    ]
+    assert provider.cancelled == [CalendarCancelRequest("personal", "event-1")]
+
+
+def test_invalid_mutation_timing_fails_before_provider_call() -> None:
+    provider = RecordingProvider()
+    with pytest.raises(CalendarActionHandlerError, match="timing"):
+        create_calendar_event_action_handler(provider)(
+            _proposal(
+                "calendar.create",
+                {
+                    "calendar_id": "personal",
+                    "summary": "Appointment",
+                    "timing": {
+                        "start": "2026-08-02T08:00:00+02:00",
+                        "end": "2026-08-02T09:00:00+02:00",
+                        "all_day": False,
+                        "timezone": "Africa/Gaborone",
+                    },
+                },
+            )
+        )
+    assert provider.created == []
 
 
 def test_list_calendars_serialises_provider_projections() -> None:

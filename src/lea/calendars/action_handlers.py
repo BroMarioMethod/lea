@@ -1,16 +1,20 @@
-"""Provider-neutral read-only calendar action handlers."""
+"""Provider-neutral calendar action handlers."""
 
 from collections.abc import Mapping
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from lea.actions import ActionHandler, ActionHandlerRegistry, ActionProposal
 from lea.calendars.contracts import (
+    CalendarCancelRequest,
     CalendarCollection,
+    CalendarCreateRequest,
     CalendarEvent,
     CalendarEventQuery,
     CalendarEventTiming,
     CalendarListCalendarsResult,
     CalendarListEventsResult,
+    CalendarModifyRequest,
+    CalendarMutationResult,
     CalendarProviderIssue,
     CalendarShowEventResult,
 )
@@ -104,10 +108,76 @@ def show_calendar_event_action_handler(
     return handle
 
 
+def create_calendar_event_action_handler(provider: CalendarProvider) -> ActionHandler:
+    """Return a handler for one ``calendar.create`` proposal."""
+
+    def handle(proposal: ActionProposal) -> Mapping[str, object]:
+        parameters = _parameters(
+            proposal,
+            allowed={"calendar_id", "summary", "timing", "description", "location"},
+        )
+        request = CalendarCreateRequest(
+            calendar_id=_required_identifier(parameters, "calendar_id"),
+            summary=_required_text(parameters, "summary"),
+            timing=_required_timing(parameters, "timing"),
+            description=_optional_text(parameters, "description"),
+            location=_optional_text(parameters, "location"),
+        )
+        return _mutation_output(provider.create_event(request))
+
+    return handle
+
+
+def modify_calendar_event_action_handler(provider: CalendarProvider) -> ActionHandler:
+    """Return a handler for one ``calendar.modify`` proposal."""
+
+    def handle(proposal: ActionProposal) -> Mapping[str, object]:
+        parameters = _parameters(
+            proposal,
+            allowed={
+                "calendar_id",
+                "event_uid",
+                "summary",
+                "timing",
+                "description",
+                "clear_description",
+                "location",
+                "clear_location",
+            },
+        )
+        request = CalendarModifyRequest(
+            calendar_id=_required_identifier(parameters, "calendar_id"),
+            event_uid=_required_identifier(parameters, "event_uid"),
+            summary=_optional_text(parameters, "summary"),
+            timing=_optional_timing(parameters, "timing"),
+            description=_optional_text(parameters, "description"),
+            clear_description=_optional_boolean(parameters, "clear_description"),
+            location=_optional_text(parameters, "location"),
+            clear_location=_optional_boolean(parameters, "clear_location"),
+        )
+        return _mutation_output(provider.modify_event(request))
+
+    return handle
+
+
+def cancel_calendar_event_action_handler(provider: CalendarProvider) -> ActionHandler:
+    """Return a handler for one ``calendar.cancel`` proposal."""
+
+    def handle(proposal: ActionProposal) -> Mapping[str, object]:
+        parameters = _parameters(proposal, allowed={"calendar_id", "event_uid"})
+        request = CalendarCancelRequest(
+            calendar_id=_required_identifier(parameters, "calendar_id"),
+            event_uid=_required_identifier(parameters, "event_uid"),
+        )
+        return _mutation_output(provider.cancel_event(request))
+
+    return handle
+
+
 def calendar_action_handler_registry(
     provider: CalendarProvider,
 ) -> ActionHandlerRegistry:
-    """Return the canonical read-only calendar action-handler registry."""
+    """Return the canonical calendar action-handler registry."""
     registry = ActionHandlerRegistry()
     registry.register(
         "calendar.list_calendars",
@@ -121,6 +191,9 @@ def calendar_action_handler_registry(
         "calendar.show_event",
         show_calendar_event_action_handler(provider),
     )
+    registry.register("calendar.create", create_calendar_event_action_handler(provider))
+    registry.register("calendar.modify", modify_calendar_event_action_handler(provider))
+    registry.register("calendar.cancel", cancel_calendar_event_action_handler(provider))
     return registry
 
 
@@ -248,6 +321,93 @@ def _optional_boolean(
     return value
 
 
+def _required_text(parameters: Mapping[str, object], field: str) -> str:
+    """Return one required non-empty text value."""
+    value = parameters.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message=f"{field} must be a non-empty string.",
+        )
+    return value
+
+
+def _optional_text(parameters: Mapping[str, object], field: str) -> str | None:
+    """Return one optional non-empty text value."""
+    if field not in parameters:
+        return None
+    return _required_text(parameters, field)
+
+
+def _required_timing(
+    parameters: Mapping[str, object], field: str
+) -> CalendarEventTiming:
+    """Parse one explicit canonical all-day or timed interval."""
+    value = parameters.get(field)
+    if not isinstance(value, Mapping) or set(value) != {
+        "start",
+        "end",
+        "all_day",
+        "timezone",
+    }:
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message=f"{field} must be a canonical calendar timing object.",
+        )
+
+    all_day = value.get("all_day")
+    start = value.get("start")
+    end = value.get("end")
+    timezone = value.get("timezone")
+    if (
+        not isinstance(all_day, bool)
+        or not isinstance(start, str)
+        or not isinstance(end, str)
+    ):
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message=f"{field} contains invalid temporal values.",
+        )
+
+    try:
+        if all_day:
+            if timezone is not None:
+                raise ValueError
+            parsed_start: date | datetime = date.fromisoformat(start)
+            parsed_end: date | datetime = date.fromisoformat(end)
+            if parsed_start.isoformat() != start or parsed_end.isoformat() != end:
+                raise ValueError
+        else:
+            if not isinstance(timezone, str):
+                raise ValueError
+            parsed_start = datetime.fromisoformat(start)
+            parsed_end = datetime.fromisoformat(end)
+            if (
+                parsed_start.tzinfo is None
+                or parsed_end.tzinfo is None
+                or parsed_start.utcoffset() != UTC.utcoffset(parsed_start)
+                or parsed_end.utcoffset() != UTC.utcoffset(parsed_end)
+                or parsed_start.isoformat() != start
+                or parsed_end.isoformat() != end
+            ):
+                raise ValueError
+        return CalendarEventTiming(parsed_start, parsed_end, timezone)
+    except (TypeError, ValueError) as error:
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message=f"{field} must contain a valid canonical interval.",
+        ) from error
+
+
+def _optional_timing(
+    parameters: Mapping[str, object], field: str
+) -> CalendarEventTiming | None:
+    """Parse one optional canonical event interval."""
+    if field not in parameters:
+        return None
+    return _required_timing(parameters, field)
+
+
 def _calendar_list_output(
     result: CalendarListCalendarsResult,
 ) -> Mapping[str, object]:
@@ -281,6 +441,18 @@ def _show_event_output(
             message="Successful exact-event lookup returned no event.",
         )
 
+    return {"event": _event_to_dict(result.event)}
+
+
+def _mutation_output(result: CalendarMutationResult) -> Mapping[str, object]:
+    """Map one provider mutation result to action output."""
+    if not result.success:
+        _raise_provider_failure(result.issues)
+    if result.event is None:
+        raise CalendarActionHandlerError(
+            code="calendar_action_result_invalid",
+            message="Successful calendar mutation returned no event.",
+        )
     return {"event": _event_to_dict(result.event)}
 
 

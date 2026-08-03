@@ -1,4 +1,4 @@
-"""Tests for deterministic calendar read proposal builders."""
+"""Tests for deterministic calendar proposal builders."""
 
 from datetime import UTC, date, datetime
 
@@ -10,9 +10,16 @@ from lea.actions import (
     RiskLevel,
 )
 from lea.calendars import (
+    CalendarCancelRequest,
+    CalendarCreateRequest,
     CalendarEventQuery,
+    CalendarEventTiming,
+    CalendarModifyRequest,
+    build_calendar_cancel_event_proposal,
+    build_calendar_create_event_proposal,
     build_calendar_list_calendars_proposal,
     build_calendar_list_events_proposal,
+    build_calendar_modify_event_proposal,
     build_calendar_show_event_proposal,
 )
 
@@ -100,6 +107,72 @@ def test_show_event_builder_preserves_composite_identity() -> None:
     assert dict(proposal.parameters) == {
         "calendar_id": "personal",
         "event_uid": "event-uid",
+    }
+
+
+def test_create_event_builder_preserves_canonical_mutation() -> None:
+    proposal = build_calendar_create_event_proposal(
+        CalendarCreateRequest(
+            calendar_id="personal",
+            summary="Appointment",
+            timing=CalendarEventTiming(
+                datetime(2026, 8, 2, 8, tzinfo=UTC),
+                datetime(2026, 8, 2, 9, tzinfo=UTC),
+                "Africa/Gaborone",
+            ),
+            location="Office",
+        ),
+        proposal_id=PROPOSAL_ID,
+        source=SOURCE,
+        created_at=CREATED_AT,
+    )
+
+    assert proposal.action == "calendar.create"
+    assert proposal.risk_level is RiskLevel.LOW
+    assert proposal.confirmation_policy is ConfirmationPolicy.WHEN_REQUIRED
+    assert dict(proposal.parameters) == {
+        "calendar_id": "personal",
+        "summary": "Appointment",
+        "timing": {
+            "start": "2026-08-02T08:00:00+00:00",
+            "end": "2026-08-02T09:00:00+00:00",
+            "all_day": False,
+            "timezone": "Africa/Gaborone",
+        },
+        "location": "Office",
+    }
+
+
+def test_modify_and_cancel_builders_are_medium_risk() -> None:
+    modify = build_calendar_modify_event_proposal(
+        CalendarModifyRequest(
+            calendar_id="personal",
+            event_uid="event-1",
+            clear_description=True,
+        ),
+        proposal_id=PROPOSAL_ID,
+        source=SOURCE,
+        created_at=CREATED_AT,
+    )
+    cancel = build_calendar_cancel_event_proposal(
+        CalendarCancelRequest("personal", "event-1"),
+        proposal_id=PROPOSAL_ID,
+        source=SOURCE,
+        created_at=CREATED_AT,
+    )
+
+    assert modify.action == "calendar.modify"
+    assert modify.risk_level is RiskLevel.MEDIUM
+    assert dict(modify.parameters) == {
+        "calendar_id": "personal",
+        "event_uid": "event-1",
+        "clear_description": True,
+    }
+    assert cancel.action == "calendar.cancel"
+    assert cancel.risk_level is RiskLevel.MEDIUM
+    assert dict(cancel.parameters) == {
+        "calendar_id": "personal",
+        "event_uid": "event-1",
     }
 
 
