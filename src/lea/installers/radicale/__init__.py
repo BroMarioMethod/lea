@@ -31,6 +31,13 @@ from lea.installers.radicale.health import (
     inspect_radicale_health,
     verify_radicale_user_isolation,
 )
+from lea.installers.radicale.orchestration import (
+    RadicaleInstallerDependencies,
+    RadicaleInstallIssue,
+    RadicaleInstallRequest,
+    RadicaleInstallResult,
+    install_radicale,
+)
 from lea.installers.radicale.provisioning import (
     RadicaleProvisionIssue,
     RadicaleProvisionResult,
@@ -57,7 +64,11 @@ __all__ = [
     "RadicaleCredentialProvisionResult",
     "RadicaleHealthIssue",
     "RadicaleHealthResult",
+    "RadicaleInstallIssue",
+    "RadicaleInstallRequest",
+    "RadicaleInstallResult",
     "RadicaleInstallationRecord",
+    "RadicaleInstallerDependencies",
     "RadicaleIsolationResult",
     "RadicaleProbeResponse",
     "RadicaleProvisionIssue",
@@ -72,6 +83,7 @@ __all__ = [
     "activate_radicale_service",
     "canonical_radicale_runtime_layout",
     "inspect_radicale_health",
+    "install_radicale",
     "provision_radicale_runtime",
     "provision_radicale_systemd_unit",
     "provision_radicale_users_file",

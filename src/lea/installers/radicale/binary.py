@@ -80,6 +80,7 @@ def verify_and_register_radicale_binary(
     config: RadicaleBinaryConfig,
     *,
     clock: Clock = lambda: datetime.now(UTC),
+    register: bool = True,
 ) -> RadicaleBinaryResult:
     """Verify exact binary evidence and atomically register it without repair."""
     issue = _inspect_path(config.executable, executable=True)
@@ -159,6 +160,8 @@ def verify_and_register_radicale_binary(
         sha256=after,
         verified_at=timestamp.astimezone(UTC).isoformat(),
     )
+    if not register:
+        return RadicaleBinaryResult(True, False, record, ())
     return _write_record(config.record_file, record)
 
 
