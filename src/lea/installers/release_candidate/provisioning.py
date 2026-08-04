@@ -394,9 +394,6 @@ def _ensure_runtime_audit_file(
     if path.is_symlink():
         raise OSError(f"Managed audit file path is a symbolic link: {path}")
 
-    owner = pwd.getpwnam(directory.owner)
-    group = grp.getgrnam(directory.group)
-
     try:
         existing_stat = path.lstat()
     except FileNotFoundError:
@@ -412,6 +409,9 @@ def _ensure_runtime_audit_file(
             existing_stat.st_dev,
             existing_stat.st_ino,
         )
+
+    owner = pwd.getpwnam(directory.owner)
+    group = grp.getgrnam(directory.group)
 
     no_follow = getattr(os, "O_NOFOLLOW", 0)
 
