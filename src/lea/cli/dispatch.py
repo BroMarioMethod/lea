@@ -4,11 +4,22 @@ import argparse
 import sys
 from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import date
 from pathlib import Path
 from typing import TextIO, cast
 from uuid import UUID
 
 from lea.actions import ActionStatus
+from lea.calendars import CalendarEventQuery
+from lea.cli.calendar_commands import (
+    CalendarCommandDependencies,
+    execute_calendar_events,
+    execute_calendar_list,
+    execute_calendar_show,
+    render_calendar_events_result,
+    render_calendar_list_result,
+    render_calendar_show_result,
+)
 from lea.cli.contracts import (
     CliIssue,
     CliResult,
@@ -69,6 +80,7 @@ def execute_local_cli(
     status_dependencies: StatusDependencies | None = None,
     task_dependencies: TaskCommandDependencies | None = None,
     proposal_dependencies: ProposalCommandDependencies | None = None,
+    calendar_dependencies: CalendarCommandDependencies | None = None,
 ) -> int:
     """Parse and dispatch one Local CLI command."""
     parser = create_local_cli_parser()
@@ -104,6 +116,54 @@ def execute_local_cli(
             human_renderer=render_status_result,
         )
 
+    if namespace.command == "calendar":
+        if namespace.calendar_command == "list":
+            result = execute_calendar_list(
+                config_path=_config_path(namespace),
+                expected_profile=_expected_profile(namespace),
+                dependencies=calendar_dependencies,
+            )
+            renderer = render_calendar_list_result
+        elif namespace.calendar_command == "show":
+            result = execute_calendar_show(
+                config_path=_config_path(namespace),
+                expected_profile=_expected_profile(namespace),
+                calendar_id=namespace.calendar_id,
+                event_uid=namespace.event_uid,
+                dependencies=calendar_dependencies,
+            )
+            renderer = render_calendar_show_result
+        else:
+            try:
+                calendar_query = CalendarEventQuery(
+                    start_date=date.fromisoformat(namespace.start_date),
+                    end_date=date.fromisoformat(namespace.end_date),
+                    calendar_ids=tuple(namespace.calendar_id),
+                    include_cancelled=namespace.include_cancelled,
+                )
+            except ValueError as error:
+                result = CliResult.failed(
+                    exit_code=LocalCliExitCode.VALIDATION_ERROR,
+                    issues=(
+                        CliIssue(code="calendar_query_invalid", message=str(error)),
+                    ),
+                    data={"events": []},
+                )
+            else:
+                result = execute_calendar_events(
+                    config_path=_config_path(namespace),
+                    expected_profile=_expected_profile(namespace),
+                    query=calendar_query,
+                    dependencies=calendar_dependencies,
+                )
+            renderer = render_calendar_events_result
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=renderer,
+        )
     if namespace.command == "proposal" and namespace.proposal_command == "list":
         result = execute_proposal_list(
             config_path=_config_path(namespace),

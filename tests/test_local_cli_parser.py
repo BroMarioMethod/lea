@@ -39,6 +39,20 @@ def test_root_parser_uses_public_program_name() -> None:
         ),
         (["proposal", "show", "proposal-1"], "proposal", "show"),
         (["proposal", "execute", "proposal-1"], "proposal", "execute"),
+        (["calendar", "list"], "calendar", "list"),
+        (
+            [
+                "calendar",
+                "events",
+                "--start-date",
+                "2026-08-04",
+                "--end-date",
+                "2026-08-05",
+            ],
+            "calendar",
+            "events",
+        ),
+        (["calendar", "show", "personal", "event-1"], "calendar", "show"),
         (
             [
                 "proposal",

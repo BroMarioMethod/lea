@@ -169,6 +169,7 @@ def _uses_local_cli(arguments: Sequence[str]) -> bool:
         "--no-colour",
         "status",
         "task",
+        "calendar",
         "proposal",
     }
 

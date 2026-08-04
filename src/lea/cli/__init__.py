@@ -1,5 +1,14 @@
 """Public Local CLI contracts and execution interfaces."""
 
+from lea.cli.calendar_commands import (
+    CalendarCommandDependencies,
+    execute_calendar_events,
+    execute_calendar_list,
+    execute_calendar_show,
+    render_calendar_events_result,
+    render_calendar_list_result,
+    render_calendar_show_result,
+)
 from lea.cli.contracts import (
     CliIssue,
     CliResult,
@@ -54,6 +63,7 @@ from lea.cli.task_commands import (
 
 __all__ = [
     "DEFAULT_RUNTIME_CONFIG",
+    "CalendarCommandDependencies",
     "CliIssue",
     "CliResult",
     "HumanResultRenderer",
@@ -67,6 +77,9 @@ __all__ = [
     "cli_issue_to_dict",
     "cli_result_to_dict",
     "create_local_cli_parser",
+    "execute_calendar_events",
+    "execute_calendar_list",
+    "execute_calendar_show",
     "execute_local_cli",
     "execute_proposal_approve",
     "execute_proposal_cancel",
@@ -81,6 +94,9 @@ __all__ = [
     "execute_task_list",
     "execute_task_modify",
     "normalise_runtime_cli_exit_code",
+    "render_calendar_events_result",
+    "render_calendar_list_result",
+    "render_calendar_show_result",
     "render_cli_result_json",
     "render_proposal_approve_result",
     "render_proposal_cancel_result",
