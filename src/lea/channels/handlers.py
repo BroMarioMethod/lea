@@ -18,11 +18,16 @@ from lea.actions import (
 )
 from lea.calendars.contracts import (
     CalendarCollection,
+    CalendarCreateRequest,
     CalendarEvent,
     CalendarEventQuery,
+    CalendarEventTiming,
     CalendarProviderIssue,
 )
-from lea.calendars.proposal_builders import build_calendar_sync_proposal
+from lea.calendars.proposal_builders import (
+    build_calendar_create_event_proposal,
+    build_calendar_sync_proposal,
+)
 from lea.calendars.provider import CalendarProvider
 from lea.channels.application import (
     ChannelCommandDefinition,
@@ -86,6 +91,7 @@ _SUPPORTED_EXPLICIT_COMMANDS = (
     "/calendar_events <start-date> <end-date> [calendar-id ...]",
     "/calendar_show <calendar-id> <event-uid>",
     "/calendar_sync",
+    "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
     "/task_add <description>",
     "/task_show <task-uuid>",
     "/task_modify <task-uuid> <description>",
@@ -179,6 +185,10 @@ def build_default_channel_application(
             ChannelCommandDefinition(
                 "calendar.sync",
                 lambda request: _calendar_sync(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.create",
+                lambda request: _calendar_create(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "tasks.create",
@@ -824,6 +834,124 @@ def _calendar_sync(
             _issue("calendar_sync_invalid", str(error)),
         )
     return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_create(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit event creation without directly mutating the provider."""
+    denied = _calendar_capability_denied(
+        request,
+        dependencies,
+        capability=ChannelCapability.CALENDAR_WRITE,
+        code="calendar_write_capability_required",
+    )
+    if denied is not None:
+        return denied
+    parameters = _business_parameters(request)
+    allowed = {
+        "arguments",
+        "calendar_id",
+        "summary",
+        "start",
+        "end",
+        "timezone",
+        "description",
+        "location",
+    }
+    unknown = sorted(set(parameters) - allowed)
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    try:
+        if arguments:
+            if len(arguments) < 5:
+                raise ValueError("calendar.create requires at least five arguments.")
+            calendar_id, start, end, timezone = arguments[:4]
+            summary = " ".join(arguments[4:])
+            timezone_value = None if timezone == "-" else timezone
+        else:
+            calendar_id = _required_text(
+                parameters.get("calendar_id"), field="calendar_id"
+            )
+            start = _required_text(parameters.get("start"), field="start")
+            end = _required_text(parameters.get("end"), field="end")
+            summary = _required_text(parameters.get("summary"), field="summary")
+            timezone_value = _optional_text(parameters.get("timezone"))
+        create_request = CalendarCreateRequest(
+            calendar_id=calendar_id,
+            summary=summary,
+            timing=_calendar_event_timing(start, end, timezone_value),
+            description=_optional_text(parameters.get("description")),
+            location=_optional_text(parameters.get("location")),
+        )
+        proposal = _interactive_proposal(
+            build_calendar_create_event_proposal(
+                create_request,
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_creation_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_capability_denied(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+    *,
+    capability: ChannelCapability,
+    code: str,
+) -> ChannelResponse | None:
+    if capability.value in request.identity.capabilities:
+        return None
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.PERMISSION_DENIED,
+            issues=(
+                _issue(
+                    code,
+                    f"{capability.value} capability is required.",
+                    "capabilities",
+                ),
+            ),
+            data={"required_capability": capability.value},
+        ),
+        dependencies,
+        success_message="",
+    )
+
+
+def _calendar_event_timing(
+    start: str,
+    end: str,
+    timezone: str | None,
+) -> CalendarEventTiming:
+    """Parse exact all-day dates or canonical UTC instants."""
+    if "T" not in start and "T" not in end:
+        if timezone is not None:
+            raise ValueError("All-day events must use '-' instead of a timezone.")
+        return CalendarEventTiming(date.fromisoformat(start), date.fromisoformat(end))
+    if timezone is None:
+        raise ValueError("Timed events require an IANA timezone.")
+    return CalendarEventTiming(
+        datetime.fromisoformat(start),
+        datetime.fromisoformat(end),
+        timezone,
+    )
 
 
 def _calendar_provider_unavailable(

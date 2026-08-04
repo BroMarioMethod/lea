@@ -108,6 +108,7 @@ def test_default_definitions_cover_active_command_set() -> None:
         "/calendar_events",
         "/calendar_show",
         "/calendar_sync",
+        "/calendar_add",
         "/task_add",
         "/task_show",
         "/task_modify",

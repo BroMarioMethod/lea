@@ -56,6 +56,7 @@ DEFAULT_CAPABILITIES = (
     "Proposals.Confirm",
     "Proposals.Execute.LowRisk",
     "Calendar.Sync",
+    "Calendar.Write",
 )
 
 
@@ -219,6 +220,68 @@ def test_calendar_sync_requires_independent_capability(tmp_path: Path) -> None:
 
     result = application.handle(
         _request("calendar.sync", {"arguments": []}, capabilities=capabilities)
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert submitted == []
+
+
+def test_calendar_create_submits_all_day_confirmation_proposal(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.create",
+            {
+                "arguments": [
+                    "personal",
+                    "2026-08-02",
+                    "2026-08-03",
+                    "-",
+                    "Public",
+                    "holiday",
+                ]
+            },
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert calls == []
+    assert submitted[0].action == "calendar.create"
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+    assert submitted[0].parameters["summary"] == "Public holiday"
+    assert submitted[0].parameters["timing"] == {
+        "start": "2026-08-02",
+        "end": "2026-08-03",
+        "all_day": True,
+        "timezone": None,
+    }
+
+
+def test_calendar_create_requires_write_capability(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+    capabilities = tuple(
+        value for value in DEFAULT_CAPABILITIES if value != "Calendar.Write"
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.create",
+            {"arguments": ["personal", "2026-08-02", "2026-08-03", "-", "X"]},
+            capabilities=capabilities,
+        )
     )
 
     assert result.response is not None
@@ -526,6 +589,7 @@ def test_system_commands_report_only_supported_commands(
         "/calendar_events <start-date> <end-date> [calendar-id ...]",
         "/calendar_show <calendar-id> <event-uid>",
         "/calendar_sync",
+        "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
         "/task_add <description>",
         "/task_show <task-uuid>",
         "/task_modify <task-uuid> <description>",
