@@ -43,6 +43,12 @@ from lea.installers.radicale.provisioning import (
     RadicaleProvisionResult,
     provision_radicale_runtime,
 )
+from lea.installers.radicale.removal import (
+    RadicaleRemovalIssue,
+    RadicaleRemovalRequest,
+    RadicaleRemovalResult,
+    remove_radicale,
+)
 from lea.installers.radicale.service import (
     RadicaleServiceConfig,
     RadicaleServiceIssue,
@@ -73,6 +79,9 @@ __all__ = [
     "RadicaleProbeResponse",
     "RadicaleProvisionIssue",
     "RadicaleProvisionResult",
+    "RadicaleRemovalIssue",
+    "RadicaleRemovalRequest",
+    "RadicaleRemovalResult",
     "RadicaleRuntimeLayout",
     "RadicaleServerConfig",
     "RadicaleServiceConfig",
@@ -87,6 +96,7 @@ __all__ = [
     "provision_radicale_runtime",
     "provision_radicale_systemd_unit",
     "provision_radicale_users_file",
+    "remove_radicale",
     "render_radicale_configuration",
     "render_radicale_systemd_unit",
     "render_radicale_users_file",
