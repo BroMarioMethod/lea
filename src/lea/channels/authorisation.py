@@ -71,6 +71,7 @@ class AuthorisedChannelUser:
     enabled: bool = True
     add_capabilities: tuple[ChannelCapability, ...] = ()
     remove_capabilities: tuple[ChannelCapability, ...] = ()
+    calendar_ids: tuple[str, ...] = ()
     schema_version: int = AUTHORISATION_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -102,6 +103,15 @@ class AuthorisedChannelUser:
 
         object.__setattr__(self, "add_capabilities", additions)
         object.__setattr__(self, "remove_capabilities", removals)
+        calendar_ids = tuple(sorted(set(self.calendar_ids)))
+        for calendar_id in calendar_ids:
+            if not isinstance(calendar_id, str) or not calendar_id.strip():
+                raise ValueError("calendar_ids must contain non-empty strings.")
+            if calendar_id != calendar_id.strip():
+                raise ValueError(
+                    "calendar_ids must not contain surrounding whitespace."
+                )
+        object.__setattr__(self, "calendar_ids", calendar_ids)
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,6 +290,7 @@ def authorise_channel_identity(
             display_name=user.name,
             role=user.role.value,
             capabilities=capabilities,
+            calendar_ids=user.calendar_ids,
         )
     except (TypeError, ValueError):
         return ChannelAuthorisationResult(

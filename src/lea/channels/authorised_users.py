@@ -27,6 +27,7 @@ _USER_FIELDS = frozenset(
         "enabled",
         "add_capabilities",
         "remove_capabilities",
+        "calendar_ids",
     }
 )
 _REQUIRED_USER_FIELDS = frozenset(
@@ -297,6 +298,12 @@ def parse_authorised_channel_users(
             issues=issues,
             source_path=source_path,
         )
+        calendar_ids = _parse_calendar_ids(
+            raw_user.get("calendar_ids", []),
+            field=f"{field_prefix}.calendar_ids",
+            issues=issues,
+            source_path=source_path,
+        )
 
         if len(issues) != before:
             continue
@@ -309,6 +316,7 @@ def parse_authorised_channel_users(
         assert enabled is not None
         assert additions is not None
         assert removals is not None
+        assert calendar_ids is not None
 
         try:
             users.append(
@@ -321,6 +329,7 @@ def parse_authorised_channel_users(
                     enabled=enabled,
                     add_capabilities=additions,
                     remove_capabilities=removals,
+                    calendar_ids=calendar_ids,
                 )
             )
         except (TypeError, ValueError) as error:
@@ -474,6 +483,32 @@ def _parse_identifier(
         return None
 
     return str(value)
+
+
+def _parse_calendar_ids(
+    value: object,
+    *,
+    field: str,
+    issues: list[AuthorisedUserConfigIssue],
+    source_path: Path | None,
+) -> tuple[str, ...] | None:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str)
+        or not item.strip()
+        or item != item.strip()
+        or any(ord(character) < 32 for character in item)
+        for item in value
+    ):
+        issues.append(
+            AuthorisedUserConfigIssue(
+                code="invalid_calendar_ids",
+                message=f"{field} must be an array of exact non-empty strings.",
+                field=field,
+                source_path=source_path,
+            )
+        )
+        return None
+    return tuple(sorted(set(value)))
 
 
 def _parse_enum[ChannelEnum: (ChannelName, ChannelRole)](

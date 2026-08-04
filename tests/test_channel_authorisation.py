@@ -29,6 +29,7 @@ def _user(
     enabled: bool = True,
     add_capabilities: tuple[ChannelCapability, ...] = (),
     remove_capabilities: tuple[ChannelCapability, ...] = (),
+    calendar_ids: tuple[str, ...] = (),
 ) -> AuthorisedChannelUser:
     return AuthorisedChannelUser(
         name=name,
@@ -39,6 +40,7 @@ def _user(
         enabled=enabled,
         add_capabilities=add_capabilities,
         remove_capabilities=remove_capabilities,
+        calendar_ids=calendar_ids,
     )
 
 
@@ -72,6 +74,21 @@ def test_owner_receives_all_built_in_capabilities() -> None:
     assert capabilities == tuple(
         sorted(capability.value for capability in ChannelCapability)
     )
+
+
+def test_authorised_identity_preserves_calendar_allow_list() -> None:
+    user = _user(calendar_ids=("work", "personal", "work"))
+
+    result = authorise_channel_identity(
+        channel=user.channel,
+        user_id=user.user_id,
+        conversation_id=user.conversation_id,
+        users=(user,),
+    )
+
+    assert result.authorised is True
+    assert result.identity is not None
+    assert result.identity.calendar_ids == ("personal", "work")
 
 
 def test_tester_has_more_access_than_read_only() -> None:
