@@ -15,6 +15,15 @@ from lea.installers.radicale.credentials import (
     provision_radicale_users_file,
     render_radicale_users_file,
 )
+from lea.installers.radicale.health import (
+    RadicaleAcceptanceAccount,
+    RadicaleHealthIssue,
+    RadicaleHealthResult,
+    RadicaleIsolationResult,
+    RadicaleProbeResponse,
+    inspect_radicale_health,
+    verify_radicale_user_isolation,
+)
 from lea.installers.radicale.provisioning import (
     RadicaleProvisionIssue,
     RadicaleProvisionResult,
@@ -32,9 +41,14 @@ from lea.installers.radicale.service import (
 )
 
 __all__ = [
+    "RadicaleAcceptanceAccount",
     "RadicaleCredential",
     "RadicaleCredentialIssue",
     "RadicaleCredentialProvisionResult",
+    "RadicaleHealthIssue",
+    "RadicaleHealthResult",
+    "RadicaleIsolationResult",
+    "RadicaleProbeResponse",
     "RadicaleProvisionIssue",
     "RadicaleProvisionResult",
     "RadicaleRuntimeLayout",
@@ -46,10 +60,12 @@ __all__ = [
     "ServiceCommandResult",
     "activate_radicale_service",
     "canonical_radicale_runtime_layout",
+    "inspect_radicale_health",
     "provision_radicale_runtime",
     "provision_radicale_systemd_unit",
     "provision_radicale_users_file",
     "render_radicale_configuration",
     "render_radicale_systemd_unit",
     "render_radicale_users_file",
+    "verify_radicale_user_isolation",
 ]
