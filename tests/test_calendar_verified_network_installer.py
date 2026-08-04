@@ -2,6 +2,7 @@
 
 import hashlib
 import stat
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -638,3 +639,116 @@ def test_success_result_requires_record() -> None:
             record=None,
             issues=(),
         )
+
+
+def test_approved_record_refresh_updates_only_lock_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Approved repair may replace stale lock evidence only."""
+    config = _config(tmp_path)
+    activated = _create_activated_tree(config)
+    expected_record = _record(config, activated)
+    stale_record = replace(
+        expected_record,
+        lock_or_manifest_sha256="b" * 64,
+    )
+    config.installation_record.parent.mkdir(parents=True)
+    config.installation_record.write_text(
+        render_calendar_toolchain_installation_record(stale_record),
+        encoding="utf-8",
+    )
+    layout = create_calendar_toolchain_runtime_layout(config)
+
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network.inspect_activated_calendar_toolchain",
+        lambda *_args: (),
+    )
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network.inspect_calendar_python_version",
+        lambda **_kwargs: _python_result(activated.python_executable),
+    )
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network.validate_calendar_tool_versions",
+        lambda **_kwargs: SimpleNamespace(passed=True, issues=()),
+    )
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network."
+        "provision_calendar_toolchain_runtime_layout",
+        lambda *_args, **_kwargs: CalendarToolchainRuntimeLayoutResult(
+            success=True,
+            layout=layout,
+            directories_changed=(),
+            issues=(),
+        ),
+    )
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network."
+        "persist_calendar_toolchain_configuration",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            success=True,
+            issues=(),
+        ),
+    )
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network."
+        "run_calendar_toolchain_installer_preflight",
+        lambda _value: (_ for _ in ()).throw(AssertionError("Preflight must not run.")),
+    )
+
+    result = install_verified_network_calendar_toolchain(
+        config,
+        display_timezone="Africa/Gaborone",
+        approve_record_refresh=True,
+    )
+
+    assert result.success is True
+    assert result.already_installed is True
+    assert result.record == expected_record
+    assert result.record.installed_at == stale_record.installed_at
+    assert config.installation_record.read_text(
+        encoding="utf-8"
+    ) == render_calendar_toolchain_installation_record(expected_record)
+
+
+def test_approved_record_refresh_rejects_identity_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Approval must not permit Python or tool identity changes."""
+    config = _config(tmp_path)
+    activated = _create_activated_tree(config)
+    drifted = _record(
+        config,
+        activated,
+        python_version="3.13.6",
+    )
+    config.installation_record.parent.mkdir(parents=True)
+    original_document = render_calendar_toolchain_installation_record(drifted)
+    config.installation_record.write_text(
+        original_document,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network.inspect_activated_calendar_toolchain",
+        lambda *_args: (),
+    )
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network.inspect_calendar_python_version",
+        lambda **_kwargs: _python_result(activated.python_executable),
+    )
+    monkeypatch.setattr(
+        "lea.installers.calendar.verified_network.validate_calendar_tool_versions",
+        lambda **_kwargs: SimpleNamespace(passed=True, issues=()),
+    )
+
+    result = install_verified_network_calendar_toolchain(
+        config,
+        display_timezone="Africa/Gaborone",
+        approve_record_refresh=True,
+    )
+
+    assert result.success is False
+    assert result.issues[0].code is (CalendarToolchainInstallFailureCode.RECORD_FAILED)
+    assert config.installation_record.read_text(encoding="utf-8") == original_document

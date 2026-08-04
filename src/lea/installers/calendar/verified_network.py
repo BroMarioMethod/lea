@@ -39,9 +39,11 @@ from lea.installers.calendar.python_version import (
 )
 from lea.installers.calendar.records import (
     CalendarToolchainInstallationRecord,
+    calendar_toolchain_installation_record_identity_matches,
     calendar_toolchain_installation_record_matches,
     create_calendar_toolchain_installation_record,
     read_calendar_toolchain_installation_record,
+    replace_calendar_toolchain_installation_record,
     write_calendar_toolchain_installation_record,
 )
 from lea.installers.calendar.runtime_layout import (
@@ -109,11 +111,15 @@ def install_verified_network_calendar_toolchain(
     display_timezone: str,
     clock: CalendarInstallerClock = lambda: datetime.now(UTC),
     fsync: bool = False,
+    approve_record_refresh: bool = False,
     apply_ownership: CalendarOwnershipApplier = (ignore_calendar_ownership),
 ) -> CalendarVerifiedNetworkInstallResult:
     """Install one pinned online calendar toolchain through exact phases."""
     if not isinstance(config, CalendarToolchainInstallerConfig):
         raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if not isinstance(approve_record_refresh, bool):
+        raise TypeError("approve_record_refresh must be a boolean.")
 
     if config.mode is not CalendarToolchainInstallMode.VERIFIED_NETWORK:
         return _failure(
@@ -154,6 +160,7 @@ def install_verified_network_calendar_toolchain(
         display_timezone=display_timezone,
         expected_lock_sha256=expected_lock_sha256,
         fsync=fsync,
+        approve_record_refresh=approve_record_refresh,
         apply_ownership=apply_ownership,
     )
 
@@ -374,6 +381,7 @@ def _inspect_existing_installation(
     display_timezone: str,
     expected_lock_sha256: str,
     fsync: bool,
+    approve_record_refresh: bool,
     apply_ownership: CalendarOwnershipApplier,
 ) -> CalendarVerifiedNetworkInstallResult | None:
     """Return idempotent success or fail closed for existing traces."""
@@ -466,25 +474,64 @@ def _inspect_existing_installation(
             issues=record_issues,
         )
 
-    if not calendar_toolchain_installation_record_matches(
+    exact_record_match = calendar_toolchain_installation_record_matches(
         record,
         config=config,
         python_version=python.version,
         khal_executable=activated.khal_executable,
         vdirsyncer_executable=activated.vdirsyncer_executable,
         lock_or_manifest_sha256=expected_lock_sha256,
-    ):
-        return _failure(
-            _phase_issue(
-                code=CalendarToolchainInstallFailureCode.RECORD_FAILED,
-                message=(
-                    "The existing calendar installation record does not "
-                    "match the activated toolchain."
-                ),
-                field="installation_record",
-                path=record_path,
-            )
+    )
+
+    if not exact_record_match:
+        identity_matches = calendar_toolchain_installation_record_identity_matches(
+            record,
+            config=config,
+            python_version=python.version,
+            khal_executable=activated.khal_executable,
+            vdirsyncer_executable=activated.vdirsyncer_executable,
         )
+
+        if not approve_record_refresh or not identity_matches:
+            return _failure(
+                _phase_issue(
+                    code=CalendarToolchainInstallFailureCode.RECORD_FAILED,
+                    message=(
+                        "The existing calendar installation record does "
+                        "not match the activated toolchain."
+                    ),
+                    field="installation_record",
+                    path=record_path,
+                )
+            )
+
+        replacement_record = create_calendar_toolchain_installation_record(
+            config,
+            python_version=python.version,
+            khal_executable=activated.khal_executable,
+            vdirsyncer_executable=activated.vdirsyncer_executable,
+            lock_or_manifest_sha256=expected_lock_sha256,
+            installed_at=record.installed_at,
+        )
+        replacement_issues = replace_calendar_toolchain_installation_record(
+            record,
+            replacement_record,
+            destination=record_path,
+            owner="root",
+            group=config.service_group,
+            fsync=fsync,
+            apply_ownership=apply_ownership,
+        )
+
+        if replacement_issues:
+            return CalendarVerifiedNetworkInstallResult(
+                success=False,
+                already_installed=False,
+                record=None,
+                issues=replacement_issues,
+            )
+
+        record = replacement_record
 
     runtime = provision_calendar_toolchain_runtime_layout(
         config,

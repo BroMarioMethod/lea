@@ -15,10 +15,12 @@ from lea.installers.calendar import (
     CalendarToolchainInstallerConfig,
     CalendarToolchainInstallFailureCode,
     CalendarToolchainInstallMode,
+    calendar_toolchain_installation_record_identity_matches,
     calendar_toolchain_installation_record_matches,
     create_calendar_toolchain_installation_record,
     read_calendar_toolchain_installation_record,
     render_calendar_toolchain_installation_record,
+    replace_calendar_toolchain_installation_record,
     write_calendar_toolchain_installation_record,
 )
 
@@ -318,6 +320,131 @@ def test_matching_helper_compares_complete_identity(
         vdirsyncer_executable=record.vdirsyncer_executable,
         lock_or_manifest_sha256="b" * 64,
     )
+
+
+def test_managed_identity_match_ignores_only_lock_evidence(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    record = _record(tmp_path)
+
+    assert calendar_toolchain_installation_record_identity_matches(
+        replace(
+            record,
+            lock_or_manifest_sha256="b" * 64,
+        ),
+        config=config,
+        python_version="3.13.5",
+        khal_executable=record.khal_executable,
+        vdirsyncer_executable=record.vdirsyncer_executable,
+    )
+
+    assert not calendar_toolchain_installation_record_identity_matches(
+        replace(
+            record,
+            python_version="3.13.6",
+            lock_or_manifest_sha256="b" * 64,
+        ),
+        config=config,
+        python_version="3.13.5",
+        khal_executable=record.khal_executable,
+        vdirsyncer_executable=record.vdirsyncer_executable,
+    )
+
+
+def test_record_evidence_replacement_is_atomic(
+    tmp_path: Path,
+) -> None:
+    current = _record(tmp_path)
+    replacement_record = replace(
+        current,
+        lock_or_manifest_sha256="b" * 64,
+    )
+    destination = tmp_path / "install" / "calendar.json"
+    destination.parent.mkdir()
+    destination.write_text(
+        render_calendar_toolchain_installation_record(current),
+        encoding="utf-8",
+    )
+    destination.chmod(0o600)
+    ownership: list[tuple[Path, str, str]] = []
+
+    def apply_ownership(
+        path: Path,
+        owner: str,
+        group: str,
+    ) -> bool:
+        ownership.append((path, owner, group))
+        return True
+
+    issues = replace_calendar_toolchain_installation_record(
+        current,
+        replacement_record,
+        destination=destination,
+        owner="root",
+        group="lea",
+        apply_ownership=apply_ownership,
+    )
+
+    assert issues == ()
+    assert destination.read_text(encoding="utf-8") == (
+        render_calendar_toolchain_installation_record(replacement_record)
+    )
+    assert destination.stat().st_mode & 0o777 == 0o640
+    assert replacement_record.installed_at == current.installed_at
+    assert ownership[-1] == (destination, "root", "lea")
+    assert tuple(destination.parent.glob(".*.replacement")) == ()
+    assert tuple(destination.parent.glob(".*.rollback")) == ()
+
+
+def test_record_evidence_replacement_rejects_identity_drift(
+    tmp_path: Path,
+) -> None:
+    current = _record(tmp_path)
+    unsafe = replace(
+        current,
+        python_version="3.13.6",
+        lock_or_manifest_sha256="b" * 64,
+    )
+    destination = tmp_path / "install" / "calendar.json"
+    destination.parent.mkdir()
+    original_document = render_calendar_toolchain_installation_record(current)
+    destination.write_text(original_document, encoding="utf-8")
+
+    issues = replace_calendar_toolchain_installation_record(
+        current,
+        unsafe,
+        destination=destination,
+    )
+
+    assert len(issues) == 1
+    assert "only the managed lock or manifest checksum" in (issues[0].message)
+    assert destination.read_text(encoding="utf-8") == original_document
+
+
+def test_record_evidence_replacement_requires_exact_current_bytes(
+    tmp_path: Path,
+) -> None:
+    current = _record(tmp_path)
+    replacement_record = replace(
+        current,
+        lock_or_manifest_sha256="b" * 64,
+    )
+    destination = tmp_path / "install" / "calendar.json"
+    destination.parent.mkdir()
+    destination.write_text(
+        '{"administrator":"preserve"}\n',
+        encoding="utf-8",
+    )
+
+    issues = replace_calendar_toolchain_installation_record(
+        current,
+        replacement_record,
+        destination=destination,
+    )
+
+    assert len(issues) == 1
+    assert destination.read_text(encoding="utf-8") == ('{"administrator":"preserve"}\n')
 
 
 def test_writer_creates_atomic_managed_record(

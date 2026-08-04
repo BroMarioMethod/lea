@@ -66,12 +66,14 @@ from lea.installers.calendar.python_version import (
 )
 from lea.installers.calendar.records import (
     CalendarToolchainInstallationRecord,
+    calendar_toolchain_installation_record_identity_matches,
     calendar_toolchain_installation_record_matches,
     create_calendar_toolchain_installation_record,
     create_external_calendar_toolchain_installation_record,
     external_calendar_toolchain_installation_record_matches,
     read_calendar_toolchain_installation_record,
     render_calendar_toolchain_installation_record,
+    replace_calendar_toolchain_installation_record,
     write_calendar_toolchain_installation_record,
 )
 from lea.installers.calendar.runtime_layout import (
@@ -154,6 +156,7 @@ __all__ = [
     "activate_calendar_caldav_configuration",
     "activate_staged_calendar_toolchain",
     "calculate_calendar_sha256",
+    "calendar_toolchain_installation_record_identity_matches",
     "calendar_toolchain_installation_record_matches",
     "check_calendar_directory_parent_writable",
     "create_calendar_toolchain_configuration_plan",
@@ -186,6 +189,7 @@ __all__ = [
     "render_calendar_khal_configuration",
     "render_calendar_toolchain_installation_record",
     "render_calendar_vdirsyncer_configuration",
+    "replace_calendar_toolchain_installation_record",
     "rollback_activated_calendar_toolchain",
     "run_calendar_toolchain_installer_preflight",
     "run_calendar_toolchain_smoke_test",

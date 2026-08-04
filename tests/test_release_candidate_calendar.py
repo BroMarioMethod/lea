@@ -431,3 +431,71 @@ def test_inputs_reject_invalid_lock_checksum(
             python_executable=inputs.python_executable,
             package_index_url=inputs.package_index_url,
         )
+
+
+def test_approved_repair_requests_calendar_record_refresh(
+    tmp_path: Path,
+) -> None:
+    """Only explicitly approved repair enables evidence refresh."""
+    plan = create_calendar_toolchain_installation_plan(
+        _request(tmp_path),
+        _inputs(tmp_path),
+    )
+    captured: dict[str, object] = {}
+
+    def installer(
+        _config: object,
+        **kwargs: object,
+    ) -> CalendarToolchainInstallResult:
+        captured.update(kwargs)
+        return CalendarToolchainInstallResult(
+            success=True,
+            already_installed=True,
+            record=_record(plan),
+            issues=(),
+        )
+
+    result = install_release_candidate_calendar_toolchain(
+        plan,
+        display_timezone="Africa/Gaborone",
+        installation_mode=ReleaseCandidateInstallMode.REPAIR,
+        approve_replacement=True,
+        installer=installer,
+    )
+
+    assert result.success is True
+    assert captured["approve_record_refresh"] is True
+
+
+def test_unapproved_repair_does_not_request_record_refresh(
+    tmp_path: Path,
+) -> None:
+    """Ordinary and unapproved runs retain the strict existing API."""
+    plan = create_calendar_toolchain_installation_plan(
+        _request(tmp_path),
+        _inputs(tmp_path),
+    )
+    captured: dict[str, object] = {}
+
+    def installer(
+        _config: object,
+        **kwargs: object,
+    ) -> CalendarToolchainInstallResult:
+        captured.update(kwargs)
+        return CalendarToolchainInstallResult(
+            success=True,
+            already_installed=True,
+            record=_record(plan),
+            issues=(),
+        )
+
+    result = install_release_candidate_calendar_toolchain(
+        plan,
+        display_timezone="Africa/Gaborone",
+        installation_mode=ReleaseCandidateInstallMode.REPAIR,
+        approve_replacement=False,
+        installer=installer,
+    )
+
+    assert result.success is True
+    assert "approve_record_refresh" not in captured

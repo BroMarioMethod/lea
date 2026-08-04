@@ -243,12 +243,21 @@ def install_release_candidate_calendar_toolchain(
     if preparation_issue is not None:
         return _calendar_failure(preparation_issue)
 
-    result = installer(
-        plan.config,
-        display_timezone=display_timezone,
-        fsync=fsync,
-        apply_ownership=apply_ownership,
-    )
+    if installation_mode is ReleaseCandidateInstallMode.REPAIR and approve_replacement:
+        result = installer(
+            plan.config,
+            display_timezone=display_timezone,
+            fsync=fsync,
+            approve_record_refresh=True,
+            apply_ownership=apply_ownership,
+        )
+    else:
+        result = installer(
+            plan.config,
+            display_timezone=display_timezone,
+            fsync=fsync,
+            apply_ownership=apply_ownership,
+        )
 
     if not result.success or result.record is None:
         restoration_issue = _restore_upgrade_record(plan, backup, fsync=fsync)

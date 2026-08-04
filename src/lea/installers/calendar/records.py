@@ -352,6 +352,48 @@ def read_calendar_toolchain_installation_record(
     return record, ()
 
 
+def calendar_toolchain_installation_record_identity_matches(
+    record: CalendarToolchainInstallationRecord,
+    *,
+    config: CalendarToolchainInstallerConfig,
+    python_version: str,
+    khal_executable: Path,
+    vdirsyncer_executable: Path,
+) -> bool:
+    """Return whether managed identity matches without supply-chain evidence."""
+    if not isinstance(record, CalendarToolchainInstallationRecord):
+        raise TypeError("record must be a CalendarToolchainInstallationRecord value.")
+
+    if not isinstance(config, CalendarToolchainInstallerConfig):
+        raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
+
+    if config.mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:
+        raise ValueError(
+            "Managed identity matching does not accept external-executables mode."
+        )
+
+    _validate_non_empty_string(
+        python_version,
+        field_name="python_version",
+    )
+    _validate_absolute_path(
+        khal_executable,
+        field_name="khal_executable",
+    )
+    _validate_absolute_path(
+        vdirsyncer_executable,
+        field_name="vdirsyncer_executable",
+    )
+
+    return _managed_record_identity_matches(
+        record,
+        config=config,
+        python_version=python_version,
+        khal_executable=khal_executable,
+        vdirsyncer_executable=vdirsyncer_executable,
+    )
+
+
 def calendar_toolchain_installation_record_matches(
     record: CalendarToolchainInstallationRecord,
     *,
@@ -391,16 +433,14 @@ def calendar_toolchain_installation_record_matches(
     )
 
     return (
-        _record_common_identity_matches(
+        _managed_record_identity_matches(
             record,
             config=config,
+            python_version=python_version,
             khal_executable=khal_executable,
             vdirsyncer_executable=vdirsyncer_executable,
         )
-        and record.python_version == python_version
         and record.lock_or_manifest_sha256 == lock_or_manifest_sha256
-        and record.khal_executable_sha256 is None
-        and record.vdirsyncer_executable_sha256 is None
     )
 
 
@@ -450,6 +490,28 @@ def external_calendar_toolchain_installation_record_matches(
         and record.lock_or_manifest_sha256 is None
         and record.khal_executable_sha256 == khal_executable_sha256
         and record.vdirsyncer_executable_sha256 == vdirsyncer_executable_sha256
+    )
+
+
+def _managed_record_identity_matches(
+    record: CalendarToolchainInstallationRecord,
+    *,
+    config: CalendarToolchainInstallerConfig,
+    python_version: str,
+    khal_executable: Path,
+    vdirsyncer_executable: Path,
+) -> bool:
+    """Compare every managed identity field except lock evidence."""
+    return (
+        _record_common_identity_matches(
+            record,
+            config=config,
+            khal_executable=khal_executable,
+            vdirsyncer_executable=vdirsyncer_executable,
+        )
+        and record.python_version == python_version
+        and record.khal_executable_sha256 is None
+        and record.vdirsyncer_executable_sha256 is None
     )
 
 
@@ -607,6 +669,242 @@ def write_calendar_toolchain_installation_record(
                 temporary_path.unlink(missing_ok=True)
 
     return ()
+
+
+def replace_calendar_toolchain_installation_record(
+    current_record: CalendarToolchainInstallationRecord,
+    replacement_record: CalendarToolchainInstallationRecord,
+    *,
+    destination: Path,
+    owner: str = "root",
+    group: str = "root",
+    fsync: bool = False,
+    apply_ownership: CalendarOwnershipApplier = (ignore_calendar_ownership),
+) -> tuple[CalendarToolchainInstallerIssue, ...]:
+    """Atomically replace only obsolete managed supply-chain evidence."""
+    if not isinstance(
+        current_record,
+        CalendarToolchainInstallationRecord,
+    ):
+        raise TypeError(
+            "current_record must be a CalendarToolchainInstallationRecord value."
+        )
+
+    if not isinstance(
+        replacement_record,
+        CalendarToolchainInstallationRecord,
+    ):
+        raise TypeError(
+            "replacement_record must be a CalendarToolchainInstallationRecord value."
+        )
+
+    _validate_absolute_path(destination, field_name="destination")
+    _validate_non_empty_string(owner, field_name="owner")
+    _validate_non_empty_string(group, field_name="group")
+
+    if not _managed_evidence_replacement_is_safe(
+        current_record,
+        replacement_record,
+    ):
+        return (
+            _record_issue(
+                message=(
+                    "Calendar installation-record replacement may change "
+                    "only the managed lock or manifest checksum."
+                ),
+                path=destination,
+            ),
+        )
+
+    current_document = render_calendar_toolchain_installation_record(current_record)
+    replacement_document = render_calendar_toolchain_installation_record(
+        replacement_record
+    )
+
+    parent_issue = _prepare_record_parent(
+        destination.parent,
+        owner=owner,
+        group=group,
+        apply_ownership=apply_ownership,
+    )
+
+    if parent_issue is not None:
+        return (parent_issue,)
+
+    existing_issue, existing_matches = _inspect_existing_record(
+        destination,
+        expected_document=current_document,
+    )
+
+    if existing_issue is not None:
+        return (existing_issue,)
+
+    if not existing_matches:
+        return (
+            _record_issue(
+                message=(
+                    "The current calendar installation record does not "
+                    "exist and could not be replaced."
+                ),
+                path=destination,
+            ),
+        )
+
+    temporary_path: Path | None = None
+    backup_path: Path | None = None
+    replacement_activated = False
+    preserve_backup = False
+
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".replacement",
+            dir=destination.parent,
+            text=True,
+        )
+        temporary_path = Path(temporary_name)
+        os.fchmod(descriptor, _RECORD_MODE)
+
+        with os.fdopen(
+            descriptor,
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+        ) as stream:
+            stream.write(replacement_document)
+            stream.flush()
+
+            if fsync:
+                os.fsync(stream.fileno())
+
+        apply_ownership(temporary_path, owner, group)
+
+        backup_descriptor, backup_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".rollback",
+            dir=destination.parent,
+        )
+        os.close(backup_descriptor)
+        backup_path = Path(backup_name)
+        backup_path.unlink()
+
+        os.link(
+            destination,
+            backup_path,
+            follow_symlinks=False,
+        )
+
+        if (
+            backup_path.is_symlink()
+            or not backup_path.is_file()
+            or backup_path.read_text(encoding="utf-8") != current_document
+        ):
+            raise OSError(
+                "The existing calendar installation record changed during replacement."
+            )
+
+        backup_path.chmod(_RECORD_MODE)
+        apply_ownership(backup_path, owner, group)
+
+        os.replace(temporary_path, destination)
+        temporary_path = None
+        replacement_activated = True
+
+        destination.chmod(_RECORD_MODE)
+        apply_ownership(destination, owner, group)
+
+        if fsync:
+            _fsync_directory(destination.parent)
+
+        backup_path.unlink()
+        backup_path = None
+
+        if fsync:
+            _fsync_directory(destination.parent)
+    except (KeyError, OSError) as error:
+        issues = [
+            _record_issue(
+                message=(
+                    "The calendar toolchain installation record could "
+                    "not be replaced safely: "
+                    f"{_error_detail(error)}."
+                ),
+                path=destination,
+            )
+        ]
+
+        if replacement_activated and backup_path is not None:
+            try:
+                if backup_path.is_symlink() or not backup_path.is_file():
+                    raise OSError("invalid rollback record")
+
+                os.replace(backup_path, destination)
+                backup_path = None
+                destination.chmod(_RECORD_MODE)
+                apply_ownership(destination, owner, group)
+
+                if fsync:
+                    _fsync_directory(destination.parent)
+            except (KeyError, OSError) as rollback_error:
+                preserve_backup = True
+                issues.append(
+                    _record_issue(
+                        message=(
+                            "The previous calendar installation record "
+                            "could not be restored after replacement "
+                            f"failure: {_error_detail(rollback_error)}."
+                        ),
+                        path=destination,
+                    )
+                )
+
+        return tuple(issues)
+    finally:
+        if temporary_path is not None:
+            with suppress(OSError):
+                temporary_path.unlink(missing_ok=True)
+
+        if backup_path is not None and not preserve_backup:
+            with suppress(OSError):
+                backup_path.unlink(missing_ok=True)
+
+    return ()
+
+
+def _managed_evidence_replacement_is_safe(
+    current_record: CalendarToolchainInstallationRecord,
+    replacement_record: CalendarToolchainInstallationRecord,
+) -> bool:
+    """Allow a managed record change only for its lock evidence."""
+    if (
+        current_record.installation_mode
+        is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES
+        or replacement_record.installation_mode
+        is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES
+    ):
+        return False
+
+    return (
+        current_record.schema_version == replacement_record.schema_version
+        and current_record.component == replacement_record.component
+        and current_record.toolchain_version == replacement_record.toolchain_version
+        and current_record.installation_mode is replacement_record.installation_mode
+        and current_record.platform == replacement_record.platform
+        and current_record.python_version == replacement_record.python_version
+        and current_record.khal_version == replacement_record.khal_version
+        and current_record.vdirsyncer_version == replacement_record.vdirsyncer_version
+        and current_record.khal_executable == replacement_record.khal_executable
+        and current_record.vdirsyncer_executable
+        == replacement_record.vdirsyncer_executable
+        and current_record.khal_executable_sha256
+        == replacement_record.khal_executable_sha256
+        and current_record.vdirsyncer_executable_sha256
+        == replacement_record.vdirsyncer_executable_sha256
+        and current_record.smoke_test == replacement_record.smoke_test
+        and current_record.installed_at == replacement_record.installed_at
+        and current_record.lock_or_manifest_sha256
+        != replacement_record.lock_or_manifest_sha256
+    )
 
 
 def _parse_record(

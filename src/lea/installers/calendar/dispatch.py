@@ -76,30 +76,54 @@ def install_calendar_toolchain(
     display_timezone: str,
     clock: CalendarToolchainInstallerClock = lambda: datetime.now(UTC),
     fsync: bool = False,
+    approve_record_refresh: bool = False,
     apply_ownership: CalendarOwnershipApplier = (ignore_calendar_ownership),
 ) -> CalendarToolchainInstallResult:
     """Install the calendar toolchain using the configured mode."""
     if not isinstance(config, CalendarToolchainInstallerConfig):
         raise TypeError("config must be a CalendarToolchainInstallerConfig value.")
 
+    if not isinstance(approve_record_refresh, bool):
+        raise TypeError("approve_record_refresh must be a boolean.")
+
     if config.mode is CalendarToolchainInstallMode.VERIFIED_NETWORK:
-        verified_result = install_verified_network_calendar_toolchain(
-            config,
-            display_timezone=display_timezone,
-            clock=clock,
-            fsync=fsync,
-            apply_ownership=apply_ownership,
-        )
+        if approve_record_refresh:
+            verified_result = install_verified_network_calendar_toolchain(
+                config,
+                display_timezone=display_timezone,
+                clock=clock,
+                fsync=fsync,
+                approve_record_refresh=True,
+                apply_ownership=apply_ownership,
+            )
+        else:
+            verified_result = install_verified_network_calendar_toolchain(
+                config,
+                display_timezone=display_timezone,
+                clock=clock,
+                fsync=fsync,
+                apply_ownership=apply_ownership,
+            )
         return _from_verified_network(verified_result)
 
     if config.mode is CalendarToolchainInstallMode.BUNDLED_WHEELHOUSE:
-        bundled_result = install_bundled_calendar_toolchain(
-            config,
-            display_timezone=display_timezone,
-            clock=clock,
-            fsync=fsync,
-            apply_ownership=apply_ownership,
-        )
+        if approve_record_refresh:
+            bundled_result = install_bundled_calendar_toolchain(
+                config,
+                display_timezone=display_timezone,
+                clock=clock,
+                fsync=fsync,
+                approve_record_refresh=True,
+                apply_ownership=apply_ownership,
+            )
+        else:
+            bundled_result = install_bundled_calendar_toolchain(
+                config,
+                display_timezone=display_timezone,
+                clock=clock,
+                fsync=fsync,
+                apply_ownership=apply_ownership,
+            )
         return _from_bundled(bundled_result)
 
     if config.mode is CalendarToolchainInstallMode.EXTERNAL_EXECUTABLES:

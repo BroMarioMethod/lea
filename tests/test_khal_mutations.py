@@ -56,7 +56,7 @@ def test_create_all_day_event_atomically_and_read_back(tmp_path: Path) -> None:
     assert result.event.event_uid == "event-1@lea.local"
     assert result.event.summary == "Public holiday"
     assert result.event.description == "Rest"
-    assert (collection / "event-1@lea.local.ics").stat().st_mode & 0o777 == 0o600
+    assert (collection / "event-1@lea.local.ics").stat().st_mode & 0o777 == 0o640
     assert not tuple(collection.glob(".lea-create-*"))
 
 
@@ -177,6 +177,8 @@ def test_modify_exact_event_preserves_identity_and_unmodified_fields(
     assert result.event.summary == "Changed"
     assert result.event.description == "Description"
     assert result.event.location is None
+    event_file = config.vdirs_directory / "personal" / "event-5@lea.local.ics"
+    assert event_file.stat().st_mode & 0o777 == 0o640
     assert not tuple(config.vdirs_directory.rglob(".lea-modify-*"))
 
 
@@ -239,3 +241,4 @@ def test_cancel_exact_event_is_persistent_and_idempotent(tmp_path: Path) -> None
     assert second == first
     document = config.vdirs_directory / "personal" / "event-7@lea.local.ics"
     assert b"STATUS:CANCELLED" in document.read_bytes()
+    assert document.stat().st_mode & 0o777 == 0o640

@@ -30,6 +30,9 @@ _PROVIDER = "khal"
 _OPERATION = "create_event"
 
 
+_CALENDAR_ITEM_MODE = 0o640
+
+
 def create_khal_calendar_event(
     config: KhalConfig,
     request: CalendarCreateRequest,
@@ -89,9 +92,12 @@ def create_khal_calendar_event(
             delete=False,
         ) as stream:
             temporary = Path(stream.name)
-            os.chmod(temporary, 0o600)
             stream.write(document)
             stream.flush()
+            os.fchmod(
+                stream.fileno(),
+                _CALENDAR_ITEM_MODE,
+            )
             os.fsync(stream.fileno())
 
         os.link(temporary, destination)
@@ -371,9 +377,12 @@ def _write_staged_document(directory: Path, document: bytes) -> Path:
         delete=False,
     ) as stream:
         path = Path(stream.name)
-        os.chmod(path, 0o600)
         stream.write(document)
         stream.flush()
+        os.fchmod(
+            stream.fileno(),
+            _CALENDAR_ITEM_MODE,
+        )
         os.fsync(stream.fileno())
     return path
 

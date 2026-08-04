@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lea.actions import ConfirmationPolicy
+from lea.actions import ActionStatus, ConfirmationPolicy
 from lea.cli import LocalCliExitCode, execute_local_cli
 from lea.cli.calendar_proposal_commands import CalendarProposalCommandDependencies
 from lea.proposals import MarkdownProposalRepository
@@ -18,13 +18,22 @@ CREATED_AT = datetime(2026, 8, 4, 10, tzinfo=UTC)
 
 def _dependencies(
     tmp_path: Path,
-) -> tuple[CalendarProposalCommandDependencies, MarkdownProposalRepository]:
+) -> tuple[
+    CalendarProposalCommandDependencies,
+    MarkdownProposalRepository,
+]:
     config = isolated_test_runtime_config(tmp_path / "runtime")
     config.paths.proposal_dir.mkdir(parents=True)
+    config.paths.audit_dir.mkdir(parents=True)
     repository = MarkdownProposalRepository(config.paths.proposal_dir)
+
     return (
         CalendarProposalCommandDependencies(
-            load_configuration=lambda _path: ConfigurationResult(True, config, ()),
+            load_configuration=lambda _path: ConfigurationResult(
+                True,
+                config,
+                (),
+            ),
             create_repository=lambda _config: repository,
             proposal_id_source=lambda: PROPOSAL_ID,
             clock=lambda: CREATED_AT,
@@ -90,6 +99,7 @@ def test_calendar_commands_persist_always_confirm_proposals_without_provider_acc
     assert written.proposal.action == expected_action
     assert written.proposal.source == "cli:local"
     assert written.proposal.confirmation_policy is ConfirmationPolicy.ALWAYS
+    assert written.proposal.status is ActionStatus.AWAITING_CONFIRMATION
     assert "Approval and explicit execution are required." in stdout.getvalue()
 
 
