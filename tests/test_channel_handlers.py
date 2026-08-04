@@ -55,6 +55,7 @@ DEFAULT_CAPABILITIES = (
     "Proposals.Read",
     "Proposals.Confirm",
     "Proposals.Execute.LowRisk",
+    "Calendar.Sync",
 )
 
 
@@ -183,6 +184,46 @@ def test_task_create_submits_without_direct_execution(
     assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
     assert submitted[0].source == "telegram:owner"
     assert submitted[0].parameters["description"] == "Write Slice 12"
+
+
+def test_calendar_sync_submits_confirmation_required_medium_proposal(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(_request("calendar.sync", {"arguments": []}))
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert result.response.message == "Proposal awaiting confirmation."
+    assert calls == []
+    assert len(submitted) == 1
+    assert submitted[0].action == "calendar.sync"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+
+
+def test_calendar_sync_requires_independent_capability(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+    capabilities = tuple(
+        value for value in DEFAULT_CAPABILITIES if value != "Calendar.Sync"
+    )
+
+    result = application.handle(
+        _request("calendar.sync", {"arguments": []}, capabilities=capabilities)
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert submitted == []
 
 
 def test_task_modify_submits_confirmation_required_proposal(
@@ -484,6 +525,7 @@ def test_system_commands_report_only_supported_commands(
         "/calendars",
         "/calendar_events <start-date> <end-date> [calendar-id ...]",
         "/calendar_show <calendar-id> <event-uid>",
+        "/calendar_sync",
         "/task_add <description>",
         "/task_show <task-uuid>",
         "/task_modify <task-uuid> <description>",

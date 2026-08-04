@@ -191,6 +191,11 @@ _DEFAULT_COMMAND_DEFINITIONS = (
         maximum_arguments=2,
     ),
     TelegramCommandDefinition(
+        telegram_command="/calendar_sync",
+        channel_command="calendar.sync",
+        required_capability=ChannelCapability.CALENDAR_SYNC,
+    ),
+    TelegramCommandDefinition(
         telegram_command="/task_add",
         channel_command="tasks.create",
         required_capability=ChannelCapability.TASKS_WRITE,

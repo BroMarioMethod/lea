@@ -22,6 +22,7 @@ from lea.calendars.contracts import (
     CalendarEventQuery,
     CalendarProviderIssue,
 )
+from lea.calendars.proposal_builders import build_calendar_sync_proposal
 from lea.calendars.provider import CalendarProvider
 from lea.channels.application import (
     ChannelCommandDefinition,
@@ -84,6 +85,7 @@ _SUPPORTED_EXPLICIT_COMMANDS = (
     "/calendars",
     "/calendar_events <start-date> <end-date> [calendar-id ...]",
     "/calendar_show <calendar-id> <event-uid>",
+    "/calendar_sync",
     "/task_add <description>",
     "/task_show <task-uuid>",
     "/task_modify <task-uuid> <description>",
@@ -173,6 +175,10 @@ def build_default_channel_application(
                     request,
                     dependencies,
                 ),
+            ),
+            ChannelCommandDefinition(
+                "calendar.sync",
+                lambda request: _calendar_sync(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "tasks.create",
@@ -760,6 +766,66 @@ def _calendar_read_denied(
     )
 
 
+def _calendar_sync(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit synchronization as an explicitly confirmed proposal."""
+    capability = ChannelCapability.CALENDAR_SYNC.value
+    if capability not in request.identity.capabilities:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.PERMISSION_DENIED,
+                issues=(
+                    _issue(
+                        "calendar_sync_capability_required",
+                        "Calendar.Sync capability is required.",
+                        "capabilities",
+                    ),
+                ),
+                data={"required_capability": capability},
+            ),
+            dependencies,
+            success_message="",
+        )
+    parameters = _business_parameters(request)
+    unknown = sorted(set(parameters) - {"arguments"})
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    if arguments:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue(
+                "channel_arguments_excessive",
+                "calendar.sync does not accept positional arguments.",
+                "arguments",
+            ),
+        )
+    try:
+        proposal = _interactive_proposal(
+            build_calendar_sync_proposal(
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_sync_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
 def _calendar_provider_unavailable(
     request: ChannelRequest,
     dependencies: ChannelHandlerDependencies,
@@ -1005,7 +1071,7 @@ def _tasks_create(
             priority=_optional_text(parameters.get("priority")),
             tags=_text_tuple(parameters.get("tags"), field="tags"),
         )
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_create_proposal(
                 task_request,
                 proposal_id=_next_identifier(
@@ -1023,7 +1089,7 @@ def _tasks_create(
             _issue("task_creation_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
 def _tasks_modify(
@@ -1081,7 +1147,7 @@ def _tasks_modify(
                 field="remove_tags",
             ),
         )
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_modify_proposal(
                 modify_request,
                 proposal_id=_next_identifier(
@@ -1099,7 +1165,7 @@ def _tasks_modify(
             _issue("task_modification_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
 def _tasks_complete(
@@ -1112,7 +1178,7 @@ def _tasks_complete(
         return _validation_response(request, dependencies, identifier)
 
     try:
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_complete_proposal(
                 identifier,
                 proposal_id=_next_identifier(
@@ -1130,7 +1196,7 @@ def _tasks_complete(
             _issue("task_completion_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
 def _tasks_delete(
@@ -1143,7 +1209,7 @@ def _tasks_delete(
         return _validation_response(request, dependencies, identifier)
 
     try:
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_delete_proposal(
                 identifier,
                 proposal_id=_next_identifier(
@@ -1161,20 +1227,20 @@ def _tasks_delete(
             _issue("task_deletion_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
-def _interactive_task_proposal(
+def _interactive_proposal(
     proposal: ActionProposal,
 ) -> ActionProposal:
-    """Require explicit confirmation for an interactive task request."""
+    """Require explicit confirmation for an interactive mutation or sync."""
     return replace(
         proposal,
         confirmation_policy=ConfirmationPolicy.ALWAYS,
     )
 
 
-def _submit_task_proposal(
+def _submit_interactive_proposal(
     request: ChannelRequest,
     dependencies: ChannelHandlerDependencies,
     proposal: ActionProposal,
