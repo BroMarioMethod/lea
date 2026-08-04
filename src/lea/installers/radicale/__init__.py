@@ -20,6 +20,16 @@ from lea.installers.radicale.provisioning import (
     RadicaleProvisionResult,
     provision_radicale_runtime,
 )
+from lea.installers.radicale.service import (
+    RadicaleServiceConfig,
+    RadicaleServiceIssue,
+    RadicaleServiceResult,
+    RadicaleUnitProvisionResult,
+    ServiceCommandResult,
+    activate_radicale_service,
+    provision_radicale_systemd_unit,
+    render_radicale_systemd_unit,
+)
 
 __all__ = [
     "RadicaleCredential",
@@ -29,9 +39,17 @@ __all__ = [
     "RadicaleProvisionResult",
     "RadicaleRuntimeLayout",
     "RadicaleServerConfig",
+    "RadicaleServiceConfig",
+    "RadicaleServiceIssue",
+    "RadicaleServiceResult",
+    "RadicaleUnitProvisionResult",
+    "ServiceCommandResult",
+    "activate_radicale_service",
     "canonical_radicale_runtime_layout",
     "provision_radicale_runtime",
+    "provision_radicale_systemd_unit",
     "provision_radicale_users_file",
     "render_radicale_configuration",
+    "render_radicale_systemd_unit",
     "render_radicale_users_file",
 ]
