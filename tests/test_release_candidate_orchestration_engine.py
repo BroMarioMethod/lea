@@ -747,7 +747,9 @@ def test_selected_calendar_runs_between_taskwarrior_and_telegram(
     def calendar(
         request: ReleaseCandidateInstallRequest,
         inputs: ReleaseCandidateCalendarInputs,
+        replacement_approved: bool,
     ) -> ReleaseCandidateCalendarResult:
+        assert replacement_approved is False
         calls.append("calendar")
         plan = create_calendar_toolchain_installation_plan(request, inputs)
         return ReleaseCandidateCalendarResult(
@@ -821,8 +823,9 @@ def test_calendar_failure_stops_before_telegram(
     def calendar(
         request: ReleaseCandidateInstallRequest,
         inputs: ReleaseCandidateCalendarInputs,
+        replacement_approved: bool,
     ) -> ReleaseCandidateCalendarResult:
-        del request, inputs
+        del request, inputs, replacement_approved
         calls.append("calendar")
         return ReleaseCandidateCalendarResult(
             success=False,

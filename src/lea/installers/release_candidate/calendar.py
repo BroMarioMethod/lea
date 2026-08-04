@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,11 +23,13 @@ from lea.installers.calendar.ownership import (
 )
 from lea.installers.calendar.records import (
     CalendarToolchainInstallationRecord,
+    read_calendar_toolchain_installation_record,
 )
 from lea.installers.release_candidate.contracts import (
     InstallerIssue,
     InstallerIssueCode,
     InstallerStepId,
+    ReleaseCandidateInstallMode,
     ReleaseCandidateInstallRequest,
 )
 
@@ -218,6 +222,10 @@ def install_release_candidate_calendar_toolchain(
     plan: ReleaseCandidateCalendarPlan,
     *,
     display_timezone: str,
+    installation_mode: ReleaseCandidateInstallMode = (
+        ReleaseCandidateInstallMode.FRESH_INSTALL
+    ),
+    approve_replacement: bool = False,
     installer: CalendarToolchainInstaller = install_calendar_toolchain,
     fsync: bool = True,
     apply_ownership: CalendarOwnershipApplier = ignore_calendar_ownership,
@@ -225,6 +233,15 @@ def install_release_candidate_calendar_toolchain(
     """Install the calendar toolchain through its existing dispatcher."""
     if not isinstance(plan, ReleaseCandidateCalendarPlan):
         raise TypeError("plan must be a ReleaseCandidateCalendarPlan value.")
+
+    backup, preparation_issue = _prepare_upgrade_record(
+        plan,
+        installation_mode=installation_mode,
+        approve_replacement=approve_replacement,
+        fsync=fsync,
+    )
+    if preparation_issue is not None:
+        return _calendar_failure(preparation_issue)
 
     result = installer(
         plan.config,
@@ -234,6 +251,7 @@ def install_release_candidate_calendar_toolchain(
     )
 
     if not result.success or result.record is None:
+        restoration_issue = _restore_upgrade_record(plan, backup, fsync=fsync)
         issues = _translate_component_issues(result.issues)
 
         if not issues:
@@ -248,6 +266,8 @@ def install_release_candidate_calendar_toolchain(
                 ),
             )
 
+        if restoration_issue is not None:
+            issues += (restoration_issue,)
         return ReleaseCandidateCalendarResult(
             success=False,
             already_installed=False,
@@ -263,28 +283,32 @@ def install_release_candidate_calendar_toolchain(
         record.khal_executable != plan.expected_khal_executable
         or record.vdirsyncer_executable != plan.expected_vdirsyncer_executable
     ):
+        restoration_issue = _restore_upgrade_record(plan, backup, fsync=fsync)
         unexpected = (
             record.khal_executable
             if record.khal_executable != plan.expected_khal_executable
             else record.vdirsyncer_executable
         )
+        issues = (
+            InstallerIssue(
+                code=InstallerIssueCode.STEP_FAILED,
+                message=(
+                    "Calendar installation returned an unexpected "
+                    "managed executable path."
+                ),
+                step=InstallerStepId.CALENDAR_TOOLCHAIN,
+                path=unexpected,
+            ),
+        )
+        if restoration_issue is not None:
+            issues += (restoration_issue,)
         return ReleaseCandidateCalendarResult(
             success=False,
             already_installed=False,
             khal_executable=None,
             vdirsyncer_executable=None,
             record=None,
-            issues=(
-                InstallerIssue(
-                    code=InstallerIssueCode.STEP_FAILED,
-                    message=(
-                        "Calendar installation returned an unexpected "
-                        "managed executable path."
-                    ),
-                    step=InstallerStepId.CALENDAR_TOOLCHAIN,
-                    path=unexpected,
-                ),
-            ),
+            issues=issues,
         )
 
     return ReleaseCandidateCalendarResult(
@@ -295,6 +319,105 @@ def install_release_candidate_calendar_toolchain(
         record=record,
         issues=(),
     )
+
+
+def _prepare_upgrade_record(
+    plan: ReleaseCandidateCalendarPlan,
+    *,
+    installation_mode: ReleaseCandidateInstallMode,
+    approve_replacement: bool,
+    fsync: bool,
+) -> tuple[Path | None, InstallerIssue | None]:
+    """Preserve an exact old record before an explicitly approved upgrade."""
+    record_path = plan.config.installation_record
+    if installation_mode is not ReleaseCandidateInstallMode.UPGRADE:
+        return None, None
+    if not record_path.exists() and not record_path.is_symlink():
+        return None, None
+    old_record, read_issues = read_calendar_toolchain_installation_record(record_path)
+    if old_record is None or read_issues:
+        return None, _upgrade_issue(
+            "The existing calendar installation record is invalid; upgrade stopped.",
+            record_path,
+        )
+    if old_record.toolchain_version == plan.config.toolchain_version:
+        return None, None
+    if not approve_replacement:
+        return None, _upgrade_issue(
+            "Calendar toolchain upgrade requires explicit replacement approval.",
+            record_path,
+        )
+    backup = record_path.with_name(f"{record_path.name}.pre-upgrade.backup")
+    if backup.exists() or backup.is_symlink():
+        return None, _upgrade_issue(
+            "The calendar pre-upgrade record backup already exists.", backup
+        )
+    try:
+        os.link(record_path, backup)
+        backup.chmod(0o640)
+        record_path.unlink()
+        if fsync:
+            _fsync_directory(record_path.parent)
+    except OSError:
+        if not record_path.exists() and backup.is_file() and not backup.is_symlink():
+            with suppress(OSError):
+                os.link(backup, record_path)
+        return None, _upgrade_issue(
+            "The calendar installation record could not be backed up safely.",
+            record_path,
+        )
+    return backup, None
+
+
+def _restore_upgrade_record(
+    plan: ReleaseCandidateCalendarPlan,
+    backup: Path | None,
+    *,
+    fsync: bool,
+) -> InstallerIssue | None:
+    """Restore the prior record if the approved upgrade does not complete."""
+    if backup is None:
+        return None
+    destination = plan.config.installation_record
+    try:
+        if backup.is_symlink() or not backup.is_file():
+            raise OSError("invalid backup")
+        if destination.is_symlink() or (
+            destination.exists() and not destination.is_file()
+        ):
+            raise OSError("invalid replacement record")
+        destination.unlink(missing_ok=True)
+        os.link(backup, destination)
+        destination.chmod(0o640)
+        if fsync:
+            _fsync_directory(destination.parent)
+    except OSError:
+        return _upgrade_issue(
+            "The previous calendar installation record could not be restored.",
+            destination,
+        )
+    return None
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _upgrade_issue(message: str, path: Path) -> InstallerIssue:
+    return InstallerIssue(
+        code=InstallerIssueCode.STEP_FAILED,
+        message=message,
+        step=InstallerStepId.CALENDAR_TOOLCHAIN,
+        path=path,
+    )
+
+
+def _calendar_failure(issue: InstallerIssue) -> ReleaseCandidateCalendarResult:
+    return ReleaseCandidateCalendarResult(False, False, None, None, None, (issue,))
 
 
 def _translate_component_issues(

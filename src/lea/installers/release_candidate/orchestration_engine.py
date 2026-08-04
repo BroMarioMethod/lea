@@ -109,6 +109,7 @@ CalendarRunner = Callable[
     [
         ReleaseCandidateInstallRequest,
         ReleaseCandidateCalendarInputs,
+        bool,
     ],
     ReleaseCandidateCalendarResult,
 ]
@@ -204,6 +205,7 @@ def create_release_candidate_orchestration_dependencies(
     def install_calendar(
         request: ReleaseCandidateInstallRequest,
         inputs: ReleaseCandidateCalendarInputs,
+        replacement_approved: bool,
     ) -> ReleaseCandidateCalendarResult:
         return install_release_candidate_calendar_toolchain(
             create_calendar_toolchain_installation_plan(
@@ -211,6 +213,8 @@ def create_release_candidate_orchestration_dependencies(
                 inputs,
             ),
             display_timezone=request.display_timezone,
+            installation_mode=request.mode,
+            approve_replacement=replacement_approved,
             apply_ownership=_apply_calendar_posix_ownership,
         )
 
@@ -589,6 +593,7 @@ def run_release_candidate_orchestration(
             lambda: calendar_runner(
                 request.installation,
                 calendar_inputs,
+                request.replacement_approved,
             ),
         )
         if failure is not None:

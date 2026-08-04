@@ -32,6 +32,7 @@ def test_runbook_covers_required_lifecycle_and_android_operations() -> None:
         "--android-to-server-verified",
         "--user-isolation-verified",
         "--backup-verified",
+        "calendar-toolchain.json.pre-upgrade.backup",
         "lea uninstall-release-candidate --purge --yes",
         "/opt/lea-tools/calendar",
         "/var/lib/lea/secrets/calendar/caldav-password",

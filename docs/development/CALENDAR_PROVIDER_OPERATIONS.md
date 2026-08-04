@@ -88,6 +88,8 @@ lea proposal list
 lea proposal approve <proposal-id>
 lea proposal execute <proposal-id>
 lea calendar sync
+lea proposal approve <sync-proposal-id>
+lea proposal execute <sync-proposal-id>
 ```
 
 Telegram uses the equivalent explicit `/calendar_discover` and
@@ -165,7 +167,9 @@ not a verified backup.
 2. Pin the new lock digest, tool versions, platform, trusted `uv` and Python.
 3. Run `lea install-release-candidate --mode upgrade` with the full pinned
    calendar arguments and explicit `--approve-replacement`.
-4. The installer stages and verifies before activation. Stop if any old record,
+4. The installer preserves the prior installation record as
+   `calendar-toolchain.json.pre-upgrade.backup`, stages and verifies the new
+   version, and restores the prior record if installation fails. Stop if any old record,
    executable, configuration or hash differs from expected state; never delete
    a mismatch merely to make the upgrade continue.
 5. Re-run exact version checks, disposable lifecycle acceptance, discovery and
@@ -173,6 +177,9 @@ not a verified backup.
 6. Keep the pre-upgrade backup until the new version and a post-upgrade restore
    drill pass. Roll back by stopping services and restoring the complete matched
    configuration, state, secret and installation-record set together.
+
+Archive the pre-upgrade record backup with the verified system backup before a
+later upgrade. A second upgrade refuses to overwrite this evidence.
 
 Radicale upgrades follow the same rule but remain a separate change: verify the
 new external executable before service changes, take a consistent storage

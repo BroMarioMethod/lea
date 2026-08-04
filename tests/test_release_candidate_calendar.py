@@ -1,5 +1,6 @@
 """Tests for release-candidate calendar toolchain integration."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from lea.installers.calendar.contracts import (
 from lea.installers.calendar.dispatch import CalendarToolchainInstallResult
 from lea.installers.calendar.records import (
     CalendarToolchainInstallationRecord,
+    render_calendar_toolchain_installation_record,
 )
 from lea.installers.release_candidate import (
     InstallerStepId,
@@ -303,6 +305,105 @@ def test_unexpected_managed_executable_is_rejected(
     assert result.success is False
     assert result.record is None
     assert result.issues[0].path == record.khal_executable
+
+
+def test_approved_upgrade_backs_up_and_replaces_installation_record(
+    tmp_path: Path,
+) -> None:
+    plan = create_calendar_toolchain_installation_plan(
+        _request(tmp_path), _inputs(tmp_path)
+    )
+    old_record = replace(
+        _record(plan),
+        toolchain_version="0.9.0",
+        khal_executable=Path("/opt/lea-tools/calendar/0.9.0/.venv/bin/khal"),
+        vdirsyncer_executable=Path(
+            "/opt/lea-tools/calendar/0.9.0/.venv/bin/vdirsyncer"
+        ),
+    )
+    path = plan.config.installation_record
+    path.parent.mkdir(parents=True)
+    old_document = render_calendar_toolchain_installation_record(old_record)
+    path.write_text(old_document, encoding="utf-8")
+    path.chmod(0o640)
+    new_record = _record(plan)
+
+    def installer(config: Any, **_kwargs: object) -> CalendarToolchainInstallResult:
+        assert not config.installation_record.exists()
+        config.installation_record.write_text(
+            render_calendar_toolchain_installation_record(new_record), encoding="utf-8"
+        )
+        return CalendarToolchainInstallResult(True, False, new_record, ())
+
+    result = install_release_candidate_calendar_toolchain(
+        plan,
+        display_timezone="Africa/Gaborone",
+        installation_mode=ReleaseCandidateInstallMode.UPGRADE,
+        approve_replacement=True,
+        installer=installer,
+    )
+
+    backup = path.with_name(f"{path.name}.pre-upgrade.backup")
+    assert result.success is True
+    assert backup.read_text(encoding="utf-8") == old_document
+    assert path.read_text(
+        encoding="utf-8"
+    ) == render_calendar_toolchain_installation_record(new_record)
+
+
+def test_failed_upgrade_restores_previous_installation_record(tmp_path: Path) -> None:
+    plan = create_calendar_toolchain_installation_plan(
+        _request(tmp_path), _inputs(tmp_path)
+    )
+    old_record = replace(_record(plan), toolchain_version="0.9.0")
+    path = plan.config.installation_record
+    path.parent.mkdir(parents=True)
+    old_document = render_calendar_toolchain_installation_record(old_record)
+    path.write_text(old_document, encoding="utf-8")
+    path.chmod(0o640)
+    issue = CalendarToolchainInstallerIssue(
+        CalendarToolchainInstallFailureCode.PACKAGE_INSTALL_FAILED,
+        "Synthetic upgrade failure.",
+    )
+
+    def installer(_config: Any, **_kwargs: object) -> CalendarToolchainInstallResult:
+        return CalendarToolchainInstallResult(False, False, None, (issue,))
+
+    result = install_release_candidate_calendar_toolchain(
+        plan,
+        display_timezone="Africa/Gaborone",
+        installation_mode=ReleaseCandidateInstallMode.UPGRADE,
+        approve_replacement=True,
+        installer=installer,
+    )
+
+    assert result.success is False
+    assert path.read_text(encoding="utf-8") == old_document
+
+
+def test_upgrade_replacement_requires_explicit_approval(tmp_path: Path) -> None:
+    plan = create_calendar_toolchain_installation_plan(
+        _request(tmp_path), _inputs(tmp_path)
+    )
+    path = plan.config.installation_record
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        render_calendar_toolchain_installation_record(
+            replace(_record(plan), toolchain_version="0.9.0")
+        ),
+        encoding="utf-8",
+    )
+
+    result = install_release_candidate_calendar_toolchain(
+        plan,
+        display_timezone="Africa/Gaborone",
+        installation_mode=ReleaseCandidateInstallMode.UPGRADE,
+        approve_replacement=False,
+        installer=lambda *_args, **_kwargs: pytest.fail("installer called"),
+    )
+
+    assert result.success is False
+    assert "explicit replacement approval" in result.issues[0].message
 
 
 @pytest.mark.parametrize(
