@@ -171,6 +171,12 @@ def create_system_provisioning_plan(
             mode=0o750,
         ),
         ManagedDirectory(
+            path=request.state_root / "install",
+            owner="root",
+            group=request.service_group,
+            mode=0o750,
+        ),
+        ManagedDirectory(
             path=request.state_root / "audit",
             owner=request.service_user,
             group=request.service_group,

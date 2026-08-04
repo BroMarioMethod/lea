@@ -83,37 +83,50 @@ def read_taskwarrior_installation_record(
     if not path.is_absolute():
         raise ValueError("path must be absolute.")
 
-    if not path.exists():
-        return (
-            None,
-            (
-                TaskwarriorInstallerIssue(
-                    code=TaskwarriorInstallFailureCode.RECORD_FAILED,
-                    message=("The Taskwarrior installation record does not exist."),
-                    field="installation_record",
-                    path=path,
-                ),
-            ),
-        )
-
-    if not path.is_file():
-        return (
-            None,
-            (
-                TaskwarriorInstallerIssue(
-                    code=TaskwarriorInstallFailureCode.RECORD_FAILED,
-                    message=(
-                        "The Taskwarrior installation record is not a regular file."
+    try:
+        if not path.exists():
+            return (
+                None,
+                (
+                    TaskwarriorInstallerIssue(
+                        code=TaskwarriorInstallFailureCode.RECORD_FAILED,
+                        message=("The Taskwarrior installation record does not exist."),
+                        field="installation_record",
+                        path=path,
                     ),
-                    field="installation_record",
-                    path=path,
                 ),
-            ),
+            )
+
+        if not path.is_file():
+            return (
+                None,
+                (
+                    TaskwarriorInstallerIssue(
+                        code=TaskwarriorInstallFailureCode.RECORD_FAILED,
+                        message=(
+                            "The Taskwarrior installation record is not a regular file."
+                        ),
+                        field="installation_record",
+                        path=path,
+                    ),
+                ),
+            )
+
+        document = path.read_text(encoding="utf-8")
+    except OSError:
+        return _record_failure(
+            path,
+            "The Taskwarrior installation record could not be accessed.",
+        )
+    except UnicodeDecodeError:
+        return _record_failure(
+            path,
+            "The Taskwarrior installation record could not be decoded.",
         )
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        payload = json.loads(document)
+    except json.JSONDecodeError:
         return _record_failure(
             path,
             "The Taskwarrior installation record could not be decoded.",

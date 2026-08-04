@@ -70,6 +70,13 @@ def test_plan_uses_expected_modes(tmp_path: Path) -> None:
     assert modes["audit"] == 0o775
     assert modes["backups"] == 0o775
 
+    install_directory = next(
+        directory for directory in plan.directories if directory.path.name == "install"
+    )
+    assert install_directory.owner == "root"
+    assert install_directory.group == "lea"
+    assert install_directory.mode == 0o750
+
     run_directory = next(
         directory
         for directory in plan.directories

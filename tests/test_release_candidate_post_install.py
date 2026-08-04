@@ -1,5 +1,10 @@
 """Tests for release-candidate post-install health and acceptance."""
 
+import grp
+import os
+import pwd
+import shutil
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +39,7 @@ from lea.installers.release_candidate import (
 )
 from lea.installers.release_candidate.post_install import (
     _check_installation_record,
+    _runtime_path_accessible,
 )
 from lea.installers.release_candidate.telegram_onboarding import (
     TelegramBotIdentity,
@@ -230,6 +236,95 @@ def _failed_configuration(path: Path) -> ConfigurationResult:
     )
 
 
+def _run_health(
+    plan: PostInstallHealthPlan,
+    **kwargs: Any,
+) -> PostInstallHealthResult:
+    """Run isolated health tests without host-identity dependencies."""
+    return run_post_install_health(
+        plan,
+        runtime_path_access_checker=(lambda _path, _user, _group, _mode: True),
+        **kwargs,
+    )
+
+
+def test_runtime_path_access_requires_group_traversal() -> None:
+    """A blocked group ancestor must fail even when the owner can read."""
+    service_user = pwd.getpwuid(os.getuid()).pw_name
+    service_group = grp.getgrgid(os.getgid()).gr_name
+    root = Path(
+        tempfile.mkdtemp(
+            prefix="lea-runtime-access-",
+            dir="/tmp",
+        )
+    )
+
+    try:
+        root.chmod(0o750)
+        record = root / "record.json"
+        record.write_text("{}\n", encoding="utf-8")
+        record.chmod(0o640)
+
+        assert _runtime_path_accessible(
+            record,
+            service_user,
+            service_group,
+            os.R_OK,
+        )
+
+        root.chmod(0o700)
+
+        assert not _runtime_path_accessible(
+            record,
+            service_user,
+            service_group,
+            os.R_OK,
+        )
+    finally:
+        root.chmod(0o700)
+        shutil.rmtree(root)
+
+
+def test_health_rejects_inaccessible_taskwarrior_record(
+    tmp_path: Path,
+) -> None:
+    """Root execution must not hide a runtime path-access defect."""
+    plan, _runtime = _prepare(tmp_path)
+    observed: list[tuple[Path, str, str, int]] = []
+
+    def check_access(
+        path: Path,
+        service_user: str,
+        service_group: str,
+        required_mode: int,
+    ) -> bool:
+        observed.append(
+            (
+                path,
+                service_user,
+                service_group,
+                required_mode,
+            )
+        )
+        return path != plan.taskwarrior_record_file
+
+    result = run_post_install_health(
+        plan,
+        runtime_path_access_checker=check_access,
+    )
+
+    assert result.healthy is False
+    assert result.checks[-1].code == "taskwarrior_record_access"
+    assert result.checks[-1].path == plan.taskwarrior_record_file
+    assert result.checks[-1].state is PostInstallCheckState.FAILED
+    assert observed[-1] == (
+        plan.taskwarrior_record_file,
+        "lea",
+        "lea",
+        os.R_OK,
+    )
+
+
 def test_plan_omits_calendar_paths_when_not_selected(
     tmp_path: Path,
 ) -> None:
@@ -273,7 +368,7 @@ def test_calendar_health_validates_record_and_exact_versions(
         captured.update(arguments)
         return _calendar_version_result(calendar_record)
 
-    result = run_post_install_health(
+    result = _run_health(
         plan,
         runtime_loader=lambda _path: ConfigurationResult(
             success=True,
@@ -328,7 +423,7 @@ def test_calendar_health_fails_for_invalid_record(
     ) -> CalendarToolchainVersionCheckResult:
         raise AssertionError("The version check must not run for an invalid record.")
 
-    result = run_post_install_health(
+    result = _run_health(
         plan,
         runtime_loader=lambda _path: ConfigurationResult(
             success=True,
@@ -448,7 +543,7 @@ def test_health_reuses_runtime_and_taskwarrior_boundaries(tmp_path: Path) -> Non
             issues=(),
         )
 
-    result = run_post_install_health(
+    result = _run_health(
         plan,
         runtime_loader=lambda _path: ConfigurationResult(
             success=True,
@@ -471,13 +566,19 @@ def test_health_reuses_runtime_and_taskwarrior_boundaries(tmp_path: Path) -> Non
 def test_runtime_failure_stops_health_check(tmp_path: Path) -> None:
     plan, _runtime = _prepare(tmp_path)
 
-    result = run_post_install_health(
+    result = _run_health(
         plan,
         runtime_loader=_failed_configuration,
     )
 
     assert result.healthy is False
-    assert result.checks[0].code == "runtime_configuration_invalid"
+    assert tuple(check.code for check in result.checks) == (
+        "runtime_configuration_access",
+        "release_candidate_record_access",
+        "taskwarrior_record_access",
+        "runtime_configuration_invalid",
+    )
+    assert result.checks[-1].state is PostInstallCheckState.FAILED
 
 
 def test_telegram_health_checks_config_users_token_and_service(
@@ -516,7 +617,7 @@ remove_capabilities = []
         offset_file=tmp_path / "offset.json",
     )
 
-    result = run_post_install_health(
+    result = _run_health(
         plan,
         runtime_loader=lambda _path: ConfigurationResult(
             success=True,
@@ -861,7 +962,7 @@ def test_health_preserves_taskwarrior_inspection_diagnostics(
     plan, runtime = _prepare(tmp_path)
     record = _record(tmp_path)
 
-    result = run_post_install_health(
+    result = _run_health(
         plan,
         runtime_loader=lambda _path: ConfigurationResult(
             success=True,

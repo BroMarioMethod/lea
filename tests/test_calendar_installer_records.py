@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -247,6 +248,27 @@ def test_missing_record_returns_structured_issue(
     assert issues[0].path == path
 
 
+def test_inaccessible_record_returns_structured_issue(
+    tmp_path: Path,
+) -> None:
+    """Permission failures must return one deterministic record issue."""
+    path = tmp_path / "record.json"
+
+    with patch.object(
+        Path,
+        "is_symlink",
+        side_effect=PermissionError("permission denied"),
+    ):
+        record, issues = read_calendar_toolchain_installation_record(path)
+
+    assert record is None
+    assert len(issues) == 1
+    assert issues[0].code is CalendarToolchainInstallFailureCode.RECORD_FAILED
+    assert issues[0].field == "installation_record"
+    assert issues[0].path == path
+    assert "could not be accessed" in issues[0].message
+
+
 def test_symlinked_record_is_rejected(
     tmp_path: Path,
 ) -> None:
@@ -326,8 +348,12 @@ def test_writer_creates_atomic_managed_record(
     assert destination.read_text(encoding="utf-8") == (
         render_calendar_toolchain_installation_record(record)
     )
+    assert destination.parent.stat().st_mode & 0o777 == 0o750
     assert destination.stat().st_mode & 0o777 == 0o640
-    assert ownership == [(destination, "root", "lea")]
+    assert ownership == [
+        (destination.parent, "root", "lea"),
+        (destination, "root", "lea"),
+    ]
     assert tuple(destination.parent.glob(".*.tmp")) == ()
 
 
@@ -337,20 +363,44 @@ def test_writer_is_idempotent_for_identical_record(
     """An identical record should be accepted without rewriting bytes."""
     record = _record(tmp_path)
     destination = tmp_path / "install" / "calendar.json"
+    ownership: list[tuple[Path, str, str]] = []
+
+    def apply_ownership(
+        path: Path,
+        owner: str,
+        group: str,
+    ) -> bool:
+        ownership.append((path, owner, group))
+        return True
 
     first = write_calendar_toolchain_installation_record(
         record,
         destination=destination,
+        owner="root",
+        group="lea",
+        apply_ownership=apply_ownership,
     )
     before = destination.stat().st_ino
+    destination.parent.chmod(0o700)
+
     second = write_calendar_toolchain_installation_record(
         record,
         destination=destination,
+        owner="root",
+        group="lea",
+        apply_ownership=apply_ownership,
     )
 
     assert first == ()
     assert second == ()
     assert destination.stat().st_ino == before
+    assert destination.parent.stat().st_mode & 0o777 == 0o750
+    assert ownership == [
+        (destination.parent, "root", "lea"),
+        (destination, "root", "lea"),
+        (destination.parent, "root", "lea"),
+        (destination, "root", "lea"),
+    ]
 
 
 def test_mismatched_existing_record_is_not_overwritten(

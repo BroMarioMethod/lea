@@ -313,10 +313,15 @@ def read_calendar_toolchain_installation_record(
             )
 
         document = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    except OSError:
         return _record_read_failure(
             path,
-            "The calendar toolchain installation record could not be read.",
+            "The calendar toolchain installation record could not be accessed.",
+        )
+    except UnicodeDecodeError:
+        return _record_read_failure(
+            path,
+            "The calendar toolchain installation record could not be decoded.",
         )
 
     try:
@@ -488,7 +493,12 @@ def write_calendar_toolchain_installation_record(
     _validate_non_empty_string(group, field_name="group")
 
     document = render_calendar_toolchain_installation_record(record)
-    parent_issue = _prepare_record_parent(destination.parent)
+    parent_issue = _prepare_record_parent(
+        destination.parent,
+        owner=owner,
+        group=group,
+        apply_ownership=apply_ownership,
+    )
 
     if parent_issue is not None:
         return (parent_issue,)
@@ -734,8 +744,12 @@ def _strict_json_object(
 
 def _prepare_record_parent(
     parent: Path,
+    *,
+    owner: str,
+    group: str,
+    apply_ownership: CalendarOwnershipApplier,
 ) -> CalendarToolchainInstallerIssue | None:
-    """Create one safe parent without traversing symlink ancestors."""
+    """Create and normalise one safe installation-record parent."""
     try:
         current = parent
 
@@ -770,7 +784,8 @@ def _prepare_record_parent(
             )
 
         parent.chmod(_RECORD_PARENT_MODE)
-    except OSError as error:
+        apply_ownership(parent, owner, group)
+    except (KeyError, OSError) as error:
         return _record_issue(
             message=(
                 "The calendar toolchain installation-record parent could "
