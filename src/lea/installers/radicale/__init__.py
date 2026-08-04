@@ -1,5 +1,12 @@
 """Separate Radicale CalDAV server deployment boundary."""
 
+from lea.installers.radicale.binary import (
+    RadicaleBinaryConfig,
+    RadicaleBinaryIssue,
+    RadicaleBinaryResult,
+    RadicaleInstallationRecord,
+    verify_and_register_radicale_binary,
+)
 from lea.installers.radicale.configuration import (
     canonical_radicale_runtime_layout,
     render_radicale_configuration,
@@ -42,11 +49,15 @@ from lea.installers.radicale.service import (
 
 __all__ = [
     "RadicaleAcceptanceAccount",
+    "RadicaleBinaryConfig",
+    "RadicaleBinaryIssue",
+    "RadicaleBinaryResult",
     "RadicaleCredential",
     "RadicaleCredentialIssue",
     "RadicaleCredentialProvisionResult",
     "RadicaleHealthIssue",
     "RadicaleHealthResult",
+    "RadicaleInstallationRecord",
     "RadicaleIsolationResult",
     "RadicaleProbeResponse",
     "RadicaleProvisionIssue",
@@ -67,5 +78,6 @@ __all__ = [
     "render_radicale_configuration",
     "render_radicale_systemd_unit",
     "render_radicale_users_file",
+    "verify_and_register_radicale_binary",
     "verify_radicale_user_isolation",
 ]
