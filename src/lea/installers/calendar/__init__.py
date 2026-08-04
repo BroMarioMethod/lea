@@ -11,6 +11,16 @@ from lea.installers.calendar.bundled import (
     CalendarBundledWheelhouseInstallResult,
     install_bundled_calendar_toolchain,
 )
+from lea.installers.calendar.caldav_configuration import (
+    CalendarCaldavActivationResult,
+    CalendarCaldavPassword,
+    CalendarCaldavSecretIssue,
+    CalendarCaldavSecretResult,
+    CalendarCaldavSyncConfig,
+    activate_calendar_caldav_configuration,
+    provision_calendar_caldav_password,
+    render_calendar_caldav_vdirsyncer_configuration,
+)
 from lea.installers.calendar.configuration import (
     CalendarToolchainConfigurationPlan,
     CalendarToolchainConfigurationResult,
@@ -109,6 +119,11 @@ from lea.installers.calendar.wheelhouse import (
 
 __all__ = [
     "CalendarBundledWheelhouseInstallResult",
+    "CalendarCaldavActivationResult",
+    "CalendarCaldavPassword",
+    "CalendarCaldavSecretIssue",
+    "CalendarCaldavSecretResult",
+    "CalendarCaldavSyncConfig",
     "CalendarExternalInstallResult",
     "CalendarExtractedWheelhouse",
     "CalendarToolchainActivatedLayout",
@@ -136,6 +151,7 @@ __all__ = [
     "CalendarToolchainVersionStepResult",
     "CalendarVerifiedNetworkInstallResult",
     "CalendarWheelhouseExtractionResult",
+    "activate_calendar_caldav_configuration",
     "activate_staged_calendar_toolchain",
     "calculate_calendar_sha256",
     "calendar_toolchain_installation_record_matches",
@@ -162,9 +178,11 @@ __all__ = [
     "is_valid_https_package_index_url",
     "normalise_calendar_platform",
     "persist_calendar_toolchain_configuration",
+    "provision_calendar_caldav_password",
     "provision_calendar_toolchain_runtime_layout",
     "read_calendar_toolchain_installation_record",
     "remove_calendar_toolchain_staging",
+    "render_calendar_caldav_vdirsyncer_configuration",
     "render_calendar_khal_configuration",
     "render_calendar_toolchain_installation_record",
     "render_calendar_vdirsyncer_configuration",
