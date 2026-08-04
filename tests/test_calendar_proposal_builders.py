@@ -17,6 +17,7 @@ from lea.calendars import (
     CalendarModifyRequest,
     build_calendar_cancel_event_proposal,
     build_calendar_create_event_proposal,
+    build_calendar_discover_proposal,
     build_calendar_list_calendars_proposal,
     build_calendar_list_events_proposal,
     build_calendar_modify_event_proposal,
@@ -188,6 +189,20 @@ def test_sync_builder_is_explicit_medium_risk_action() -> None:
     assert proposal.risk_level is RiskLevel.MEDIUM
     assert proposal.confirmation_policy is ConfirmationPolicy.WHEN_REQUIRED
     assert proposal.reason == "Synchronize configured calendars."
+    assert dict(proposal.parameters) == {}
+
+
+def test_discover_builder_is_explicit_medium_risk_action() -> None:
+    proposal = build_calendar_discover_proposal(
+        proposal_id=PROPOSAL_ID,
+        source=SOURCE,
+        created_at=CREATED_AT,
+    )
+
+    assert proposal.action == "calendar.discover"
+    assert proposal.risk_level is RiskLevel.MEDIUM
+    assert proposal.confirmation_policy is ConfirmationPolicy.WHEN_REQUIRED
+    assert proposal.reason == "Discover configured calendar collections."
     assert dict(proposal.parameters) == {}
 
 

@@ -54,6 +54,7 @@ def test_root_parser_uses_public_program_name() -> None:
         ),
         (["calendar", "show", "personal", "event-1"], "calendar", "show"),
         (["calendar", "sync"], "calendar", "sync"),
+        (["calendar", "discover"], "calendar", "discover"),
         (["calendar", "cancel", "personal", "event-1"], "calendar", "cancel"),
         (
             [

@@ -22,6 +22,7 @@ from lea.adapters.vdirsyncer import build_vdirsyncer_calendar_synchronizer
 from lea.audit import IntegrityJsonlAuditStore, generate_event_id
 from lea.calendars import (
     calendar_action_handler_registry,
+    discover_calendars_action_handler,
     synchronize_calendars_action_handler,
 )
 from lea.cli.contracts import CliIssue, CliResult, JsonValue, LocalCliExitCode
@@ -532,15 +533,18 @@ def _calendar_registry(
         issue = built.issues[0]
         return _calendar_registry_failure(issue.code, issue.message)
     registry = calendar_action_handler_registry(built.provider)
-    if proposal.action == "calendar.sync":
+    if proposal.action in {"calendar.discover", "calendar.sync"}:
         synchronized = build_vdirsyncer_calendar_synchronizer(factory_config)
         if not synchronized.success or synchronized.synchronizer is None:
             issue = synchronized.issues[0]
             return _calendar_registry_failure(issue.code, issue.message)
-        registry.register(
-            "calendar.sync",
-            synchronize_calendars_action_handler(synchronized.synchronizer),
+        action = proposal.action
+        handler = (
+            synchronize_calendars_action_handler(synchronized.synchronizer)
+            if action == "calendar.sync"
+            else discover_calendars_action_handler(synchronized.synchronizer)
         )
+        registry.register(action, handler)
     return registry
 
 

@@ -30,6 +30,7 @@ def test_calendar_read_telegram_commands_are_registered_once() -> None:
     assert commands.count("/calendar_events") == 1
     assert commands.count("/calendar_show") == 1
     assert commands.count("/calendar_sync") == 1
+    assert commands.count("/calendar_discover") == 1
     assert commands.count("/calendar_add") == 1
     assert commands.count("/calendar_modify") == 1
     assert commands.count("/calendar_cancel") == 1
@@ -74,6 +75,15 @@ def test_calendar_sync_route_requires_independent_sync_capability() -> None:
     assert definition.maximum_arguments == 0
 
 
+def test_calendar_discover_route_requires_independent_sync_capability() -> None:
+    definition = _definition("/calendar_discover")
+
+    assert definition.channel_command == "calendar.discover"
+    assert definition.required_capability is ChannelCapability.CALENDAR_SYNC
+    assert definition.minimum_arguments == 0
+    assert definition.maximum_arguments == 0
+
+
 def test_calendar_add_route_requires_write_and_explicit_timing() -> None:
     definition = _definition("/calendar_add")
 
@@ -110,6 +120,7 @@ def test_calendar_commands_are_in_deterministic_help_text() -> None:
     )
     assert "/calendar_show <calendar-id> <event-uid>" in _SUPPORTED_EXPLICIT_COMMANDS
     assert "/calendar_sync" in _SUPPORTED_EXPLICIT_COMMANDS
+    assert "/calendar_discover" in _SUPPORTED_EXPLICIT_COMMANDS
     assert (
         "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>"
         in _SUPPORTED_EXPLICIT_COMMANDS

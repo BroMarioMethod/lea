@@ -229,6 +229,26 @@ def test_calendar_sync_requires_independent_capability(tmp_path: Path) -> None:
     assert submitted == []
 
 
+def test_calendar_discover_submits_confirmation_required_medium_proposal(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(_request("calendar.discover", {"arguments": []}))
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert calls == []
+    assert len(submitted) == 1
+    assert submitted[0].action == "calendar.discover"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+
+
 def test_calendar_create_submits_all_day_confirmation_proposal(
     tmp_path: Path,
 ) -> None:
@@ -666,6 +686,7 @@ def test_system_commands_report_only_supported_commands(
         "/calendar_events <start-date> <end-date> [calendar-id ...]",
         "/calendar_show <calendar-id> <event-uid>",
         "/calendar_sync",
+        "/calendar_discover",
         "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
         "/calendar_modify <calendar-id> <event-uid> <summary>",
         "/calendar_cancel <calendar-id> <event-uid>",

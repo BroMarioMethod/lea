@@ -208,6 +208,24 @@ def build_calendar_sync_proposal(
     )
 
 
+def build_calendar_discover_proposal(
+    *,
+    proposal_id: str,
+    source: str,
+    created_at: datetime,
+) -> ActionProposal:
+    """Build one medium-risk proposal for explicit collection discovery."""
+    return _proposal(
+        action="calendar.discover",
+        parameters={},
+        proposal_id=proposal_id,
+        source=source,
+        created_at=created_at,
+        reason="Discover configured calendar collections.",
+        risk_level=RiskLevel.MEDIUM,
+    )
+
+
 def _proposal(
     *,
     action: str,

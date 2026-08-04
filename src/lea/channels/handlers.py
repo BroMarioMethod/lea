@@ -29,6 +29,7 @@ from lea.calendars.contracts import (
 from lea.calendars.proposal_builders import (
     build_calendar_cancel_event_proposal,
     build_calendar_create_event_proposal,
+    build_calendar_discover_proposal,
     build_calendar_modify_event_proposal,
     build_calendar_sync_proposal,
 )
@@ -95,6 +96,7 @@ _SUPPORTED_EXPLICIT_COMMANDS = (
     "/calendar_events <start-date> <end-date> [calendar-id ...]",
     "/calendar_show <calendar-id> <event-uid>",
     "/calendar_sync",
+    "/calendar_discover",
     "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
     "/calendar_modify <calendar-id> <event-uid> <summary>",
     "/calendar_cancel <calendar-id> <event-uid>",
@@ -191,6 +193,10 @@ def build_default_channel_application(
             ChannelCommandDefinition(
                 "calendar.sync",
                 lambda request: _calendar_sync(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.discover",
+                lambda request: _calendar_discover(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "calendar.create",
@@ -871,6 +877,66 @@ def _calendar_sync(
             request,
             dependencies,
             _issue("calendar_sync_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_discover(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit collection discovery as an explicitly confirmed proposal."""
+    capability = ChannelCapability.CALENDAR_SYNC.value
+    if capability not in request.identity.capabilities:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.PERMISSION_DENIED,
+                issues=(
+                    _issue(
+                        "calendar_sync_capability_required",
+                        "Calendar.Sync capability is required.",
+                        "capabilities",
+                    ),
+                ),
+                data={"required_capability": capability},
+            ),
+            dependencies,
+            success_message="",
+        )
+    parameters = _business_parameters(request)
+    unknown = sorted(set(parameters) - {"arguments"})
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    if arguments:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue(
+                "channel_arguments_excessive",
+                "calendar.discover does not accept positional arguments.",
+                "arguments",
+            ),
+        )
+    try:
+        proposal = _interactive_proposal(
+            build_calendar_discover_proposal(
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_discovery_invalid", str(error)),
         )
     return _submit_interactive_proposal(request, dependencies, proposal)
 

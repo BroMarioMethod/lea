@@ -62,6 +62,17 @@ def test_synchronize_runs_only_after_exact_version_inspection(tmp_path: Path) ->
     )
 
 
+def test_discover_runs_only_after_exact_version_inspection(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    result = VdirsyncerCalendarSynchronizer(config).discover()
+
+    assert result.success is True
+    assert (config.working_directory / "synced").read_text() == (
+        f"--config|{config.configuration}|discover"
+    )
+
+
 def test_version_mismatch_prevents_synchronization(tmp_path: Path) -> None:
     config = _config(tmp_path, version="0.19.3")
 

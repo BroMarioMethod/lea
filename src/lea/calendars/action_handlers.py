@@ -190,6 +190,21 @@ def synchronize_calendars_action_handler(
     return handle
 
 
+def discover_calendars_action_handler(
+    synchronizer: CalendarSynchronizer,
+) -> ActionHandler:
+    """Return a handler for one explicit ``calendar.discover`` proposal."""
+
+    def handle(proposal: ActionProposal) -> Mapping[str, object]:
+        _parameters(proposal, allowed=set())
+        result = synchronizer.discover()
+        if not result.success:
+            _raise_provider_failure(result.issues)
+        return {"discovered": True}
+
+    return handle
+
+
 def calendar_action_handler_registry(
     provider: CalendarProvider,
 ) -> ActionHandlerRegistry:

@@ -18,6 +18,7 @@ from lea.calendars import (
     CalendarModifyRequest,
     build_calendar_cancel_event_proposal,
     build_calendar_create_event_proposal,
+    build_calendar_discover_proposal,
     build_calendar_modify_event_proposal,
     build_calendar_sync_proposal,
 )
@@ -511,7 +512,13 @@ def _calendar_proposal_builder(
                 source="cli:local",
                 created_at=created_at,
             )
-        return lambda proposal_id, created_at: build_calendar_sync_proposal(
+        if namespace.calendar_command == "sync":
+            return lambda proposal_id, created_at: build_calendar_sync_proposal(
+                proposal_id=proposal_id,
+                source="cli:local",
+                created_at=created_at,
+            )
+        return lambda proposal_id, created_at: build_calendar_discover_proposal(
             proposal_id=proposal_id,
             source="cli:local",
             created_at=created_at,

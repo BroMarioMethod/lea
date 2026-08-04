@@ -74,3 +74,11 @@ class VdirsyncerCalendarSynchronizer:
             return CalendarSynchronizationResult(False, inspection.issues)
         result = self._runner.run(("sync",), operation="calendar_sync")
         return CalendarSynchronizationResult(result.success, result.issues)
+
+    def discover(self) -> CalendarSynchronizationResult:
+        """Explicitly refresh configured collection discovery state."""
+        inspection = self.inspect()
+        if not inspection.available:
+            return CalendarSynchronizationResult(False, inspection.issues)
+        result = self._runner.run(("discover",), operation="calendar_discover")
+        return CalendarSynchronizationResult(result.success, result.issues)

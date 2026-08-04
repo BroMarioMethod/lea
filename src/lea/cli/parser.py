@@ -118,6 +118,9 @@ def _add_calendar_subcommands(parser: argparse.ArgumentParser) -> None:
     subparsers.add_parser(
         "sync", help="Create a persistent explicit synchronization proposal."
     )
+    subparsers.add_parser(
+        "discover", help="Create a persistent collection-discovery proposal."
+    )
 
 
 def _absolute_path(value: str) -> Path:

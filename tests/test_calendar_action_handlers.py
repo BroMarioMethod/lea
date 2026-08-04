@@ -29,6 +29,7 @@ from lea.calendars import (
     calendar_action_handler_registry,
     cancel_calendar_event_action_handler,
     create_calendar_event_action_handler,
+    discover_calendars_action_handler,
     list_calendar_events_action_handler,
     list_calendars_action_handler,
     modify_calendar_event_action_handler,
@@ -297,6 +298,9 @@ def test_sync_handler_invokes_only_explicit_execution_boundary() -> None:
             self.calls += 1
             return CalendarSynchronizationResult(True, ())
 
+        def discover(self) -> CalendarSynchronizationResult:
+            raise AssertionError
+
     synchronizer = Synchronizer()
     handler = synchronize_calendars_action_handler(synchronizer)
     assert synchronizer.calls == 0
@@ -305,6 +309,30 @@ def test_sync_handler_invokes_only_explicit_execution_boundary() -> None:
 
     assert synchronizer.calls == 1
     assert output == {"synchronized": True}
+
+
+def test_discover_handler_invokes_only_explicit_execution_boundary() -> None:
+    class Synchronizer:
+        calls = 0
+
+        def inspect(self) -> CalendarSynchronizationInspectionResult:
+            return CalendarSynchronizationInspectionResult(True, "test", "1", ())
+
+        def synchronize(self) -> CalendarSynchronizationResult:
+            raise AssertionError
+
+        def discover(self) -> CalendarSynchronizationResult:
+            self.calls += 1
+            return CalendarSynchronizationResult(True, ())
+
+    synchronizer = Synchronizer()
+    handler = discover_calendars_action_handler(synchronizer)
+    assert synchronizer.calls == 0
+
+    output = handler(_proposal("calendar.discover", {}))
+
+    assert synchronizer.calls == 1
+    assert output == {"discovered": True}
 
 
 def test_sync_handler_propagates_structured_failure() -> None:
@@ -317,6 +345,9 @@ def test_sync_handler_propagates_structured_failure() -> None:
                 False,
                 (CalendarProviderIssue("sync_conflict", "Synchronization failed."),),
             )
+
+        def discover(self) -> CalendarSynchronizationResult:
+            raise AssertionError
 
     with pytest.raises(CalendarActionHandlerError, match="sync_conflict"):
         synchronize_calendars_action_handler(FailedSynchronizer())(

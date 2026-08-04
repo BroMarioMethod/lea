@@ -65,6 +65,7 @@ def _dependencies(
         ),
         (["calendar", "cancel", "personal", "event-1"], "calendar.cancel"),
         (["calendar", "sync"], "calendar.sync"),
+        (["calendar", "discover"], "calendar.discover"),
     ],
 )
 def test_calendar_commands_persist_always_confirm_proposals_without_provider_access(

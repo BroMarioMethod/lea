@@ -196,6 +196,11 @@ _DEFAULT_COMMAND_DEFINITIONS = (
         required_capability=ChannelCapability.CALENDAR_SYNC,
     ),
     TelegramCommandDefinition(
+        telegram_command="/calendar_discover",
+        channel_command="calendar.discover",
+        required_capability=ChannelCapability.CALENDAR_SYNC,
+    ),
+    TelegramCommandDefinition(
         telegram_command="/calendar_add",
         channel_command="calendar.create",
         required_capability=ChannelCapability.CALENDAR_WRITE,
