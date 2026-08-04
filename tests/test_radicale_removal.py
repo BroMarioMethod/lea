@@ -109,9 +109,13 @@ def test_unsafe_symlink_fails_before_service_commands(tmp_path: Path) -> None:
     request.service.layout.users_file.symlink_to(tmp_path / "outside")
     commands: list[tuple[str, ...]] = []
 
+    def execute(command: tuple[str, ...]) -> ServiceCommandResult:
+        commands.append(command)
+        return ServiceCommandResult(0)
+
     result = remove_radicale(
         request,
-        execute=lambda command: commands.append(command) or ServiceCommandResult(0),
+        execute=execute,
     )
 
     assert result.success is False
