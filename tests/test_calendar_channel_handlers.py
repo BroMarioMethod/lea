@@ -167,6 +167,7 @@ def _request(
     parameters: dict[str, object],
     *,
     capabilities: tuple[str, ...] = ("Calendar.Read",),
+    calendar_ids: tuple[str, ...] = (),
 ) -> ChannelRequest:
     return ChannelRequest(
         request_id=REQUEST_ID,
@@ -177,6 +178,7 @@ def _request(
             conversation_id="calendar-conversation",
             role="owner",
             capabilities=capabilities,
+            calendar_ids=calendar_ids,
         ),
         request_type=ChannelRequestType.COMMAND,
         command=command,
@@ -260,6 +262,58 @@ def test_list_calendars_returns_stable_collection_data(
             "read_only": False,
         },
     )
+
+
+def test_calendar_policy_filters_discovery_and_scopes_unfiltered_query(
+    tmp_path: Path,
+) -> None:
+    provider = RecordingCalendarProvider()
+    application = build_default_channel_application(_dependencies(tmp_path, provider))
+
+    calendars = application.handle(
+        _request(
+            "calendar.list_calendars",
+            {"arguments": []},
+            calendar_ids=("personal",),
+        )
+    )
+    application.handle(
+        _request(
+            "calendar.list_events",
+            {"arguments": ["2026-08-01", "2026-08-03"]},
+            calendar_ids=("personal",),
+        )
+    )
+
+    assert calendars.response is not None
+    assert calendars.response.data is not None
+    calendar_data = calendars.response.data["calendars"]
+    assert isinstance(calendar_data, tuple)
+    assert tuple(
+        value["calendar_id"] for value in calendar_data if isinstance(value, Mapping)
+    ) == ("personal",)
+    assert provider.queries[-1].calendar_ids == ("personal",)
+
+
+def test_calendar_policy_denies_exact_read_before_provider_access(
+    tmp_path: Path,
+) -> None:
+    provider = RecordingCalendarProvider()
+    result = build_default_channel_application(
+        _dependencies(tmp_path, provider)
+    ).handle(
+        _request(
+            "calendar.show_event",
+            {"arguments": ["work", "secret-event"]},
+            calendar_ids=("personal",),
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert result.response.issue is not None
+    assert result.response.issue.code == "calendar_policy_denied"
+    assert provider.shown == []
 
 
 def test_list_events_accepts_named_query_parameters(

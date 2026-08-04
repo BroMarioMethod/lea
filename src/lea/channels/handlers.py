@@ -563,6 +563,16 @@ def _calendar_list_calendars(
             result.issues,
         )
 
+    allowed_calendar_ids = set(request.identity.calendar_ids)
+    calendars = (
+        tuple(
+            calendar
+            for calendar in result.calendars
+            if calendar.calendar_id in allowed_calendar_ids
+        )
+        if allowed_calendar_ids
+        else result.calendars
+    )
     return _mapped(
         request,
         CliResult.succeeded(
@@ -570,8 +580,7 @@ def _calendar_list_calendars(
                 JsonValue,
                 {
                     "calendars": [
-                        _calendar_collection_data(calendar)
-                        for calendar in result.calendars
+                        _calendar_collection_data(calendar) for calendar in calendars
                     ]
                 },
             )
@@ -624,14 +633,22 @@ def _calendar_list_events(
                 "as a named parameter, not both."
             )
 
+        selected_calendar_ids = (
+            positional_calendar_ids
+            if positional_calendar_ids
+            else explicit_calendar_ids
+        )
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            selected_calendar_ids,
+        )
+        if policy_denied is not None:
+            return policy_denied
         query = CalendarEventQuery(
             start_date=start_date,
             end_date=end_date,
-            calendar_ids=(
-                positional_calendar_ids
-                if positional_calendar_ids
-                else explicit_calendar_ids
-            ),
+            calendar_ids=(selected_calendar_ids or request.identity.calendar_ids),
             include_cancelled=_calendar_optional_boolean(
                 parameters.get("include_cancelled"),
                 field="include_cancelled",
@@ -711,6 +728,14 @@ def _calendar_show_event(
                 str(error),
             ),
         )
+
+    policy_denied = _calendar_policy_denied(
+        request,
+        dependencies,
+        (calendar_id,),
+    )
+    if policy_denied is not None:
+        return policy_denied
 
     provider = dependencies.calendar_provider
 
@@ -895,6 +920,13 @@ def _calendar_create(
             end = _required_text(parameters.get("end"), field="end")
             summary = _required_text(parameters.get("summary"), field="summary")
             timezone_value = _optional_text(parameters.get("timezone"))
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            (calendar_id,),
+        )
+        if policy_denied is not None:
+            return policy_denied
         create_request = CalendarCreateRequest(
             calendar_id=calendar_id,
             summary=summary,
@@ -955,6 +987,13 @@ def _calendar_modify(
             )
             event_uid = _required_text(parameters.get("event_uid"), field="event_uid")
             summary = _required_text(parameters.get("summary"), field="summary")
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            (calendar_id,),
+        )
+        if policy_denied is not None:
+            return policy_denied
         proposal = _interactive_proposal(
             build_calendar_modify_event_proposal(
                 CalendarModifyRequest(
@@ -1002,6 +1041,13 @@ def _calendar_cancel(
         return _invalid_arguments(request, dependencies)
     try:
         calendar_id, event_uid = _calendar_event_identity(parameters, arguments)
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            (calendar_id,),
+        )
+        if policy_denied is not None:
+            return policy_denied
         proposal = _interactive_proposal(
             build_calendar_cancel_event_proposal(
                 CalendarCancelRequest(calendar_id, event_uid),
@@ -1043,6 +1089,33 @@ def _calendar_capability_denied(
                 ),
             ),
             data={"required_capability": capability.value},
+        ),
+        dependencies,
+        success_message="",
+    )
+
+
+def _calendar_policy_denied(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+    calendar_ids: tuple[str, ...],
+) -> ChannelResponse | None:
+    """Enforce a configured calendar allow-list without leaking existence."""
+    allowed = set(request.identity.calendar_ids)
+    if not allowed or all(calendar_id in allowed for calendar_id in calendar_ids):
+        return None
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.PERMISSION_DENIED,
+            issues=(
+                _issue(
+                    "calendar_policy_denied",
+                    "The requested calendar is not permitted by user policy.",
+                    "calendar_id",
+                ),
+            ),
+            data={"calendar": None},
         ),
         dependencies,
         success_message="",

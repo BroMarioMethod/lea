@@ -65,6 +65,7 @@ def _request(
     parameters: dict[str, object],
     *,
     capabilities: tuple[str, ...] = DEFAULT_CAPABILITIES,
+    calendar_ids: tuple[str, ...] = (),
 ) -> ChannelRequest:
     return ChannelRequest(
         request_id=REQUEST_ID,
@@ -76,6 +77,7 @@ def _request(
             role="owner",
             display_name="Owner",
             capabilities=capabilities,
+            calendar_ids=calendar_ids,
         ),
         request_type=ChannelRequestType.COMMAND,
         command=command,
@@ -340,6 +342,28 @@ def test_calendar_cancel_submits_exact_identity_proposal(tmp_path: Path) -> None
         "calendar_id": "personal",
         "event_uid": "event-uid",
     }
+
+
+def test_calendar_policy_denies_mutation_before_proposal_submission(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.cancel",
+            {"arguments": ["work", "secret-event"]},
+            calendar_ids=("personal",),
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert submitted == []
 
 
 def test_task_modify_submits_confirmation_required_proposal(
