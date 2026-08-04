@@ -444,3 +444,33 @@ def test_dispatch_uninstall_command_uses_uninstall_boundary() -> None:
     assert exit_code == EXIT_SUCCESS
     assert stdout.getvalue() == "Uninstall command completed.\n"
     assert stderr.getvalue() == ""
+
+
+def test_dispatch_android_acceptance_uses_acceptance_boundary() -> None:
+    """Android acceptance arguments should avoid application startup."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    def successful_calendar_acceptance_runner(
+        arguments: Sequence[str],
+        *,
+        stdout: TextIO,
+        stderr: TextIO,
+    ) -> int:
+        assert tuple(arguments) == ("--backup-verified",)
+        stdout.write("Calendar acceptance completed.\n")
+        assert stderr.write("") == 0
+        return EXIT_SUCCESS
+
+    exit_code = dispatch(
+        ["accept-calendar-android", "--backup-verified"],
+        {},
+        application_runner=unexpected_application_runner,
+        calendar_acceptance_cli_runner=successful_calendar_acceptance_runner,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Calendar acceptance completed.\n"
+    assert stderr.getvalue() == ""
