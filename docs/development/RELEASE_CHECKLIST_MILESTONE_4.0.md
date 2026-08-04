@@ -20,6 +20,8 @@ The normative acceptance criteria are in
 `docs/specifications/LEA-SPEC-0017_CALENDAR_PROVIDER_CALDAV_SYNC.md`. Operators
 must use `docs/development/CALENDAR_PROVIDER_OPERATIONS.md` for installation,
 Radicale provisioning, DAVx⁵ pairing, backup, upgrade and removal.
+The ordered physical-card procedure is
+`docs/development/MILESTONE_4_TEST_CARD.md`.
 
 ## Automated merge gate
 
@@ -68,6 +70,8 @@ contain passwords, bcrypt verifiers, phone identifiers or live event IDs.
   backup, upgrade, rollback and removal;
 - [x] the installation guide identifies calendar release assets and boundaries;
 - [x] the README links the Milestone 4.0 specification, runbook and checklist;
+- [x] the test-card procedure defines ordered gates, commands, expected results,
+  evidence rules and stop conditions;
 - [ ] any correction discovered during live acceptance is documented.
 
 ## Merge and release decision
