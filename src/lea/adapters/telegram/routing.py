@@ -203,6 +203,13 @@ _DEFAULT_COMMAND_DEFINITIONS = (
         maximum_arguments=None,
     ),
     TelegramCommandDefinition(
+        telegram_command="/calendar_modify",
+        channel_command="calendar.modify",
+        required_capability=ChannelCapability.CALENDAR_WRITE,
+        minimum_arguments=3,
+        maximum_arguments=None,
+    ),
+    TelegramCommandDefinition(
         telegram_command="/task_add",
         channel_command="tasks.create",
         required_capability=ChannelCapability.TASKS_WRITE,

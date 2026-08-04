@@ -31,6 +31,7 @@ def test_calendar_read_telegram_commands_are_registered_once() -> None:
     assert commands.count("/calendar_show") == 1
     assert commands.count("/calendar_sync") == 1
     assert commands.count("/calendar_add") == 1
+    assert commands.count("/calendar_modify") == 1
 
 
 def test_calendars_route_requires_calendar_read_without_arguments() -> None:
@@ -81,6 +82,15 @@ def test_calendar_add_route_requires_write_and_explicit_timing() -> None:
     assert definition.maximum_arguments is None
 
 
+def test_calendar_modify_route_requires_write_and_stable_identity() -> None:
+    definition = _definition("/calendar_modify")
+
+    assert definition.channel_command == "calendar.modify"
+    assert definition.required_capability is ChannelCapability.CALENDAR_WRITE
+    assert definition.minimum_arguments == 3
+    assert definition.maximum_arguments is None
+
+
 def test_calendar_commands_are_in_deterministic_help_text() -> None:
     """The shared channel help should describe every Telegram calendar route."""
     assert "/calendars" in _SUPPORTED_EXPLICIT_COMMANDS
@@ -92,5 +102,9 @@ def test_calendar_commands_are_in_deterministic_help_text() -> None:
     assert "/calendar_sync" in _SUPPORTED_EXPLICIT_COMMANDS
     assert (
         "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>"
+        in _SUPPORTED_EXPLICIT_COMMANDS
+    )
+    assert (
+        "/calendar_modify <calendar-id> <event-uid> <summary>"
         in _SUPPORTED_EXPLICIT_COMMANDS
     )

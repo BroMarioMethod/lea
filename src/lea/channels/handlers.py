@@ -22,10 +22,12 @@ from lea.calendars.contracts import (
     CalendarEvent,
     CalendarEventQuery,
     CalendarEventTiming,
+    CalendarModifyRequest,
     CalendarProviderIssue,
 )
 from lea.calendars.proposal_builders import (
     build_calendar_create_event_proposal,
+    build_calendar_modify_event_proposal,
     build_calendar_sync_proposal,
 )
 from lea.calendars.provider import CalendarProvider
@@ -92,6 +94,7 @@ _SUPPORTED_EXPLICIT_COMMANDS = (
     "/calendar_show <calendar-id> <event-uid>",
     "/calendar_sync",
     "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
+    "/calendar_modify <calendar-id> <event-uid> <summary>",
     "/task_add <description>",
     "/task_show <task-uuid>",
     "/task_modify <task-uuid> <description>",
@@ -189,6 +192,10 @@ def build_default_channel_application(
             ChannelCommandDefinition(
                 "calendar.create",
                 lambda request: _calendar_create(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.modify",
+                lambda request: _calendar_modify(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "tasks.create",
@@ -904,6 +911,63 @@ def _calendar_create(
             request,
             dependencies,
             _issue("calendar_creation_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_modify(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit an exact event modification without provider access."""
+    denied = _calendar_capability_denied(
+        request,
+        dependencies,
+        capability=ChannelCapability.CALENDAR_WRITE,
+        code="calendar_write_capability_required",
+    )
+    if denied is not None:
+        return denied
+    parameters = _business_parameters(request)
+    allowed = {"arguments", "calendar_id", "event_uid", "summary"}
+    unknown = sorted(set(parameters) - allowed)
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    try:
+        if arguments:
+            if len(arguments) < 3:
+                raise ValueError("calendar.modify requires at least three arguments.")
+            calendar_id, event_uid = arguments[:2]
+            summary = " ".join(arguments[2:])
+        else:
+            calendar_id = _required_text(
+                parameters.get("calendar_id"), field="calendar_id"
+            )
+            event_uid = _required_text(parameters.get("event_uid"), field="event_uid")
+            summary = _required_text(parameters.get("summary"), field="summary")
+        proposal = _interactive_proposal(
+            build_calendar_modify_event_proposal(
+                CalendarModifyRequest(
+                    calendar_id=calendar_id,
+                    event_uid=event_uid,
+                    summary=summary,
+                ),
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_modification_invalid", str(error)),
         )
     return _submit_interactive_proposal(request, dependencies, proposal)
 
