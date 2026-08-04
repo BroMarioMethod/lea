@@ -316,6 +316,32 @@ def test_calendar_modify_submits_exact_identity_proposal(tmp_path: Path) -> None
     }
 
 
+def test_calendar_cancel_submits_exact_identity_proposal(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.cancel",
+            {"arguments": ["personal", "event-uid"]},
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert calls == []
+    assert submitted[0].action == "calendar.cancel"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+    assert dict(submitted[0].parameters) == {
+        "calendar_id": "personal",
+        "event_uid": "event-uid",
+    }
+
+
 def test_task_modify_submits_confirmation_required_proposal(
     tmp_path: Path,
 ) -> None:
@@ -618,6 +644,7 @@ def test_system_commands_report_only_supported_commands(
         "/calendar_sync",
         "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
         "/calendar_modify <calendar-id> <event-uid> <summary>",
+        "/calendar_cancel <calendar-id> <event-uid>",
         "/task_add <description>",
         "/task_show <task-uuid>",
         "/task_modify <task-uuid> <description>",

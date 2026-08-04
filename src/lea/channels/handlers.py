@@ -17,6 +17,7 @@ from lea.actions import (
     proposal_to_dict,
 )
 from lea.calendars.contracts import (
+    CalendarCancelRequest,
     CalendarCollection,
     CalendarCreateRequest,
     CalendarEvent,
@@ -26,6 +27,7 @@ from lea.calendars.contracts import (
     CalendarProviderIssue,
 )
 from lea.calendars.proposal_builders import (
+    build_calendar_cancel_event_proposal,
     build_calendar_create_event_proposal,
     build_calendar_modify_event_proposal,
     build_calendar_sync_proposal,
@@ -95,6 +97,7 @@ _SUPPORTED_EXPLICIT_COMMANDS = (
     "/calendar_sync",
     "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
     "/calendar_modify <calendar-id> <event-uid> <summary>",
+    "/calendar_cancel <calendar-id> <event-uid>",
     "/task_add <description>",
     "/task_show <task-uuid>",
     "/task_modify <task-uuid> <description>",
@@ -196,6 +199,10 @@ def build_default_channel_application(
             ChannelCommandDefinition(
                 "calendar.modify",
                 lambda request: _calendar_modify(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.cancel",
+                lambda request: _calendar_cancel(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "tasks.create",
@@ -968,6 +975,49 @@ def _calendar_modify(
             request,
             dependencies,
             _issue("calendar_modification_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_cancel(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit exact event cancellation without provider access."""
+    denied = _calendar_capability_denied(
+        request,
+        dependencies,
+        capability=ChannelCapability.CALENDAR_WRITE,
+        code="calendar_write_capability_required",
+    )
+    if denied is not None:
+        return denied
+    parameters = _business_parameters(request)
+    allowed = {"arguments", "calendar_id", "event_uid"}
+    unknown = sorted(set(parameters) - allowed)
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    try:
+        calendar_id, event_uid = _calendar_event_identity(parameters, arguments)
+        proposal = _interactive_proposal(
+            build_calendar_cancel_event_proposal(
+                CalendarCancelRequest(calendar_id, event_uid),
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_cancellation_invalid", str(error)),
         )
     return _submit_interactive_proposal(request, dependencies, proposal)
 
