@@ -15,14 +15,22 @@ from lea.installers.radicale.credentials import (
     provision_radicale_users_file,
     render_radicale_users_file,
 )
+from lea.installers.radicale.provisioning import (
+    RadicaleProvisionIssue,
+    RadicaleProvisionResult,
+    provision_radicale_runtime,
+)
 
 __all__ = [
     "RadicaleCredential",
     "RadicaleCredentialIssue",
     "RadicaleCredentialProvisionResult",
+    "RadicaleProvisionIssue",
+    "RadicaleProvisionResult",
     "RadicaleRuntimeLayout",
     "RadicaleServerConfig",
     "canonical_radicale_runtime_layout",
+    "provision_radicale_runtime",
     "provision_radicale_users_file",
     "render_radicale_configuration",
     "render_radicale_users_file",

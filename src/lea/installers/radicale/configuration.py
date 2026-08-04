@@ -52,5 +52,5 @@ def canonical_radicale_runtime_layout() -> RadicaleRuntimeLayout:
         configuration_file=Path("/etc/lea/radicale/config"),
         secrets_directory=Path("/var/lib/lea/secrets/radicale"),
         users_file=Path("/var/lib/lea/secrets/radicale/users"),
-        storage_directory=Path("/var/lib/lea/radicale/collections"),
+        storage_directory=Path("/var/lib/lea/radicale"),
     )
