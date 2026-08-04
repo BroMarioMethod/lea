@@ -32,7 +32,7 @@ Radicale provisioning, DAVx⁵ pairing, backup, upgrade and removal.
   Taskwarrior tests skipped on 2026-08-04.
 - [x] calendar CLI arguments reach the request, orchestration engine, installer
   dispatch, installation record and post-install acceptance checks.
-- [ ] root-run file creation and replacement produce the required `0640`/`0600`
+- [x] root-run file creation and replacement produce the required `0640`/`0600`
   modes, owner/group identities and service readability.
 - [x] `scripts/check.sh` passes on the prepared candidate tree.
 - [ ] the final candidate merges cleanly into current `main`.
@@ -45,8 +45,8 @@ request or release evidence. Do not mark a check from an earlier commit.
 
 - [ ] fresh installation succeeds on the supported clean DietPi host;
 - [ ] no correction from the tracked RC maintenance log remains unresolved;
-- [ ] the pinned Taskwarrior and calendar toolchains pass post-install checks;
-- [ ] khal and vdirsyncer execute only from their recorded managed paths;
+- [x] the pinned Taskwarrior and calendar toolchains pass post-install checks;
+- [x] khal and vdirsyncer execute only from their recorded managed paths;
 - [ ] Radicale health and reciprocal two-user collection isolation pass;
 - [ ] LEA-to-Android timed-event synchronisation passes with timezone intact;
 - [ ] Android-to-LEA event synchronisation passes;

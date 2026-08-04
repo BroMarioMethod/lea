@@ -25,6 +25,29 @@ live event identifiers or other test-user data.
 
 ## Consolidated findings
 
+### Run 2026-08-05 — repaired Milestone 4 candidate
+
+- Environment/card: physical release-candidate test card and Android device.
+- Installer command/profile: release-candidate repair installation.
+- Observed result: the repaired installer installed the managed khal/vdirsyncer
+  toolchain and established DAVx⁵ synchronisation after the permission and
+  ownership corrections.
+- Defect or insight: a root-run installer must prove final file ownership and
+  group readability, and a tool integration must be connected through the
+  complete CLI/engine/orchestration chain before consuming another card run.
+- Root cause: captured in the consolidated permission and end-to-end wiring
+  findings below.
+- Changed files/commit: repair series `d0c09a5` through `79d42d5`; merge
+  preparation and durable documentation in `d4ea7b4` and its follow-up.
+- Automated regression coverage: full repository gate plus release-candidate
+  wrapper, CLI, orchestration, provisioning, record and post-install tests.
+- Physical retest result: repair installation, khal/vdirsyncer installation and
+  DAVx⁵ connectivity succeeded with corrected permissions.
+- Status: `verified` for repair installation, managed toolchain execution,
+  ownership/permission correction and DAVx⁵ connectivity. Explicit two-way
+  event, isolation, backup/restore and fresh-install evidence remain separate
+  release-checklist items.
+
 ### Root-created managed-file permissions and ownership
 
 - Observed result: files created by the root installer could have mode `0640`
@@ -40,7 +63,7 @@ live event identifiers or other test-user data.
   weakening loader security.
 - Regression coverage: release-candidate provisioning, Telegram configuration,
   installation-record and acceptance-record tests.
-- Status: `fixed-awaiting-card`.
+- Status: `verified` on the repaired physical release-candidate card.
 
 ### Calendar release assets were not connected end to end
 
@@ -54,7 +77,7 @@ live event identifiers or other test-user data.
   post-install acceptance validation.
 - Regression coverage: release-candidate CLI, calendar orchestration,
   post-install, wrapper and acceptance-asset validation tests.
-- Status: `fixed-awaiting-card`.
+- Status: `verified` on the repaired physical release-candidate card.
 
 ### Runtime installation records required stricter access handling
 
