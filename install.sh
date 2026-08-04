@@ -9,6 +9,14 @@ readonly TASKWARRIOR_SHA256="d302761fcd1268e4a5a545613a2b68c61abd50c0bcaade3b3e6
 readonly TASKWARRIOR_BUILD_DIRECTORY="/var/tmp/lea-taskwarrior-build"
 readonly TASKWARRIOR_BUILD_CONCURRENCY="1"
 
+readonly CALENDAR_REQUIREMENTS_RELATIVE_PATH="third_party/calendar/requirements-linux-aarch64-py313.txt"
+readonly CALENDAR_REQUIREMENTS_SHA256="f5f7a0749b993e49bbd50b8807242611fff1dbc2477a59a4a292c0aa42420ba5"
+readonly CALENDAR_PACKAGE_INDEX_URL="https://pypi.org/simple"
+readonly CALENDAR_TOOLCHAIN_VERSION="1.0.0"
+readonly CALENDAR_PLATFORM="linux-aarch64"
+readonly CALENDAR_KHAL_VERSION="0.11.4"
+readonly CALENDAR_VDIRSYNCER_VERSION="0.19.3"
+
 resolve_repository_root() {
     local source="${BASH_SOURCE[0]}"
     local directory
@@ -45,7 +53,10 @@ require_repository() {
     for required_path in \
         "pyproject.toml" \
         "uv.lock" \
-        "src/lea"
+        "src/lea" \
+        "third_party/calendar/requirements.in" \
+        "third_party/calendar/requirements-linux-aarch64-py313.txt" \
+        "third_party/calendar/SHA256SUMS"
     do
         if [[ ! -e "${repository_root}/${required_path}" ]]; then
             printf \
@@ -131,9 +142,55 @@ resolve_uv() {
     return 1
 }
 
+resolve_calendar_python() {
+    local candidate
+
+    if [[ -n "${LEA_CALENDAR_PYTHON_BIN:-}" ]]; then
+        if [[ "$LEA_CALENDAR_PYTHON_BIN" != /* ]]; then
+            printf 'LEA_CALENDAR_PYTHON_BIN must be an absolute path.\n' >&2
+            return 1
+        fi
+
+        if [[ ! -x "$LEA_CALENDAR_PYTHON_BIN" ]]; then
+            printf \
+                'LEA_CALENDAR_PYTHON_BIN is not executable: %s\n' \
+                "$LEA_CALENDAR_PYTHON_BIN" \
+                >&2
+            return 1
+        fi
+
+        printf '%s\n' "$LEA_CALENDAR_PYTHON_BIN"
+        return 0
+    fi
+
+    for candidate in \
+        "/usr/bin/python3.13" \
+        "/usr/local/bin/python3.13"
+    do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    if candidate="$(command -v python3.13 2>/dev/null)" \
+        && [[ -x "$candidate" ]]
+    then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    printf \
+        'Unable to locate Python 3.13. Set LEA_CALENDAR_PYTHON_BIN to its absolute path.\n' \
+        >&2
+    return 1
+}
+
 main() {
     local repository_root
     local uv_binary
+    local calendar_python
+    local calendar_requirements_lock
 
     repository_root="$(resolve_repository_root)"
     require_repository "$repository_root"
@@ -143,6 +200,8 @@ main() {
     fi
 
     uv_binary="$(resolve_uv)"
+    calendar_python="$(resolve_calendar_python)"
+    calendar_requirements_lock="${repository_root}/${CALENDAR_REQUIREMENTS_RELATIVE_PATH}"
 
     cd -- "$repository_root"
 
@@ -153,6 +212,15 @@ main() {
         --taskwarrior-platform "$TASKWARRIOR_PLATFORM" \
         --taskwarrior-build-directory "$TASKWARRIOR_BUILD_DIRECTORY" \
         --taskwarrior-build-concurrency "$TASKWARRIOR_BUILD_CONCURRENCY" \
+        --calendar-requirements-lock "$calendar_requirements_lock" \
+        --calendar-requirements-sha256 "$CALENDAR_REQUIREMENTS_SHA256" \
+        --calendar-uv-executable "$uv_binary" \
+        --calendar-python-executable "$calendar_python" \
+        --calendar-package-index-url "$CALENDAR_PACKAGE_INDEX_URL" \
+        --calendar-toolchain-version "$CALENDAR_TOOLCHAIN_VERSION" \
+        --calendar-platform "$CALENDAR_PLATFORM" \
+        --calendar-khal-version "$CALENDAR_KHAL_VERSION" \
+        --calendar-vdirsyncer-version "$CALENDAR_VDIRSYNCER_VERSION" \
         "$@"
 }
 

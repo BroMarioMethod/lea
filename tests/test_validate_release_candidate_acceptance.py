@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 from collections.abc import Callable
@@ -110,10 +111,37 @@ uv run python scripts/validate_release_candidate_acceptance.py
     return cli, harness, record, main, documentation
 
 
+def _valid_calendar_assets(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path]:
+    requirements_input = _write(
+        tmp_path / "third_party/calendar/requirements.in",
+        "khal==0.11.4\nvdirsyncer==0.19.3\n",
+    )
+    requirements_lock = _write(
+        (tmp_path / "third_party/calendar/requirements-linux-aarch64-py313.txt"),
+        r"""# Generated lock
+--only-binary :all:
+
+khal==0.11.4 \
+    --hash=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+vdirsyncer==0.19.3 \
+    --hash=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+""",
+    )
+    digest = hashlib.sha256(requirements_lock.read_bytes()).hexdigest()
+    sha256sums = _write(
+        tmp_path / "third_party/calendar/SHA256SUMS",
+        f"{digest}  {requirements_lock.name}\n",
+    )
+    return requirements_input, requirements_lock, sha256sums
+
+
 def _validate_valid_assets(
     tmp_path: Path,
 ) -> tuple[Any, ...]:
     cli, harness, record, main, documentation = _valid_assets(tmp_path)
+    requirements_input, requirements_lock, sha256sums = _valid_calendar_assets(tmp_path)
 
     return validate_release_candidate_acceptance(
         cli_path=cli,
@@ -121,6 +149,9 @@ def _validate_valid_assets(
         record_path=record,
         main_path=main,
         documentation_path=documentation,
+        calendar_requirements_input_path=requirements_input,
+        calendar_requirements_lock_path=requirements_lock,
+        calendar_sha256sums_path=sha256sums,
         repository_root=tmp_path.resolve(),
     )
 
@@ -131,6 +162,61 @@ def test_valid_assets_pass(
     issues = _validate_valid_assets(tmp_path)
 
     assert issues == ()
+
+
+def test_calendar_lock_checksum_mismatch_is_reported(
+    tmp_path: Path,
+) -> None:
+    cli, harness, record, main, documentation = _valid_assets(tmp_path)
+    requirements_input, requirements_lock, sha256sums = _valid_calendar_assets(tmp_path)
+    sha256sums.write_text(
+        f"{'0' * 64}  {requirements_lock.name}\n",
+        encoding="utf-8",
+    )
+
+    issues = validate_release_candidate_acceptance(
+        cli_path=cli,
+        harness_path=harness,
+        record_path=record,
+        main_path=main,
+        documentation_path=documentation,
+        calendar_requirements_input_path=requirements_input,
+        calendar_requirements_lock_path=requirements_lock,
+        calendar_sha256sums_path=sha256sums,
+        repository_root=tmp_path.resolve(),
+    )
+
+    assert any(issue.code == "calendar_lock_checksum_mismatch" for issue in issues)
+
+
+def test_unpinned_calendar_requirement_is_reported(
+    tmp_path: Path,
+) -> None:
+    cli, harness, record, main, documentation = _valid_assets(tmp_path)
+    requirements_input, requirements_lock, sha256sums = _valid_calendar_assets(tmp_path)
+    requirements_lock.write_text(
+        requirements_lock.read_text(encoding="utf-8") + "unexpected-package>=1\n",
+        encoding="utf-8",
+    )
+    digest = hashlib.sha256(requirements_lock.read_bytes()).hexdigest()
+    sha256sums.write_text(
+        f"{digest}  {requirements_lock.name}\n",
+        encoding="utf-8",
+    )
+
+    issues = validate_release_candidate_acceptance(
+        cli_path=cli,
+        harness_path=harness,
+        record_path=record,
+        main_path=main,
+        documentation_path=documentation,
+        calendar_requirements_input_path=requirements_input,
+        calendar_requirements_lock_path=requirements_lock,
+        calendar_sha256sums_path=sha256sums,
+        repository_root=tmp_path.resolve(),
+    )
+
+    assert any(issue.code == "calendar_lock_unpinned_requirement" for issue in issues)
 
 
 def test_missing_cli_contract_is_reported(
