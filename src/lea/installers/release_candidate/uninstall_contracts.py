@@ -11,6 +11,7 @@ class ReleaseCandidateUninstallStepId(StrEnum):
     SYSTEMD_SERVICE = "systemd-service"
     RUNTIME_RESOURCES = "runtime-resources"
     TASKWARRIOR = "taskwarrior"
+    CALENDAR_TOOLCHAIN = "calendar-toolchain"
     CONFIGURATION = "configuration"
     STATE = "state"
     LOGS = "logs"
@@ -61,6 +62,7 @@ class ReleaseCandidateUninstallRequest:
     state_root: Path = Path("/var/lib/lea")
     log_root: Path = Path("/var/log/lea")
     taskwarrior_root: Path = Path("/opt/lea-tools/taskwarrior")
+    calendar_toolchain_root: Path = Path("/opt/lea-tools/calendar")
     systemd_unit: Path = Path("/etc/systemd/system/lea-telegram.service")
     tmpfiles_configuration: Path = Path("/etc/tmpfiles.d/lea.conf")
     runtime_directory: Path = Path("/run/lea")
@@ -87,6 +89,7 @@ class ReleaseCandidateUninstallRequest:
             ("state_root", self.state_root),
             ("log_root", self.log_root),
             ("taskwarrior_root", self.taskwarrior_root),
+            ("calendar_toolchain_root", self.calendar_toolchain_root),
             ("systemd_unit", self.systemd_unit),
             ("tmpfiles_configuration", self.tmpfiles_configuration),
             ("runtime_directory", self.runtime_directory),
@@ -108,6 +111,7 @@ class ReleaseCandidateUninstallRequest:
             self.state_root,
             self.log_root,
             self.taskwarrior_root,
+            self.calendar_toolchain_root,
         }
 
         unsafe = destructive_roots & protected

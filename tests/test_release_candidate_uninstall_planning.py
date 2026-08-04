@@ -24,6 +24,7 @@ def _request() -> ReleaseCandidateUninstallRequest:
         state_root=Path("/srv/lea-state"),
         log_root=Path("/srv/lea-log"),
         taskwarrior_root=Path("/srv/lea-tools/taskwarrior"),
+        calendar_toolchain_root=Path("/srv/lea-tools/calendar"),
         systemd_unit=Path("/srv/systemd/lea-telegram.service"),
         tmpfiles_configuration=Path("/srv/tmpfiles/lea.conf"),
         runtime_directory=Path("/srv/run/lea"),
@@ -53,6 +54,7 @@ def test_requires_explicit_purge_and_confirmation() -> None:
         ("state_root", Path("/var")),
         ("log_root", Path("/var/log")),
         ("taskwarrior_root", Path("/opt")),
+        ("calendar_toolchain_root", Path("/opt")),
     ],
 )
 def test_rejects_unsafe_destructive_roots(
@@ -85,6 +87,12 @@ def test_rejects_unsafe_destructive_roots(
                 confirmed=True,
                 taskwarrior_root=value,
             )
+        elif field_name == "calendar_toolchain_root":
+            ReleaseCandidateUninstallRequest(
+                purge=True,
+                confirmed=True,
+                calendar_toolchain_root=value,
+            )
         else:
             raise AssertionError(f"Unexpected destructive-root field: {field_name}")
 
@@ -97,6 +105,7 @@ def test_plan_orders_service_before_files_and_account() -> None:
         ReleaseCandidateUninstallStepId.SYSTEMD_SERVICE,
         ReleaseCandidateUninstallStepId.RUNTIME_RESOURCES,
         ReleaseCandidateUninstallStepId.TASKWARRIOR,
+        ReleaseCandidateUninstallStepId.CALENDAR_TOOLCHAIN,
         ReleaseCandidateUninstallStepId.CONFIGURATION,
         ReleaseCandidateUninstallStepId.STATE,
         ReleaseCandidateUninstallStepId.LOGS,
@@ -173,6 +182,7 @@ def test_plan_contains_only_expected_destructive_targets() -> None:
         request.tmpfiles_configuration,
         request.runtime_directory,
         request.taskwarrior_root,
+        request.calendar_toolchain_root,
         request.configuration_root,
         request.state_root,
         request.log_root,
