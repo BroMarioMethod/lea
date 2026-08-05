@@ -22,6 +22,18 @@ def test_credentials_file_rejects_noncanonical_document() -> None:
         calendar_provider_cli._parse_credentials_document("missing-separator\n")
 
 
+def test_acceptance_account_reads_password_from_protected_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        calendar_provider_cli, "_protected_line", lambda _path: "password"
+    )
+    account = calendar_provider_cli._acceptance_account(
+        "account=/root/account.password"
+    )
+    assert account.username == "account"
+
+
 def test_provider_parent_policy_is_exact(monkeypatch: pytest.MonkeyPatch) -> None:
     observed: list[tuple[Path, int, str, str]] = []
     monkeypatch.setattr(Path, "exists", lambda _path: True)

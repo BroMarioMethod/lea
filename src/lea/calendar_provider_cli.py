@@ -31,6 +31,7 @@ from lea.installers.radicale.distribution import (
     RadicaleDistributionRequest,
     install_radicale_distribution,
 )
+from lea.installers.radicale.health import RadicaleAcceptanceAccount
 from lea.installers.radicale.orchestration import (
     RadicaleInstallRequest,
     install_radicale,
@@ -74,6 +75,13 @@ def create_parser() -> argparse.ArgumentParser:
     install.add_argument("--requirements-sha256", default=RADICALE_LOCK_SHA256)
     install.add_argument("--approve-replacement", action="store_true", required=True)
     install.add_argument("--activate", action="store_true", required=True)
+    install.add_argument(
+        "--acceptance-account",
+        action="append",
+        default=[],
+        metavar="USER=PASSWORD_FILE",
+        help="Repeat exactly twice to verify reciprocal user isolation.",
+    )
     bootstrap = commands.add_parser(
         "bootstrap", help="Approve first collection creation."
     )
@@ -164,6 +172,11 @@ def _install(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> i
         if namespace.credentials_file is not None
         else tuple(_credential(value) for value in namespace.credential)
     )
+    acceptance_accounts = tuple(
+        _acceptance_account(value) for value in namespace.acceptance_account
+    )
+    if acceptance_accounts and len(acceptance_accounts) != 2:
+        raise ValueError("--acceptance-account must be omitted or repeated twice")
     layout = canonical_radicale_runtime_layout()
     server = RadicaleServerConfig(layout, namespace.bind_address, namespace.port)
     service = RadicaleServiceConfig(
@@ -187,6 +200,7 @@ def _install(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> i
             credentials,
             f"http://{namespace.bind_address}:{namespace.port}/",
             True,
+            acceptance_accounts,
         )
     )
     if not result.success:
@@ -310,6 +324,13 @@ def _credential(value: str) -> RadicaleCredential:
     if not separator:
         raise ValueError("--credential must be USER=HASH_FILE")
     return RadicaleCredential(username, _protected_line(Path(raw_path)))
+
+
+def _acceptance_account(value: str) -> RadicaleAcceptanceAccount:
+    username, separator, raw_path = value.partition("=")
+    if not separator:
+        raise ValueError("--acceptance-account must be USER=PASSWORD_FILE")
+    return RadicaleAcceptanceAccount(username, _protected_line(Path(raw_path)))
 
 
 def _credentials_file(path: Path) -> tuple[RadicaleCredential, ...]:

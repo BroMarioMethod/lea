@@ -69,6 +69,8 @@ sudo "$(command -v uv)" run lea calendar-provider install \
   --credential lea-test-b=/root/lea-secrets/lea-test-b.bcrypt \
   --caldav-username lea-test-a \
   --caldav-password-file /root/lea-secrets/lea-test-a.password \
+  --acceptance-account lea-test-a=/root/lea-secrets/lea-test-a.password \
+  --acceptance-account lea-test-b=/root/lea-secrets/lea-test-b.password \
   --uv-executable "$(command -v uv)" \
   --python-executable /usr/bin/python3 \
   --requirements-lock /opt/lea-release-assets/radicale-requirements.lock \
