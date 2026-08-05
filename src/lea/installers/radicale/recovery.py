@@ -102,7 +102,7 @@ def restore_calendar_provider_backup_isolated(
                     or member.isfifo()
                 ):
                     raise tarfile.TarError("unsafe archive member")
-            archive.extractall(destination, members=members, filter="data")
+            archive.extractall(destination, members=members, filter="fully_trusted")
     except (OSError, tarfile.TarError, TypeError):
         return _failure(destination, "restore_failed")
     return CalendarProviderBackupResult(True, destination)
