@@ -132,6 +132,22 @@ def execute_calendar_provider_cli(
             if not result.success:
                 stderr.write("Collection bootstrap failed.\n")
                 return 1
+            layout = _calendar_layout()
+            _apply_and_verify(
+                layout.vdirs / namespace.collection_name,
+                0o2750,
+                "lea",
+                "lea",
+                readable=True,
+            )
+            collections_record = layout.vdirsyncer_status / "lea_calendars.collections"
+            _apply_and_verify(
+                collections_record,
+                0o600,
+                "lea",
+                "lea",
+                readable=True,
+            )
             stdout.write("Calendar first collection bootstrap: SUCCESS\n")
             return 0
         if namespace.operation == "backup":
@@ -284,6 +300,8 @@ def _bootstrap_remote_collection(
         f"{base_url}{quote(username, safe='')}/{quote(collection_name, safe='')}/"
     )
     token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+    if _remote_collection_exists(endpoint, token):
+        return
     request = urllib.request.Request(
         endpoint,
         data=(
@@ -303,8 +321,14 @@ def _bootstrap_remote_collection(
         status = error.code
     except (OSError, urllib.error.URLError) as error:
         raise OSError("remote collection bootstrap request failed") from error
-    if status not in {201, 204, 405}:
+    if status not in {201, 204}:
         raise OSError("remote collection bootstrap was rejected")
+    if not _remote_collection_exists(endpoint, token):
+        raise OSError("remote collection bootstrap verification failed")
+
+
+def _remote_collection_exists(endpoint: str, token: str) -> bool:
+    """Probe one exact authenticated collection without exposing credentials."""
     probe = urllib.request.Request(
         endpoint,
         headers={"Authorization": f"Basic {token}", "Depth": "0"},
@@ -312,11 +336,13 @@ def _bootstrap_remote_collection(
     )
     try:
         with urllib.request.urlopen(probe, timeout=30) as response:
-            probe_status = response.status
+            return int(response.status) == 207
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise OSError("remote collection bootstrap verification failed") from error
     except (OSError, urllib.error.URLError) as error:
         raise OSError("remote collection bootstrap verification failed") from error
-    if probe_status != 207:
-        raise OSError("remote collection bootstrap verification failed")
 
 
 def _credential(value: str) -> RadicaleCredential:
@@ -378,7 +404,7 @@ def _apply_and_verify(
     os.chown(path, user.pw_uid, group_record.gr_gid, follow_symlinks=False)
     stat = path.stat()
     if (
-        stat.st_mode & 0o777 != mode
+        stat.st_mode & 0o7777 != mode
         or stat.st_uid != user.pw_uid
         or stat.st_gid != group_record.gr_gid
     ):

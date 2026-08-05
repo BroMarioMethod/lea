@@ -1,6 +1,8 @@
 """Tests for protected calendar-provider administrative inputs."""
 
+import urllib.error
 import urllib.request
+from email.message import Message
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +77,7 @@ def test_bootstrap_creates_and_verifies_declared_remote_collection(
         def __exit__(self, *_args: object) -> None:
             return None
 
-    responses = iter((Response(201), Response(207)))
+    responses = iter((Response(207),))
 
     def urlopen(request: Any, **_kwargs: Any) -> Response:
         requests.append(request)
@@ -93,5 +95,58 @@ def test_bootstrap_creates_and_verifies_declared_remote_collection(
         Path("/root/password"),
         "lea-calendar",
     )
-    assert [request.method for request in requests] == ["MKCALENDAR", "PROPFIND"]
+    assert [request.method for request in requests] == ["PROPFIND"]
     assert all("pw" not in request.full_url for request in requests)
+
+
+def test_bootstrap_runtime_paths_are_canonical() -> None:
+    layout = calendar_provider_cli._calendar_layout()
+    assert layout.vdirs / "lea-calendar" == Path(
+        "/var/lib/lea/calendar/vdirs/lea-calendar"
+    )
+    assert layout.vdirsyncer_status / "lea_calendars.collections" == Path(
+        "/var/lib/lea/calendar/vdirsyncer-status/lea_calendars.collections"
+    )
+
+
+def test_setgid_mode_is_not_reduced_to_basic_permission_bits() -> None:
+    assert 0o42750 & 0o7777 == 0o2750
+
+
+def test_bootstrap_creates_collection_only_after_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[Any] = []
+
+    class Response:
+        def __init__(self, status: int) -> None:
+            self.status = status
+
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    outcomes: Any = iter((404, Response(201), Response(207)))
+
+    def urlopen(request: Any, **_kwargs: Any) -> Response:
+        requests.append(request)
+        outcome = next(outcomes)
+        if outcome == 404:
+            raise urllib.error.HTTPError(
+                request.full_url, 404, "not found", Message(), None
+            )
+        assert isinstance(outcome, Response)
+        return outcome
+
+    monkeypatch.setattr(calendar_provider_cli, "_protected_line", lambda _path: "pw")
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    calendar_provider_cli._bootstrap_remote_collection(
+        "http://192.168.1.2:5232/", "account", Path("/root/password"), "calendar"
+    )
+    assert [request.method for request in requests] == [
+        "PROPFIND",
+        "MKCALENDAR",
+        "PROPFIND",
+    ]
