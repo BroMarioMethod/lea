@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol
 
 from lea.actions.enums import ActionStatus
-from lea.actions.errors import ActionContractError
+from lea.actions.errors import ActionContractError, ActionHandlerFailure
 from lea.actions.models import (
     ACTION_NAME_PATTERN,
     ActionProposal,
@@ -300,6 +300,18 @@ def execute_action(
 
     try:
         output = handler(executing_proposal)
+    except ActionHandlerFailure as error:
+        completion_timestamp = completed_at if completed_at is not None else utc_now()
+        return _complete_failed_execution(
+            proposal=executing_proposal,
+            start_transition=start_result.transition,
+            started_at=start_timestamp,
+            completed_at=completion_timestamp,
+            error=ExecutionError(
+                code=error.code,
+                message=error.message,
+            ),
+        )
     except Exception as error:
         completion_timestamp = completed_at if completed_at is not None else utc_now()
 

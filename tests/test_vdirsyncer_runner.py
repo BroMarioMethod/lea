@@ -71,6 +71,28 @@ def test_runner_reports_nonzero_without_exposing_stderr_in_issue(
     assert "secret detail" not in result.issues[0].message
 
 
+def test_discovery_reports_missing_collection_bootstrap_without_prompt_text(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        (
+            "print('Should vdirsyncer attempt to create it? [y/N]:'); "
+            "raise SystemExit(1)"
+        ),
+    )
+
+    result = VdirsyncerRunner(config).run(
+        ("discover",),
+        operation="calendar_discover",
+    )
+
+    assert result.success is False
+    assert result.command is not None
+    assert result.issues[0].code == "vdirsyncer_collection_creation_required"
+    assert "attempt to create" not in result.issues[0].message
+
+
 def test_runner_fails_closed_for_symlinked_executable(tmp_path: Path) -> None:
     config = _config(tmp_path, "print('unexpected')")
     target = config.executable

@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import sleep
 
 from lea.installers.radicale.binary import (
     RadicaleBinaryConfig,
@@ -12,16 +13,19 @@ from lea.installers.radicale.binary import (
 from lea.installers.radicale.contracts import RadicaleServerConfig
 from lea.installers.radicale.credentials import (
     RadicaleCredential,
+    RadicaleCredentialIssue,
     RadicaleCredentialProvisionResult,
     provision_radicale_users_file,
 )
 from lea.installers.radicale.health import (
     RadicaleAcceptanceAccount,
+    RadicaleHealthIssue,
     RadicaleHealthResult,
     RadicaleIsolationResult,
     inspect_radicale_health,
     verify_radicale_user_isolation,
 )
+from lea.installers.radicale.ownership import apply_radicale_ownership
 from lea.installers.radicale.provisioning import (
     RadicaleProvisionResult,
     provision_radicale_runtime,
@@ -46,6 +50,8 @@ class RadicaleInstallRequest:
     base_url: str
     activate: bool
     acceptance_accounts: tuple[RadicaleAcceptanceAccount, ...] = ()
+    health_attempts: int = 20
+    health_retry_delay_seconds: float = 0.25
 
     def __post_init__(self) -> None:
         if self.service.executable != self.binary.executable:
@@ -58,6 +64,13 @@ class RadicaleInstallRequest:
             raise ValueError("User-isolation acceptance requires exactly two accounts.")
         if self.acceptance_accounts and not self.activate:
             raise ValueError("User-isolation acceptance requires service activation.")
+        if isinstance(self.health_attempts, bool) or self.health_attempts < 1:
+            raise ValueError("health_attempts must be a positive integer.")
+        if (
+            isinstance(self.health_retry_delay_seconds, bool)
+            or self.health_retry_delay_seconds < 0
+        ):
+            raise ValueError("health_retry_delay_seconds must not be negative.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +106,7 @@ IsolationVerifier = Callable[
     [str, RadicaleAcceptanceAccount, RadicaleAcceptanceAccount],
     RadicaleIsolationResult,
 ]
+Pause = Callable[[float], None]
 
 
 def _verify_binary(
@@ -101,17 +115,52 @@ def _verify_binary(
     return verify_and_register_radicale_binary(config, register=register)
 
 
+def _provision_owned_runtime(config: RadicaleServerConfig) -> RadicaleProvisionResult:
+    return provision_radicale_runtime(
+        config,
+        apply_ownership=apply_radicale_ownership,
+    )
+
+
+def _provision_owned_credentials(
+    path: Path,
+    credentials: tuple[RadicaleCredential, ...],
+) -> RadicaleCredentialProvisionResult:
+    result = provision_radicale_users_file(path, credentials)
+    if not result.success:
+        return result
+    try:
+        apply_radicale_ownership(path, "lea", "lea")
+    except (KeyError, OSError):
+        return RadicaleCredentialProvisionResult(
+            False,
+            path,
+            len(credentials),
+            result.changed,
+            (
+                *result.issues,
+                RadicaleCredentialIssue(
+                    "radicale_users_ownership_failed",
+                    "Radicale credential ownership could not be applied.",
+                    path,
+                ),
+            ),
+        )
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class RadicaleInstallerDependencies:
     """Injected stage boundaries for isolated orchestration tests."""
 
     verify_binary: BinaryVerifier = _verify_binary
-    provision_runtime: RuntimeProvisioner = provision_radicale_runtime
-    provision_credentials: CredentialProvisioner = provision_radicale_users_file
+    provision_runtime: RuntimeProvisioner = _provision_owned_runtime
+    provision_credentials: CredentialProvisioner = _provision_owned_credentials
     provision_unit: UnitProvisioner = provision_radicale_systemd_unit
     activate_service: ServiceActivator = activate_radicale_service
     inspect_health: HealthInspector = inspect_radicale_health
     verify_isolation: IsolationVerifier = verify_radicale_user_isolation
+    pause: Pause = sleep
 
 
 def install_radicale(
@@ -159,8 +208,19 @@ def install_radicale(
     completed.append("service.activate")
 
     health = resolved.inspect_health(request.base_url)
+    for _attempt in range(1, request.health_attempts):
+        if health.healthy:
+            break
+        resolved.pause(request.health_retry_delay_seconds)
+        health = resolved.inspect_health(request.base_url)
     if not health.healthy:
-        return _failed("service.health", completed, health.issues, activated=True)
+        issues = health.issues or (
+            RadicaleHealthIssue(
+                "radicale_health_readiness_timeout",
+                "Radicale did not become ready within the bounded health window.",
+            ),
+        )
+        return _failed("service.health", completed, issues, activated=True)
     completed.append("service.health")
 
     isolation_verified = False

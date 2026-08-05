@@ -38,6 +38,7 @@ from lea.installers.radicale.orchestration import (
     RadicaleInstallResult,
     install_radicale,
 )
+from lea.installers.radicale.ownership import apply_radicale_ownership
 from lea.installers.radicale.provisioning import (
     RadicaleProvisionIssue,
     RadicaleProvisionResult,
@@ -90,6 +91,7 @@ __all__ = [
     "RadicaleUnitProvisionResult",
     "ServiceCommandResult",
     "activate_radicale_service",
+    "apply_radicale_ownership",
     "canonical_radicale_runtime_layout",
     "inspect_radicale_health",
     "install_radicale",

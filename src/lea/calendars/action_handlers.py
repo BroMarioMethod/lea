@@ -3,7 +3,12 @@
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
 
-from lea.actions import ActionHandler, ActionHandlerRegistry, ActionProposal
+from lea.actions import (
+    ActionHandler,
+    ActionHandlerFailure,
+    ActionHandlerRegistry,
+    ActionProposal,
+)
 from lea.calendars.contracts import (
     CalendarCancelRequest,
     CalendarCollection,
@@ -22,7 +27,7 @@ from lea.calendars.provider import CalendarProvider
 from lea.calendars.synchronization import CalendarSynchronizer
 
 
-class CalendarActionHandlerError(RuntimeError):
+class CalendarActionHandlerError(ActionHandlerFailure):
     """Deterministic failure raised by a calendar action handler."""
 
     def __init__(self, *, code: str, message: str) -> None:
@@ -32,9 +37,7 @@ class CalendarActionHandlerError(RuntimeError):
         if not isinstance(message, str) or not message.strip():
             raise ValueError("message must be non-empty.")
 
-        self.code = code
-        self.message = message
-        super().__init__(f"{code}: {message}")
+        super().__init__(code=code, message=message)
 
 
 def list_calendars_action_handler(

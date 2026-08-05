@@ -117,6 +117,25 @@ class VdirsyncerRunner:
             duration_seconds=monotonic() - started,
         )
         if completed.returncode != 0:
+            if operation == "calendar_discover" and (
+                "Should vdirsyncer attempt to create it?" in stdout
+                or "Should vdirsyncer attempt to create it?" in stderr
+            ):
+                return VdirsyncerRunResult(
+                    success=False,
+                    command=evidence,
+                    issues=(
+                        _issue(
+                            "vdirsyncer_collection_creation_required",
+                            (
+                                "Calendar discovery requires a separate explicit "
+                                "collection-bootstrap approval."
+                            ),
+                            operation,
+                            completed.returncode,
+                        ),
+                    ),
+                )
             return VdirsyncerRunResult(
                 success=False,
                 command=evidence,

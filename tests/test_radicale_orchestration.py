@@ -27,7 +27,12 @@ from lea.installers.radicale import (
 HASH = "$2b$12$" + "A" * 53
 
 
-def _request(tmp_path: Path, *, activate: bool = True) -> RadicaleInstallRequest:
+def _request(
+    tmp_path: Path,
+    *,
+    activate: bool = True,
+    health_attempts: int = 1,
+) -> RadicaleInstallRequest:
     layout = RadicaleRuntimeLayout(
         tmp_path / "config",
         tmp_path / "config" / "config",
@@ -64,6 +69,7 @@ def _request(tmp_path: Path, *, activate: bool = True) -> RadicaleInstallRequest
         )
         if activate
         else (),
+        health_attempts=health_attempts,
     )
 
 
@@ -152,6 +158,41 @@ def test_install_runs_all_stages_in_safe_order(tmp_path: Path) -> None:
         "health",
         "isolation",
     ]
+
+
+def test_install_retries_health_within_explicit_readiness_bound(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    dependencies = _dependencies(tmp_path, calls)
+    health_results = iter(
+        (
+            RadicaleHealthResult(
+                False,
+                False,
+                (),
+            ),
+            RadicaleHealthResult(True, True, ()),
+        )
+    )
+    dependencies = RadicaleInstallerDependencies(
+        verify_binary=dependencies.verify_binary,
+        provision_runtime=dependencies.provision_runtime,
+        provision_credentials=dependencies.provision_credentials,
+        provision_unit=dependencies.provision_unit,
+        activate_service=dependencies.activate_service,
+        inspect_health=lambda _url: next(health_results),
+        verify_isolation=dependencies.verify_isolation,
+        pause=lambda seconds: calls.append(f"pause:{seconds}"),
+    )
+
+    result = install_radicale(
+        _request(tmp_path, health_attempts=2),
+        dependencies=dependencies,
+    )
+
+    assert result.success is True
+    assert "pause:0.25" in calls
 
 
 def test_failed_preverification_prevents_every_mutation(tmp_path: Path) -> None:
