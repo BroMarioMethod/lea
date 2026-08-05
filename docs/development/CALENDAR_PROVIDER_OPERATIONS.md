@@ -76,6 +76,11 @@ sudo "$(command -v uv)" run lea calendar-provider install \
   --approve-replacement --activate
 ```
 
+For a migration from an already verified canonical htpasswd store, replace the
+repeated `--credential` arguments with
+`--credentials-file /root/lea-secrets/radicale-users`. The file must remain an
+absolute, regular, root-owned mode-0600 input and is never printed.
+
 The workflow requires:
 
 - one exact non-symbolic Radicale executable, pinned version and SHA-256;

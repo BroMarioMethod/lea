@@ -49,8 +49,12 @@ def create_parser() -> argparse.ArgumentParser:
     )
     install.add_argument("--bind-address", required=True)
     install.add_argument("--port", type=int, default=5232)
-    install.add_argument(
-        "--credential", action="append", required=True, metavar="USER=HASH_FILE"
+    credential_inputs = install.add_mutually_exclusive_group(required=True)
+    credential_inputs.add_argument(
+        "--credential", action="append", metavar="USER=HASH_FILE"
+    )
+    credential_inputs.add_argument(
+        "--credentials-file", type=Path, metavar="HTPASSWD_FILE"
     )
     install.add_argument("--caldav-username", required=True)
     install.add_argument("--caldav-password-file", type=Path, required=True)
@@ -138,7 +142,11 @@ def _install(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> i
     ):
         stderr.write(f"Radicale distribution failed: {distribution.code}\n")
         return 1
-    credentials = tuple(_credential(value) for value in namespace.credential)
+    credentials = (
+        _credentials_file(namespace.credentials_file)
+        if namespace.credentials_file is not None
+        else tuple(_credential(value) for value in namespace.credential)
+    )
     layout = canonical_radicale_runtime_layout()
     server = RadicaleServerConfig(layout, namespace.bind_address, namespace.port)
     service = RadicaleServiceConfig(
@@ -207,7 +215,32 @@ def _credential(value: str) -> RadicaleCredential:
     return RadicaleCredential(username, _protected_line(Path(raw_path)))
 
 
+def _credentials_file(path: Path) -> tuple[RadicaleCredential, ...]:
+    """Load a protected canonical htpasswd file without exposing verifiers."""
+    return _parse_credentials_document(_protected_document(path))
+
+
+def _parse_credentials_document(document: str) -> tuple[RadicaleCredential, ...]:
+    """Parse canonical htpasswd contents after its path has been protected."""
+    credentials: list[RadicaleCredential] = []
+    for line in document.splitlines():
+        username, separator, bcrypt_hash = line.partition(":")
+        if not separator:
+            raise ValueError("credentials file must use canonical htpasswd lines")
+        credentials.append(RadicaleCredential(username, bcrypt_hash))
+    if not credentials:
+        raise ValueError("credentials file must contain at least one account")
+    return tuple(credentials)
+
+
 def _protected_line(path: Path) -> str:
+    value = _protected_document(path).rstrip("\n")
+    if not value or "\n" in value or "\r" in value:
+        raise ValueError("secret inputs must contain one non-empty line")
+    return value
+
+
+def _protected_document(path: Path) -> str:
     if not path.is_absolute() or path.is_symlink() or not path.is_file():
         raise ValueError("secret inputs must be absolute regular files")
     stat = path.stat()
@@ -215,10 +248,7 @@ def _protected_line(path: Path) -> str:
         raise ValueError("secret input permissions must be 0600 or stricter")
     if stat.st_uid != 0 or stat.st_gid != 0:
         raise ValueError("secret inputs must be owned by root:root")
-    value = path.read_text(encoding="utf-8").rstrip("\n")
-    if not value or "\n" in value or "\r" in value:
-        raise ValueError("secret inputs must contain one non-empty line")
-    return value
+    return path.read_text(encoding="utf-8")
 
 
 def _apply_and_verify(
