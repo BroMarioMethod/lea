@@ -9,7 +9,7 @@ readonly TASKWARRIOR_SHA256="d302761fcd1268e4a5a545613a2b68c61abd50c0bcaade3b3e6
 readonly TASKWARRIOR_BUILD_DIRECTORY="/var/tmp/lea-taskwarrior-build"
 readonly TASKWARRIOR_BUILD_CONCURRENCY="1"
 
-readonly CALENDAR_REQUIREMENTS_RELATIVE_PATH="third_party/calendar/requirements-linux-aarch64-py313.txt"
+readonly CALENDAR_REQUIREMENTS_LOCK="/opt/lea-release-assets/calendar-requirements.lock"
 readonly CALENDAR_REQUIREMENTS_SHA256="f5f7a0749b993e49bbd50b8807242611fff1dbc2477a59a4a292c0aa42420ba5"
 readonly CALENDAR_PACKAGE_INDEX_URL="https://pypi.org/simple"
 readonly CALENDAR_TOOLCHAIN_VERSION="1.0.0"
@@ -190,7 +190,6 @@ main() {
     local repository_root
     local uv_binary
     local calendar_python
-    local calendar_requirements_lock
 
     repository_root="$(resolve_repository_root)"
     require_repository "$repository_root"
@@ -201,8 +200,6 @@ main() {
 
     uv_binary="$(resolve_uv)"
     calendar_python="$(resolve_calendar_python)"
-    calendar_requirements_lock="${repository_root}/${CALENDAR_REQUIREMENTS_RELATIVE_PATH}"
-
     cd -- "$repository_root"
 
     exec "$uv_binary" run lea install-release-candidate \
@@ -212,7 +209,7 @@ main() {
         --taskwarrior-platform "$TASKWARRIOR_PLATFORM" \
         --taskwarrior-build-directory "$TASKWARRIOR_BUILD_DIRECTORY" \
         --taskwarrior-build-concurrency "$TASKWARRIOR_BUILD_CONCURRENCY" \
-        --calendar-requirements-lock "$calendar_requirements_lock" \
+        --calendar-requirements-lock "$CALENDAR_REQUIREMENTS_LOCK" \
         --calendar-requirements-sha256 "$CALENDAR_REQUIREMENTS_SHA256" \
         --calendar-uv-executable "$uv_binary" \
         --calendar-python-executable "$calendar_python" \

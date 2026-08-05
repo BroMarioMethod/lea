@@ -39,6 +39,7 @@ class VdirsyncerRunner:
         *,
         operation: str,
         configured: bool = True,
+        approved_input: bytes | None = None,
     ) -> VdirsyncerRunResult:
         """Run one bounded non-interactive command without a shell."""
         if not isinstance(operation, str) or not operation.strip():
@@ -75,7 +76,8 @@ class VdirsyncerRunner:
                 command,
                 cwd=self._config.working_directory,
                 env=environment,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL if approved_input is None else None,
+                input=approved_input,
                 capture_output=True,
                 timeout=self._config.timeout_seconds,
                 check=False,

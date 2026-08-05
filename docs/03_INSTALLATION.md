@@ -203,6 +203,10 @@ Use the reviewed lock supplied with the release assets:
 /opt/lea-release-assets/calendar-requirements.lock
 ```
 
+Create the canonical release-assets directory with the supported preparation
+command documented in `MILESTONE_4_TEST_CARD.md`; do not manually copy or
+regenerate the tracked lock during installation.
+
 Verify its independently reviewed SHA-256 before installation. The installer
 requires the absolute lock path, lowercase digest, exact trusted `uv` and
 Python paths, toolchain layout version, and pinned khal and vdirsyncer

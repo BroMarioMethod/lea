@@ -8,6 +8,7 @@ from typing import Protocol, TextIO
 
 from lea.application import run
 from lea.calendar_acceptance_cli import execute_calendar_acceptance_cli
+from lea.calendar_provider_cli import execute_calendar_provider_cli
 from lea.cli import execute_local_cli
 from lea.config import AppConfig, load_config
 from lea.errors import ConfigurationError, LeaError
@@ -139,6 +140,9 @@ def dispatch(
     calendar_acceptance_cli_runner: CalendarAcceptanceCliRunner = (
         execute_calendar_acceptance_cli
     ),
+    calendar_provider_cli_runner: CalendarAcceptanceCliRunner = (
+        execute_calendar_provider_cli
+    ),
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
 ) -> int:
@@ -167,6 +171,8 @@ def dispatch(
         return calendar_acceptance_cli_runner(
             arguments[1:], stdout=stdout, stderr=stderr
         )
+    if arguments and arguments[0] == "calendar-provider":
+        return calendar_provider_cli_runner(arguments[1:], stdout=stdout, stderr=stderr)
     if _uses_local_cli(arguments):
         return local_cli_runner(arguments, stdout=stdout, stderr=stderr)
     return execute(environment, application_runner)

@@ -80,6 +80,17 @@ digests:
 ```bash
 sha256sum /opt/lea-release-assets/task-3.4.2.tar.gz
 sha256sum /opt/lea-release-assets/calendar-requirements.lock
+sha256sum /opt/lea-release-assets/radicale-requirements.lock
+```
+
+Materialize them before Gate 0 from a trusted Taskwarrior archive and the
+tracked reviewed locks:
+
+```bash
+cd /opt/lea
+sudo uv run python scripts/prepare_milestone_4_release_assets.py \
+  --repository /opt/lea \
+  --taskwarrior-archive /path/to/reviewed/task-3.4.2.tar.gz
 ```
 
 Do not copy a digest from the command output into the expected-value source.
@@ -244,6 +255,9 @@ Provision and inspect Radicale exactly as described in
 service and must use a private LAN/VPN address, protected bcrypt credentials,
 private storage and the hardened unit.
 
+Use the exact `lea calendar-provider install` command in that runbook. Do not
+substitute the former temporary provisioning script or call a library API.
+
 Verify:
 
 ```bash
@@ -285,6 +299,15 @@ sudo -u lea "$(command -v uv)" run lea proposal execute <proposal-id>
 Expected: neither discovery nor synchronization occurs merely from submission
 or approval. Conflicts stop for operator review; they are not silently resolved.
 
+If first discovery explicitly reports collection creation is required, run
+exactly once before resubmitting discovery:
+
+```bash
+cd /opt/lea
+sudo "$(command -v uv)" run lea calendar-provider bootstrap \
+  --approve-first-collection
+```
+
 ## Gate 10 — DAVx⁵ and Android two-way acceptance
 
 Pair DAVx⁵ using the private Radicale URL and the phone's distinct revocable
@@ -316,6 +339,10 @@ Verify:
 - both known test events after explicit synchronization.
 
 A copied archive without a successful isolated restore is not accepted.
+
+Use the exact `lea calendar-provider backup` and
+`lea calendar-provider restore-isolated` commands in the operations runbook.
+Confirm the archive is `root:root` mode `0600` before restarting Radicale.
 
 ## Gate 12 — Write Android acceptance evidence
 

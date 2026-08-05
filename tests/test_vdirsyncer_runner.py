@@ -93,6 +93,24 @@ def test_discovery_reports_missing_collection_bootstrap_without_prompt_text(
     assert "attempt to create" not in result.issues[0].message
 
 
+def test_explicit_bootstrap_supplies_only_declared_noninteractive_approval(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        "import sys; value = sys.stdin.read(); "
+        "raise SystemExit(0 if value == 'y\\n' else 4)",
+    )
+
+    result = VdirsyncerRunner(config).run(
+        ("discover",),
+        operation="calendar_collection_bootstrap",
+        approved_input=b"y\n",
+    )
+
+    assert result.success is True
+
+
 def test_runner_fails_closed_for_symlinked_executable(tmp_path: Path) -> None:
     config = _config(tmp_path, "print('unexpected')")
     target = config.executable

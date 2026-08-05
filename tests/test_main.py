@@ -115,6 +115,19 @@ def successful_release_candidate_acceptance_runner(
     return EXIT_SUCCESS
 
 
+def successful_calendar_provider_runner(
+    arguments: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Record one supported calendar-provider invocation."""
+    assert tuple(arguments) == ("bootstrap", "--approve-first-collection")
+    stdout.write("Calendar provider command completed.\n")
+    assert stderr.write("") == 0
+    return EXIT_SUCCESS
+
+
 @pytest.fixture
 def test_environment() -> Mapping[str, str]:
     """Return valid test configuration."""
@@ -175,6 +188,22 @@ def test_dispatch_without_arguments_runs_application(
     )
 
     assert exit_code == EXIT_SUCCESS
+
+
+def test_dispatch_calendar_provider_uses_supported_public_cli(
+    test_environment: Mapping[str, str],
+) -> None:
+    stdout = StringIO()
+    exit_code = dispatch(
+        ["calendar-provider", "bootstrap", "--approve-first-collection"],
+        test_environment,
+        application_runner=unexpected_application_runner,
+        calendar_provider_cli_runner=successful_calendar_provider_runner,
+        stdout=stdout,
+        stderr=StringIO(),
+    )
+    assert exit_code == EXIT_SUCCESS
+    assert stdout.getvalue() == "Calendar provider command completed.\n"
 
 
 def test_dispatch_runtime_command_uses_runtime_cli(

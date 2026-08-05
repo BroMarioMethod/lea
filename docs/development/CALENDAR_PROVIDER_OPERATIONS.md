@@ -56,7 +56,27 @@ managed paths and the disposable calendar lifecycle must pass.
 ## Provision Radicale and CalDAV
 
 Radicale is deliberately not part of the khal provider or Android installer.
-Deployment automation must call `lea.installers.radicale.install_radicale` with:
+Use the supported root-only public workflow. Put each bcrypt verifier and the
+matching CalDAV plaintext secret in separate absolute mode-0600 input files;
+the values themselves must never be command arguments:
+
+```bash
+cd /opt/lea
+sudo "$(command -v uv)" run lea calendar-provider install \
+  --bind-address <private-card-ip> \
+  --port 5232 \
+  --credential lea-test-a=/root/lea-secrets/lea-test-a.bcrypt \
+  --credential lea-test-b=/root/lea-secrets/lea-test-b.bcrypt \
+  --caldav-username lea-test-a \
+  --caldav-password-file /root/lea-secrets/lea-test-a.password \
+  --uv-executable "$(command -v uv)" \
+  --python-executable /usr/bin/python3 \
+  --requirements-lock /opt/lea-release-assets/radicale-requirements.lock \
+  --requirements-sha256 bc339317cbda1deec4cd7cff15bed10539297341471e67fbb05c3b906db70669 \
+  --approve-replacement --activate
+```
+
+The workflow requires:
 
 - one exact non-symbolic Radicale executable, pinned version and SHA-256;
 - a private or loopback bind address and explicit port;
@@ -79,6 +99,16 @@ approval. The generated pair discovers collections in both directions and sets
 `conflict_resolution = null`; conflicts therefore stop for operator review.
 The password is fetched from the separate mode-0600 file and is never embedded
 in `vdirsyncer.conf`.
+
+If ordinary discovery reports that collection creation is required, approve
+that distinct first-collection mutation non-interactively, then return to the
+proposal-backed discovery and synchronization flow:
+
+```bash
+cd /opt/lea
+sudo "$(command -v uv)" run lea calendar-provider bootstrap \
+  --approve-first-collection
+```
 
 Discover collections before the first synchronization:
 
@@ -160,6 +190,25 @@ an isolated host or staging root, reapply the original ownership and modes,
 start the service, run health and two-account isolation checks, then synchronize
 and verify known events. A copied archive without a successful restore drill is
 not a verified backup.
+
+The supported root-only commands create the credential-bearing archive as
+`root:root` mode `0600` before writing its first byte and refuse an existing,
+symbolic, or unsafe destination. Restore accepts only a mode-0600 archive and a
+new isolated destination:
+
+```bash
+sudo systemctl stop lea-radicale.service
+cd /opt/lea
+sudo "$(command -v uv)" run lea calendar-provider backup \
+  --output /var/backups/lea-calendar-provider-<date>.tar.gz
+sudo systemctl start lea-radicale.service
+
+sudo "$(command -v uv)" run lea calendar-provider restore-isolated \
+  --archive /var/backups/lea-calendar-provider-<date>.tar.gz \
+  --destination /var/tmp/lea-calendar-provider-restore-<date>
+sudo stat -c '%a %U:%G %n' \
+  /var/backups/lea-calendar-provider-<date>.tar.gz
+```
 
 ## Upgrade and rollback
 

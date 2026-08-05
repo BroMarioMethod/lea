@@ -15,12 +15,7 @@ TASKWARRIOR_SHA256 = "d302761fcd1268e4a5a545613a2b68c61abd50c0bcaade3b3e68d728dd
 CALENDAR_REQUIREMENTS_SHA256 = (
     "f5f7a0749b993e49bbd50b8807242611fff1dbc2477a59a4a292c0aa42420ba5"
 )
-CALENDAR_REQUIREMENTS_LOCK = (
-    REPOSITORY_ROOT
-    / "third_party"
-    / "calendar"
-    / "requirements-linux-aarch64-py313.txt"
-)
+CALENDAR_REQUIREMENTS_LOCK = Path("/opt/lea-release-assets/calendar-requirements.lock")
 
 
 def _write_executable(path: Path, content: str) -> None:
