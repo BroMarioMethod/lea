@@ -1,6 +1,8 @@
 """Tests for protected calendar-provider administrative inputs."""
 
+import urllib.request
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -44,3 +46,40 @@ def test_provider_parent_policy_is_exact(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_caldav_configuration_policy_is_service_readable() -> None:
     layout = calendar_provider_cli._calendar_layout()
     assert layout.vdirsyncer_configuration == Path("/etc/lea/calendar/vdirsyncer.conf")
+
+
+def test_bootstrap_creates_and_verifies_declared_remote_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[Any] = []
+
+    class Response:
+        def __init__(self, status: int) -> None:
+            self.status = status
+
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    responses = iter((Response(201), Response(207)))
+
+    def urlopen(request: Any, **_kwargs: Any) -> Response:
+        requests.append(request)
+        return next(responses)
+
+    monkeypatch.setattr(calendar_provider_cli, "_protected_line", lambda _path: "pw")
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        urlopen,
+    )
+    calendar_provider_cli._bootstrap_remote_collection(
+        "http://192.168.1.2:5232/",
+        "account",
+        Path("/root/password"),
+        "lea-calendar",
+    )
+    assert [request.method for request in requests] == ["MKCALENDAR", "PROPFIND"]
+    assert all("pw" not in request.full_url for request in requests)

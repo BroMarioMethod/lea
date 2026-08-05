@@ -305,6 +305,10 @@ exactly once before resubmitting discovery:
 ```bash
 cd /opt/lea
 sudo "$(command -v uv)" run lea calendar-provider bootstrap \
+  --base-url http://<private-card-ip>:5232/ \
+  --username <caldav-username> \
+  --password-file /root/lea-secrets/<account>.password \
+  --collection-name lea-calendar \
   --approve-first-collection
 ```
 

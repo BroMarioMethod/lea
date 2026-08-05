@@ -1,14 +1,19 @@
 """Supported administrative CLI for the Milestone 4 calendar provider."""
 
 import argparse
+import base64
 import grp
 import os
 import pwd
+import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
+from urllib.parse import quote, urlsplit
 
 from lea.adapters.vdirsyncer import VdirsyncerConfig, VdirsyncerRunner
 from lea.installers.calendar.caldav_configuration import (
@@ -39,6 +44,7 @@ from lea.installers.radicale.service import RadicaleServiceConfig
 RADICALE_LOCK_SHA256 = (
     "bc339317cbda1deec4cd7cff15bed10539297341471e67fbb05c3b906db70669"
 )
+_COLLECTION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -71,6 +77,10 @@ def create_parser() -> argparse.ArgumentParser:
     bootstrap = commands.add_parser(
         "bootstrap", help="Approve first collection creation."
     )
+    bootstrap.add_argument("--base-url", required=True)
+    bootstrap.add_argument("--username", required=True)
+    bootstrap.add_argument("--password-file", type=Path, required=True)
+    bootstrap.add_argument("--collection-name", required=True)
     bootstrap.add_argument(
         "--approve-first-collection", action="store_true", required=True
     )
@@ -99,6 +109,12 @@ def execute_calendar_provider_cli(
         if namespace.operation == "install":
             return _install(namespace, stdout, stderr)
         if namespace.operation == "bootstrap":
+            _bootstrap_remote_collection(
+                namespace.base_url,
+                namespace.username,
+                namespace.password_file,
+                namespace.collection_name,
+            )
             runner = VdirsyncerRunner(_vdirsyncer_config())
             result = runner.run(
                 ("discover",),
@@ -228,6 +244,65 @@ def _prepare_provider_parents() -> None:
             raise OSError("managed provider parent is unsafe")
         path.mkdir(mode=mode, parents=False, exist_ok=True)
         _apply_and_verify(path, mode, owner, group, readable=True)
+
+
+def _bootstrap_remote_collection(
+    base_url: str, username: str, password_file: Path, collection_name: str
+) -> None:
+    """Create one declared Radicale collection without interactive input."""
+    parsed = urlsplit(base_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or not base_url.endswith("/")
+    ):
+        raise ValueError("base URL must be an explicit credential-free HTTP URL")
+    if _COLLECTION_NAME.fullmatch(username) is None:
+        raise ValueError("username must use safe account characters")
+    if _COLLECTION_NAME.fullmatch(collection_name) is None:
+        raise ValueError("collection name must use safe account characters")
+    password = _protected_line(password_file)
+    endpoint = (
+        f"{base_url}{quote(username, safe='')}/{quote(collection_name, safe='')}/"
+    )
+    token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+    request = urllib.request.Request(
+        endpoint,
+        data=(
+            b'<?xml version="1.0" encoding="utf-8"?>'
+            b'<C:mkcalendar xmlns:C="urn:ietf:params:xml:ns:caldav"/>'
+        ),
+        headers={
+            "Authorization": f"Basic {token}",
+            "Content-Type": "application/xml; charset=utf-8",
+        },
+        method="MKCALENDAR",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            status = response.status
+    except urllib.error.HTTPError as error:
+        status = error.code
+    except (OSError, urllib.error.URLError) as error:
+        raise OSError("remote collection bootstrap request failed") from error
+    if status not in {201, 204, 405}:
+        raise OSError("remote collection bootstrap was rejected")
+    probe = urllib.request.Request(
+        endpoint,
+        headers={"Authorization": f"Basic {token}", "Depth": "0"},
+        method="PROPFIND",
+    )
+    try:
+        with urllib.request.urlopen(probe, timeout=30) as response:
+            probe_status = response.status
+    except (OSError, urllib.error.URLError) as error:
+        raise OSError("remote collection bootstrap verification failed") from error
+    if probe_status != 207:
+        raise OSError("remote collection bootstrap verification failed")
 
 
 def _credential(value: str) -> RadicaleCredential:
