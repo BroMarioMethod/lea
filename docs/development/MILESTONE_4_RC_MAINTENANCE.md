@@ -25,6 +25,37 @@ live event identifiers or other test-user data.
 
 ## Consolidated findings
 
+### Run 2026-08-04 — `79d42d5` full repair-card calendar acceptance
+
+- Environment/card: physical repaired release-candidate test card and Android
+  device on the private LAN.
+- Installer command/profile: release-candidate `repair`, system profile,
+  Telegram disabled for this calendar-specific run.
+- Observed result: managed-client health and lifecycle, authenticated Radicale,
+  reciprocal two-account isolation, explicit discovery and synchronization,
+  both Android synchronization directions, consistent backup, isolated restore
+  and Android acceptance-record creation passed.
+- Defect or insight: Radicale deployment still required an operator script and
+  separately installed executable; initial health raced service readiness;
+  initial discovery required interactive remote-collection creation; expected
+  provider failures lost their issue code; and the first manual backup archive
+  inherited an unsafe mode before correction.
+- Root cause: the separately managed Radicale library boundary was not yet a
+  complete reproducible operator workflow, and first-run and backup invariants
+  lacked end-to-end regression coverage.
+- Changed files/commit: initial development hardening is `158a9d1`; the durable
+  findings are also recorded in knowledge document
+  `4a2c1e2b-6d37-4a50-9f42-2f6fb94da801`.
+- Automated regression coverage: ownership application, bounded readiness,
+  redaction-safe action failures and explicit missing-collection diagnostics;
+  complete gate at `158a9d1` passed with 2,510 tests and one documented skip.
+- Physical retest result: the original repaired-card run passed at `79d42d5`.
+  The hardening commit and all later candidate changes still require the ordered
+  fresh-install procedure.
+- Status: `fixed-awaiting-card` for ownership/readiness/diagnostics;
+  `open` for reproducible Radicale packaging, supported deployment, explicit
+  collection bootstrap and supported backup/restore tooling.
+
 ### Run 2026-08-05 — repaired Milestone 4 candidate
 
 - Environment/card: physical release-candidate test card and Android device.

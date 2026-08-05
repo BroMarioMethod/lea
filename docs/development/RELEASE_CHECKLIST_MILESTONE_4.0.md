@@ -30,8 +30,9 @@ The ordered physical-card procedure is
 - [x] mypy passes.
 - [x] Telegram deployment validation passes.
 - [x] release-candidate acceptance-asset validation passes.
-- [x] the complete pytest suite passes: 2,499 passed and 7 host-dependent
-  Taskwarrior tests skipped on 2026-08-04.
+- [x] the complete pytest suite passes at candidate `158a9d1`: 2,510 passed and
+  one documented host-permission-dependent Taskwarrior test skipped on
+  2026-08-05.
 - [x] calendar CLI arguments reach the request, orchestration engine, installer
   dispatch, installation record and post-install acceptance checks.
 - [x] root-run file creation and replacement produce the required `0640`/`0600`
@@ -72,7 +73,11 @@ contain passwords, bcrypt verifiers, phone identifiers or live event IDs.
 - [x] the README links the Milestone 4.0 specification, runbook and checklist;
 - [x] the test-card procedure defines ordered gates, commands, expected results,
   evidence rules and stop conditions;
-- [ ] any correction discovered during live acceptance is documented.
+- [x] every correction discovered during the completed repair-card acceptance
+  is documented.
+- [x] repair-card findings through candidate `158a9d1` are recorded in the RC
+  maintenance log and credential-free acceptance knowledge; final-card findings
+  remain to be appended against the exact tested candidate.
 
 ## Merge and release decision
 
