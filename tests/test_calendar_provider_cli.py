@@ -39,3 +39,8 @@ def test_provider_parent_policy_is_exact(monkeypatch: pytest.MonkeyPatch) -> Non
         (Path("/var/lib/lea/secrets"), 0o750, "root", "lea"),
         (Path("/var/lib/lea/secrets/calendar"), 0o700, "lea", "lea"),
     ]
+
+
+def test_caldav_configuration_policy_is_service_readable() -> None:
+    layout = calendar_provider_cli._calendar_layout()
+    assert layout.vdirsyncer_configuration == Path("/etc/lea/calendar/vdirsyncer.conf")

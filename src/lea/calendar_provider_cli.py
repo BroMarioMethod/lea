@@ -197,6 +197,13 @@ def _install(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> i
     if not activation.success:
         stderr.write(f"CalDAV activation failed: {activation.issues[0].code}\n")
         return 1
+    _apply_and_verify(
+        sync.layout.vdirsyncer_configuration,
+        0o640,
+        "root",
+        "lea",
+        readable=True,
+    )
     for path, mode in (
         (layout.configuration_directory, 0o750),
         (layout.configuration_file, 0o640),
