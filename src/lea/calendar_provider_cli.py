@@ -127,6 +127,7 @@ def execute_calendar_provider_cli(
 
 
 def _install(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> int:
+    _prepare_provider_parents()
     distribution = install_radicale_distribution(
         RadicaleDistributionRequest(
             requirements_lock=namespace.requirements_lock,
@@ -206,6 +207,20 @@ def _install(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> i
         _apply_and_verify(path, mode, "lea", "lea", readable=True)
     stdout.write("Radicale and CalDAV provisioning: SUCCESS\n")
     return 0
+
+
+def _prepare_provider_parents() -> None:
+    """Create exact provider-owned parents omitted by the base LEA lifecycle."""
+    policies = (
+        (Path("/opt/lea-tools/radicale"), 0o750, "root", "lea"),
+        (Path("/var/lib/lea/secrets"), 0o750, "root", "lea"),
+        (Path("/var/lib/lea/secrets/calendar"), 0o700, "lea", "lea"),
+    )
+    for path, mode, owner, group in policies:
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise OSError("managed provider parent is unsafe")
+        path.mkdir(mode=mode, parents=False, exist_ok=True)
+        _apply_and_verify(path, mode, owner, group, readable=True)
 
 
 def _credential(value: str) -> RadicaleCredential:
