@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from lea.installers.calendar import (
+    CalendarCaldavSyncConfig,
     CalendarToolchainConfigurationResult,
     CalendarToolchainInstallerConfig,
     CalendarToolchainInstallFailureCode,
@@ -14,6 +15,7 @@ from lea.installers.calendar import (
     create_calendar_toolchain_runtime_layout,
     persist_calendar_toolchain_configuration,
     provision_calendar_toolchain_runtime_layout,
+    render_calendar_caldav_vdirsyncer_configuration,
     render_calendar_khal_configuration,
     render_calendar_vdirsyncer_configuration,
 )
@@ -124,6 +126,33 @@ def test_vdirsyncer_renderer_is_minimal_and_local_only(
         "[storage ",
     ):
         assert forbidden not in lowered
+
+
+def test_repair_accepts_exact_supported_caldav_activation(tmp_path: Path) -> None:
+    config, layout = _provisioned(tmp_path)
+    layout.khal_configuration.write_text(
+        render_calendar_khal_configuration(layout, display_timezone="Africa/Gaborone")
+    )
+    caldav = CalendarCaldavSyncConfig(
+        layout,
+        "http://192.168.1.2:5232/",
+        "account",
+        layout.state_root.parent / "secrets/calendar/caldav-password",
+    )
+    layout.vdirsyncer_configuration.write_text(
+        render_calendar_caldav_vdirsyncer_configuration(caldav)
+    )
+    layout.khal_configuration.chmod(0o640)
+    layout.vdirsyncer_configuration.chmod(0o640)
+
+    result = persist_calendar_toolchain_configuration(
+        config,
+        layout,
+        display_timezone="Africa/Gaborone",
+    )
+
+    assert result.success is True
+    assert result.files_changed == ()
 
 
 def test_configuration_plan_matches_runtime_layout(

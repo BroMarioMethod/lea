@@ -1,10 +1,13 @@
 """Deterministic managed configuration for calendar tools."""
 
+import json
 import os
+import re
 import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from lea.installers.calendar.contracts import (
@@ -22,6 +25,7 @@ from lea.installers.calendar.runtime_layout import (
 )
 
 _CONFIGURATION_FILE_MODE = 0o640
+_CALDAV_USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,7 +239,7 @@ def persist_calendar_toolchain_configuration(
     changed: list[Path] = []
 
     for managed in managed_files:
-        issue = _inspect_existing_file(managed)
+        issue = _inspect_existing_file(managed, plan.layout)
 
         if issue is not None:
             return _failure(
@@ -379,6 +383,7 @@ def _validate_runtime_layout(
 
 def _inspect_existing_file(
     managed: _ManagedConfigurationFile,
+    layout: CalendarToolchainRuntimeLayout,
 ) -> CalendarToolchainInstallerIssue | None:
     """Accept identical regular files and reject unsafe differences."""
     try:
@@ -407,7 +412,10 @@ def _inspect_existing_file(
             path=managed.destination,
         )
 
-    if current != managed.contents:
+    if current != managed.contents and not (
+        managed.field == "vdirsyncer_configuration"
+        and _is_managed_caldav_configuration(current, layout)
+    ):
         return _filesystem_issue(
             message=(
                 f"The existing {managed.field} differs from the "
@@ -418,6 +426,70 @@ def _inspect_existing_file(
         )
 
     return None
+
+
+def _is_managed_caldav_configuration(
+    document: str, layout: CalendarToolchainRuntimeLayout
+) -> bool:
+    """Recognize only the exact supported CalDAV activation document."""
+    lines = document.splitlines()
+    if len(lines) != 21 or not (
+        lines[17].startswith("url = ")
+        and lines[18].startswith("username = ")
+        and lines[19].startswith("password.fetch = ")
+    ):
+        return False
+    try:
+        url = json.loads(lines[17].removeprefix("url = "))
+        username = json.loads(lines[18].removeprefix("username = "))
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if not isinstance(url, str) or not isinstance(username, str):
+        return False
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or not url.endswith("/")
+        or _CALDAV_USERNAME.fullmatch(username) is None
+    ):
+        return False
+    state_root = layout.state_root
+    expected = (
+        "[general]",
+        f"status_path = {json.dumps(str(state_root / 'vdirsyncer-status'))}",
+        "",
+        "[pair lea_calendars]",
+        'a = "lea_local"',
+        'b = "lea_radicale"',
+        'collections = ["from a", "from b"]',
+        "conflict_resolution = null",
+        'metadata = ["color", "displayname", "description", "order"]',
+        "",
+        "[storage lea_local]",
+        'type = "filesystem"',
+        f"path = {json.dumps(str(state_root / 'vdirs'))}",
+        'fileext = ".ics"',
+        "",
+        "[storage lea_radicale]",
+        'type = "caldav"',
+        f"url = {json.dumps(url)}",
+        f"username = {json.dumps(username)}",
+        "password.fetch = "
+        + json.dumps(
+            [
+                "command",
+                "/usr/bin/cat",
+                str(state_root.parent / "secrets/calendar/caldav-password"),
+            ]
+        ),
+        'auth = "basic"',
+    )
+    return tuple(lines) == expected
 
 
 def _write_new_file(
