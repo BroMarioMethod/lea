@@ -30,15 +30,14 @@ The ordered physical-card procedure is
 - [x] mypy passes.
 - [x] Telegram deployment validation passes.
 - [x] release-candidate acceptance-asset validation passes.
-- [x] the complete pytest suite passes at candidate `158a9d1`: 2,510 passed and
-  one documented host-permission-dependent Taskwarrior test skipped on
-  2026-08-05.
+- [x] the complete pytest suite passes at accepted source `50b8bde`: 2,525
+  passed and 7 expected environment skips on 2026-08-06.
 - [x] calendar CLI arguments reach the request, orchestration engine, installer
   dispatch, installation record and post-install acceptance checks.
 - [x] root-run file creation and replacement produce the required `0640`/`0600`
   modes, owner/group identities and service readability.
 - [x] `scripts/check.sh` passes on the prepared candidate tree.
-- [ ] the final candidate merges cleanly into current `main`.
+- [x] the final candidate has a clean merge simulation into current `main`.
 - [ ] `scripts/check.sh` passes on the resulting merge commit.
 
 Record the candidate commit, merge commit, command output and date in the pull
@@ -46,18 +45,18 @@ request or release evidence. Do not mark a check from an earlier commit.
 
 ## Clean-host and live acceptance gate
 
-- [ ] fresh installation succeeds on the supported clean DietPi host;
-- [ ] no correction from the tracked RC maintenance log remains unresolved;
+- [x] fresh installation succeeds on the supported clean DietPi host;
+- [x] no correction from the tracked RC maintenance log remains unresolved;
 - [x] the pinned Taskwarrior and calendar toolchains pass post-install checks;
 - [x] khal and vdirsyncer execute only from their recorded managed paths;
-- [ ] Radicale health and reciprocal two-user collection isolation pass;
-- [ ] LEA-to-Android timed-event synchronisation passes with timezone intact;
-- [ ] Android-to-LEA event synchronisation passes;
-- [ ] the mode-0640 Android acceptance record is retained outside Git;
-- [ ] backup and isolated restore verification pass;
-- [ ] an approved upgrade preserves rollback evidence and passes acceptance;
-- [ ] non-purge removal preserves data and secrets as documented;
-- [ ] confirmed purge removes only managed targets and revoked credentials fail;
+- [x] Radicale health and reciprocal two-user collection isolation pass;
+- [x] LEA-to-Android timed-event synchronisation passes with timezone intact;
+- [x] Android-to-LEA event synchronisation passes;
+- [x] the mode-0640 Android acceptance record is retained outside Git;
+- [x] backup and isolated restore verification pass;
+- [x] an approved upgrade preserves rollback evidence and passes acceptance;
+- [x] non-purge removal preserves data and secrets as documented;
+- [x] confirmed purge removes only managed targets and revoked credentials fail;
 - [ ] required Telegram-enabled acceptance passes before and after reboot.
 
 Live checks require the real host, Radicale service, test accounts and Android
@@ -75,9 +74,9 @@ contain passwords, bcrypt verifiers, phone identifiers or live event IDs.
   evidence rules and stop conditions;
 - [x] every correction discovered during the completed repair-card acceptance
   is documented.
-- [x] repair-card findings through candidate `158a9d1` are recorded in the RC
-  maintenance log and credential-free acceptance knowledge; final-card findings
-  remain to be appended against the exact tested candidate.
+- [x] final-card findings through accepted source `50b8bde` and branch tip
+  `458973f` are recorded in the RC maintenance log and credential-free
+  acceptance knowledge.
 
 ## Merge and release decision
 

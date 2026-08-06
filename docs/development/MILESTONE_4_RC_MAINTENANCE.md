@@ -52,9 +52,9 @@ live event identifiers or other test-user data.
 - Physical retest result: the original repaired-card run passed at `79d42d5`.
   The hardening commit and all later candidate changes still require the ordered
   fresh-install procedure.
-- Status: `fixed-awaiting-card` for ownership/readiness/diagnostics;
-  `open` for reproducible Radicale packaging, supported deployment, explicit
-  collection bootstrap and supported backup/restore tooling.
+- Status: `verified` after the final exact-commit rerun; the former
+  ownership/readiness/diagnostics, packaging, deployment, bootstrap and backup
+  findings are resolved by the later implementation slices.
 
 ### Run 2026-08-05 — repaired Milestone 4 candidate
 
@@ -118,7 +118,7 @@ live event identifiers or other test-user data.
   and mode requirements and reject unsafe paths.
 - Regression coverage: release-candidate system provisioning and calendar and
   Taskwarrior record tests.
-- Status: `fixed-awaiting-card`.
+- Status: `verified` on the final exact-commit rerun.
 
 ### Final calendar acceptance required hardening
 
@@ -128,7 +128,7 @@ live event identifiers or other test-user data.
   preserving explicit discovery, synchronisation and mutation boundaries.
 - Regression coverage: release-candidate acceptance validator, calendar
   post-install and proposal lifecycle tests.
-- Status: `fixed-awaiting-card`.
+- Status: `verified` on the final exact-commit rerun.
 
 ## Mandatory pre-card gate for the next integration
 
