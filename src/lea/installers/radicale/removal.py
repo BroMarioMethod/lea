@@ -15,6 +15,7 @@ class RadicaleRemovalRequest:
 
     service: RadicaleServiceConfig
     installation_record: Path
+    distribution_root: Path
     purge: bool = False
     confirmed: bool = False
 
@@ -23,15 +24,25 @@ class RadicaleRemovalRequest:
             raise TypeError("service must be a RadicaleServiceConfig value.")
         if not self.installation_record.is_absolute():
             raise ValueError("installation_record must be absolute.")
+        if not self.distribution_root.is_absolute():
+            raise ValueError("distribution_root must be absolute.")
         if self.purge and not self.confirmed:
             raise ValueError("Purging Radicale state requires explicit confirmation.")
-        protected = {Path("/"), Path("/etc"), Path("/var"), Path("/var/lib")}
+        protected = {
+            Path("/"),
+            Path("/etc"),
+            Path("/opt"),
+            Path("/opt/lea-tools"),
+            Path("/var"),
+            Path("/var/lib"),
+        }
         targets = {
             self.service.unit_file,
             self.service.layout.configuration_file,
             self.service.layout.users_file,
             self.service.layout.storage_directory,
             self.installation_record,
+            self.distribution_root,
         }
         if targets & protected:
             raise ValueError("Radicale removal contains an unsafe broad path.")
@@ -117,6 +128,16 @@ def remove_radicale(
             request.service.layout.storage_directory,
             service_removed=True,
         )
+    try:
+        shutil.rmtree(request.distribution_root)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return _path_failure(
+            completed,
+            request.distribution_root,
+            service_removed=True,
+        )
     return RadicaleRemovalResult(True, True, True, tuple(completed), ())
 
 
@@ -130,13 +151,18 @@ def _inspect_targets(request: RadicaleRemovalRequest) -> RadicaleRemovalIssue | 
                 request.installation_record,
             )
         )
-        storage = request.service.layout.storage_directory
-        if storage.is_symlink() or (storage.exists() and not storage.is_dir()):
-            return RadicaleRemovalIssue(
-                "radicale_removal_path_unsafe",
-                "A managed Radicale removal path is unsafe.",
-                storage,
-            )
+        for directory in (
+            request.service.layout.storage_directory,
+            request.distribution_root,
+        ):
+            if directory.is_symlink() or (
+                directory.exists() and not directory.is_dir()
+            ):
+                return RadicaleRemovalIssue(
+                    "radicale_removal_path_unsafe",
+                    "A managed Radicale removal path is unsafe.",
+                    directory,
+                )
     for path in paths:
         if path.is_symlink() or (path.exists() and not path.is_file()):
             return RadicaleRemovalIssue(

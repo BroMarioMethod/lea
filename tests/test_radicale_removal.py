@@ -30,6 +30,7 @@ def _request(tmp_path: Path, *, purge: bool = False) -> RadicaleRemovalRequest:
     return RadicaleRemovalRequest(
         service,
         tmp_path / "install" / "radicale.json",
+        tmp_path / "tools" / "radicale" / "3.5.4",
         purge=purge,
         confirmed=purge,
     )
@@ -48,6 +49,8 @@ def _populate(request: RadicaleRemovalRequest) -> None:
     (request.service.layout.storage_directory / "event.ics").write_text(
         "event\n", encoding="utf-8"
     )
+    request.distribution_root.mkdir(parents=True)
+    (request.distribution_root / "radicale").write_text("binary\n", encoding="utf-8")
 
 
 def test_default_removal_preserves_configuration_secrets_and_storage(
@@ -88,6 +91,7 @@ def test_confirmed_purge_removes_only_exact_managed_state(tmp_path: Path) -> Non
     assert not request.service.layout.users_file.exists()
     assert not request.service.layout.storage_directory.exists()
     assert not request.installation_record.exists()
+    assert not request.distribution_root.exists()
     assert unrelated.read_text(encoding="utf-8") == "keep\n"
 
 
@@ -97,6 +101,7 @@ def test_purge_requires_explicit_confirmation(tmp_path: Path) -> None:
         RadicaleRemovalRequest(
             request.service,
             request.installation_record,
+            request.distribution_root,
             purge=True,
             confirmed=False,
         )

@@ -276,6 +276,6 @@ lea uninstall-release-candidate --purge --yes
 ```
 
 The tested Radicale purge removes the exact configuration file, users file,
-collection storage and installation record, rejects symbolic-link targets, and
-leaves unrelated paths alone. Finally verify the revoked credentials fail and
-no managed service remains active.
+collection storage, pinned distribution root and installation record, rejects
+symbolic-link targets, and leaves unrelated paths alone. Finally verify the
+revoked credentials fail and no managed service remains active.

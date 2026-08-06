@@ -135,6 +135,7 @@ def test_public_remove_command_uses_exact_confirmed_purge_boundary(
     assert observed[0].purge is True
     assert observed[0].confirmed is True
     assert observed[0].installation_record == Path("/var/lib/lea/install/radicale.json")
+    assert observed[0].distribution_root == Path("/opt/lea-tools/radicale/3.5.4")
 
 
 def test_public_remove_command_requires_explicit_confirmation() -> None:

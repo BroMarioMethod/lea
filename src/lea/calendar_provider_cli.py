@@ -191,6 +191,7 @@ def _remove(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> in
         RadicaleRemovalRequest(
             service,
             Path("/var/lib/lea/install/radicale.json"),
+            Path("/opt/lea-tools/radicale/3.5.4"),
             purge=namespace.purge,
             confirmed=namespace.yes,
         )
