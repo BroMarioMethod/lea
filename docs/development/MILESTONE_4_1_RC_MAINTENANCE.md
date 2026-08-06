@@ -21,6 +21,8 @@ after durable findings have been transferred to the specification/checklist.
 ## Current external status
 
 - Automated implementation checks are green for the slices above.
+- Exact candidate `11dccd6` passed `scripts/check.sh`: 2,547 tests passed and
+  7 expected environment skips.
 - The physical DAVx⁵/Android test-card run for the final commit is still
   required; it must produce the collaboration acceptance record outside Git.
 - Merge remains blocked until the final card evidence and merge-result gate are
