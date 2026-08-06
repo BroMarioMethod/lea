@@ -112,6 +112,35 @@ class CalendarEventTiming:
 
 
 @dataclass(frozen=True, slots=True)
+class CalendarEventTarget:
+    """Explicit target for a recurring series or one recurrence instance."""
+
+    calendar_id: str
+    event_uid: str
+    kind: str = "series"
+    recurrence_id: date | datetime | None = None
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.calendar_id, field_name="calendar_id")
+        _validate_identifier(self.event_uid, field_name="event_uid")
+        if self.kind not in {"series", "instance"}:
+            raise ValueError("kind must be series or instance.")
+        if self.kind == "series" and self.recurrence_id is not None:
+            raise ValueError("series targets must not contain recurrence_id.")
+        if self.kind == "instance" and self.recurrence_id is None:
+            raise ValueError("instance targets require recurrence_id.")
+        if self.recurrence_id is not None:
+            if type(self.recurrence_id) is date:
+                return
+            if not isinstance(self.recurrence_id, datetime):
+                raise TypeError("recurrence_id must be a date or datetime.")
+            _validate_canonical_utc_datetime(
+                self.recurrence_id,
+                field_name="recurrence_id",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class CalendarEvent:
     """Immutable provider-neutral calendar event projection."""
 
@@ -224,6 +253,7 @@ class CalendarModifyRequest:
     clear_location: bool = False
     recurrence: CalendarRecurrence | None = None
     clear_recurrence: bool = False
+    target: CalendarEventTarget | None = None
 
     def __post_init__(self) -> None:
         """Validate one exact event modification."""
@@ -271,6 +301,15 @@ class CalendarModifyRequest:
         ):
             raise TypeError("recurrence must be a CalendarRecurrence or None.")
 
+        if self.target is not None:
+            if not isinstance(self.target, CalendarEventTarget):
+                raise TypeError("target must be a CalendarEventTarget or None.")
+            if (self.target.calendar_id, self.target.event_uid) != (
+                self.calendar_id,
+                self.event_uid,
+            ):
+                raise ValueError("target identity must match the request identity.")
+
         if not any(
             (
                 self.summary is not None,
@@ -294,11 +333,20 @@ class CalendarCancelRequest:
 
     calendar_id: str
     event_uid: str
+    target: CalendarEventTarget | None = None
 
     def __post_init__(self) -> None:
         """Validate one exact cancellation target."""
         _validate_identifier(self.calendar_id, field_name="calendar_id")
         _validate_identifier(self.event_uid, field_name="event_uid")
+        if self.target is not None:
+            if not isinstance(self.target, CalendarEventTarget):
+                raise TypeError("target must be a CalendarEventTarget or None.")
+            if (self.target.calendar_id, self.target.event_uid) != (
+                self.calendar_id,
+                self.event_uid,
+            ):
+                raise ValueError("target identity must match the request identity.")
 
 
 @dataclass(frozen=True, slots=True)

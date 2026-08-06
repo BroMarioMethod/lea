@@ -266,6 +266,42 @@ def test_modify_and_cancel_handlers_preserve_exact_identity() -> None:
     assert provider.cancelled == [CalendarCancelRequest("personal", "event-1")]
 
 
+def test_handlers_preserve_explicit_instance_target() -> None:
+    provider = RecordingProvider()
+    target = {
+        "kind": "instance",
+        "recurrence_id": "2026-08-03T08:00:00+00:00",
+    }
+    modify_calendar_event_action_handler(provider)(
+        _proposal(
+            "calendar.modify",
+            {
+                "calendar_id": "personal",
+                "event_uid": "series-1",
+                "summary": "Instance",
+                "target": target,
+            },
+        )
+    )
+    cancel_calendar_event_action_handler(provider)(
+        _proposal(
+            "calendar.cancel",
+            {
+                "calendar_id": "personal",
+                "event_uid": "series-1",
+                "target": target,
+            },
+        )
+    )
+
+    assert provider.modified[0].target is not None
+    assert provider.modified[0].target.kind == "instance"
+    assert provider.cancelled[0].target is not None
+    assert provider.cancelled[0].target.recurrence_id == datetime(
+        2026, 8, 3, 8, tzinfo=UTC
+    )
+
+
 def test_invalid_mutation_timing_fails_before_provider_call() -> None:
     provider = RecordingProvider()
     with pytest.raises(CalendarActionHandlerError, match="timing"):

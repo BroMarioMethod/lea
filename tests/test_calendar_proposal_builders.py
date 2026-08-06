@@ -13,6 +13,7 @@ from lea.calendars import (
     CalendarCancelRequest,
     CalendarCreateRequest,
     CalendarEventQuery,
+    CalendarEventTarget,
     CalendarEventTiming,
     CalendarModifyRequest,
     build_calendar_cancel_event_proposal,
@@ -259,3 +260,36 @@ def test_builders_reject_non_canonical_proposal_timestamp(
             source=SOURCE,
             created_at=created_at,
         )
+
+
+def test_modify_and_cancel_builders_preserve_explicit_instance_target() -> None:
+    target = CalendarEventTarget(
+        "personal",
+        "series-1",
+        kind="instance",
+        recurrence_id=datetime(2026, 8, 3, 8, tzinfo=UTC),
+    )
+    modify = build_calendar_modify_event_proposal(
+        CalendarModifyRequest(
+            "personal",
+            "series-1",
+            summary="Changed instance",
+            target=target,
+        ),
+        proposal_id=PROPOSAL_ID,
+        source=SOURCE,
+        created_at=CREATED_AT,
+    )
+    cancel = build_calendar_cancel_event_proposal(
+        CalendarCancelRequest("personal", "series-1", target=target),
+        proposal_id=PROPOSAL_ID,
+        source=SOURCE,
+        created_at=CREATED_AT,
+    )
+
+    expected = {
+        "kind": "instance",
+        "recurrence_id": "2026-08-03T08:00:00+00:00",
+    }
+    assert modify.parameters["target"] == expected
+    assert cancel.parameters["target"] == expected

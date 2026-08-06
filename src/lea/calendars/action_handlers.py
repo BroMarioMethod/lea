@@ -15,6 +15,7 @@ from lea.calendars.contracts import (
     CalendarCreateRequest,
     CalendarEvent,
     CalendarEventQuery,
+    CalendarEventTarget,
     CalendarEventTiming,
     CalendarListCalendarsResult,
     CalendarListEventsResult,
@@ -147,17 +148,21 @@ def modify_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
                 "clear_description",
                 "location",
                 "clear_location",
+                "target",
             },
         )
+        calendar_id = _required_identifier(parameters, "calendar_id")
+        event_uid = _required_identifier(parameters, "event_uid")
         request = CalendarModifyRequest(
-            calendar_id=_required_identifier(parameters, "calendar_id"),
-            event_uid=_required_identifier(parameters, "event_uid"),
+            calendar_id=calendar_id,
+            event_uid=event_uid,
             summary=_optional_text(parameters, "summary"),
             timing=_optional_timing(parameters, "timing"),
             description=_optional_text(parameters, "description"),
             clear_description=_optional_boolean(parameters, "clear_description"),
             location=_optional_text(parameters, "location"),
             clear_location=_optional_boolean(parameters, "clear_location"),
+            target=_optional_target(parameters, "target", calendar_id, event_uid),
         )
         return _mutation_output(provider.modify_event(request))
 
@@ -168,10 +173,21 @@ def cancel_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
     """Return a handler for one ``calendar.cancel`` proposal."""
 
     def handle(proposal: ActionProposal) -> Mapping[str, object]:
-        parameters = _parameters(proposal, allowed={"calendar_id", "event_uid"})
+        parameters = _parameters(
+            proposal,
+            allowed={"calendar_id", "event_uid", "target"},
+        )
+        calendar_id = _required_identifier(parameters, "calendar_id")
+        event_uid = _required_identifier(parameters, "event_uid")
         request = CalendarCancelRequest(
-            calendar_id=_required_identifier(parameters, "calendar_id"),
-            event_uid=_required_identifier(parameters, "event_uid"),
+            calendar_id=calendar_id,
+            event_uid=event_uid,
+            target=_optional_target(
+                parameters,
+                "target",
+                calendar_id,
+                event_uid,
+            ),
         )
         return _mutation_output(provider.cancel_event(request))
 
@@ -353,6 +369,57 @@ def _optional_boolean(
         )
 
     return value
+
+
+def _optional_target(
+    parameters: Mapping[str, object],
+    field: str,
+    calendar_id: str,
+    event_uid: str,
+) -> CalendarEventTarget | None:
+    """Parse an optional explicit recurring target."""
+    if field not in parameters:
+        return None
+    value = parameters[field]
+    if not isinstance(value, Mapping):
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message="target must be an object.",
+        )
+    kind = value.get("kind")
+    if not isinstance(kind, str):
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message="target.kind must be series or instance.",
+        )
+    recurrence_id = value.get("recurrence_id")
+    parsed_id: date | datetime | None = None
+    if recurrence_id is not None:
+        if not isinstance(recurrence_id, str):
+            raise CalendarActionHandlerError(
+                code="calendar_action_parameter_invalid",
+                message="target.recurrence_id must be an ISO date or datetime.",
+            )
+        try:
+            parsed_id = datetime.fromisoformat(recurrence_id)
+            if parsed_id.tzinfo is None:
+                raise ValueError
+            parsed_id = parsed_id.astimezone(UTC)
+        except ValueError:
+            try:
+                parsed_id = date.fromisoformat(recurrence_id)
+            except ValueError as error:
+                raise CalendarActionHandlerError(
+                    code="calendar_action_parameter_invalid",
+                    message="target.recurrence_id must be canonical ISO text.",
+                ) from error
+    try:
+        return CalendarEventTarget(calendar_id, event_uid, kind, parsed_id)
+    except (TypeError, ValueError) as error:
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message="target is not a valid series or instance target.",
+        ) from error
 
 
 def _required_text(parameters: Mapping[str, object], field: str) -> str:

@@ -153,6 +153,8 @@ def build_calendar_modify_event_proposal(
         parameters["location"] = request.location
     if request.clear_location:
         parameters["clear_location"] = True
+    if request.target is not None:
+        parameters["target"] = _target_parameters(request.target)
 
     return _proposal(
         action="calendar.modify",
@@ -176,12 +178,16 @@ def build_calendar_cancel_event_proposal(
     if not isinstance(request, CalendarCancelRequest):
         raise TypeError("request must be a CalendarCancelRequest value.")
 
+    parameters: dict[str, object] = {
+        "calendar_id": request.calendar_id,
+        "event_uid": request.event_uid,
+    }
+    if request.target is not None:
+        parameters["target"] = _target_parameters(request.target)
+
     return _proposal(
         action="calendar.cancel",
-        parameters={
-            "calendar_id": request.calendar_id,
-            "event_uid": request.event_uid,
-        },
+        parameters=parameters,
         proposal_id=proposal_id,
         source=source,
         created_at=created_at,
@@ -257,6 +263,18 @@ def _timing_parameters(timing: CalendarEventTiming) -> dict[str, object]:
         "all_day": timing.all_day,
         "timezone": timing.timezone,
     }
+
+
+def _target_parameters(target: object) -> dict[str, object]:
+    """Serialize one explicit recurring-series or instance target."""
+    from lea.calendars.contracts import CalendarEventTarget
+
+    if not isinstance(target, CalendarEventTarget):
+        raise TypeError("target must be a CalendarEventTarget value.")
+    result: dict[str, object] = {"kind": target.kind}
+    if target.recurrence_id is not None:
+        result["recurrence_id"] = target.recurrence_id.isoformat()
+    return result
 
 
 def _utc_timestamp(value: datetime) -> datetime:
