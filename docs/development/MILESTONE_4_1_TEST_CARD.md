@@ -26,6 +26,23 @@ backup, reboot and removal prerequisites.
 13. Exercise upgrade/rollback and both removal paths.
 14. Record only non-secret pass/fail evidence and the final commit.
 
+After all checks pass, persist the collaboration acceptance record on the card
+(never in the repository) with:
+
+```text
+lea accept-calendar-collaboration \
+  --server-to-android-verified \
+  --android-to-server-verified \
+  --recurrence-verified \
+  --attendee-response-verified \
+  --reboot-verified \
+  --user-isolation-verified \
+  --backup-verified
+```
+
+The command must reject any missing check and writes a restrictive,
+credential-free `calendar-collaboration.json` record.
+
 ## Stop conditions
 
 Stop on recurrence timezone drift, ambiguous instance targeting, mutation before

@@ -8,6 +8,9 @@ from typing import Protocol, TextIO
 
 from lea.application import run
 from lea.calendar_acceptance_cli import execute_calendar_acceptance_cli
+from lea.calendar_collaboration_acceptance_cli import (
+    execute_calendar_collaboration_acceptance_cli,
+)
 from lea.calendar_provider_cli import execute_calendar_provider_cli
 from lea.cli import execute_local_cli
 from lea.config import AppConfig, load_config
@@ -140,6 +143,9 @@ def dispatch(
     calendar_acceptance_cli_runner: CalendarAcceptanceCliRunner = (
         execute_calendar_acceptance_cli
     ),
+    calendar_collaboration_acceptance_cli_runner: CalendarAcceptanceCliRunner = (
+        execute_calendar_collaboration_acceptance_cli
+    ),
     calendar_provider_cli_runner: CalendarAcceptanceCliRunner = (
         execute_calendar_provider_cli
     ),
@@ -169,6 +175,10 @@ def dispatch(
         )
     if arguments and arguments[0] == "accept-calendar-android":
         return calendar_acceptance_cli_runner(
+            arguments[1:], stdout=stdout, stderr=stderr
+        )
+    if arguments and arguments[0] == "accept-calendar-collaboration":
+        return calendar_collaboration_acceptance_cli_runner(
             arguments[1:], stdout=stdout, stderr=stderr
         )
     if arguments and arguments[0] == "calendar-provider":
