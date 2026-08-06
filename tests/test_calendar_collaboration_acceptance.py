@@ -15,6 +15,7 @@ from lea.calendars import (
 def _record() -> CalendarCollaborationAcceptanceRecord:
     return create_calendar_collaboration_acceptance_record(
         accepted_at=datetime(2026, 8, 6, tzinfo=UTC),
+        candidate_commit="a" * 40,
         server_to_android_verified=True,
         android_to_server_verified=True,
         recurrence_verified=True,
@@ -29,6 +30,7 @@ def test_record_requires_new_collaboration_checks() -> None:
     with pytest.raises(ValueError, match="Every"):
         create_calendar_collaboration_acceptance_record(
             accepted_at=datetime(2026, 8, 6, tzinfo=UTC),
+            candidate_commit="a" * 40,
             server_to_android_verified=True,
             android_to_server_verified=True,
             recurrence_verified=False,

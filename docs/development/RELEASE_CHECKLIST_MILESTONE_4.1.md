@@ -38,9 +38,9 @@
 - [ ] retain credential-free evidence outside Git.
 
 The final card operator must persist the required live evidence with
-`lea accept-calendar-collaboration` using all seven verification flags listed
-in `MILESTONE_4_1_TEST_CARD.md`. The resulting record remains on the card and
-is not committed.
+`lea accept-calendar-collaboration --candidate-commit "$(git rev-parse HEAD)"`
+using all seven verification flags listed in `MILESTONE_4_1_TEST_CARD.md`. The
+resulting record remains on the card and is not committed.
 
 ## Release decision
 

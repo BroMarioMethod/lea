@@ -31,6 +31,7 @@ After all checks pass, persist the collaboration acceptance record on the card
 
 ```text
 lea accept-calendar-collaboration \
+  --candidate-commit "$(git rev-parse HEAD)" \
   --server-to-android-verified \
   --android-to-server-verified \
   --recurrence-verified \

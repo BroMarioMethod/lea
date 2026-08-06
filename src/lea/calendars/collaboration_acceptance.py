@@ -2,11 +2,14 @@
 
 import json
 import os
+import re
 import tempfile
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +18,7 @@ class CalendarCollaborationAcceptanceRecord:
 
     schema_version: int
     component: str
+    candidate_commit: str
     server_to_android_verified: bool
     android_to_server_verified: bool
     recurrence_verified: bool
@@ -30,6 +34,8 @@ class CalendarCollaborationAcceptanceRecord:
             or self.component != "calendar-collaboration-acceptance"
         ):
             raise ValueError("Unsupported calendar collaboration acceptance identity.")
+        if not _COMMIT_PATTERN.fullmatch(self.candidate_commit):
+            raise ValueError("candidate_commit must be a 40-character lowercase SHA-1.")
         if not all(
             (
                 self.server_to_android_verified,
@@ -50,6 +56,7 @@ class CalendarCollaborationAcceptanceRecord:
 def create_calendar_collaboration_acceptance_record(
     *,
     accepted_at: datetime,
+    candidate_commit: str,
     server_to_android_verified: bool,
     android_to_server_verified: bool,
     recurrence_verified: bool,
@@ -64,6 +71,7 @@ def create_calendar_collaboration_acceptance_record(
     return CalendarCollaborationAcceptanceRecord(
         1,
         "calendar-collaboration-acceptance",
+        candidate_commit,
         server_to_android_verified,
         android_to_server_verified,
         recurrence_verified,

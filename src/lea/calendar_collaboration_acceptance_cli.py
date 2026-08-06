@@ -26,6 +26,7 @@ def execute_calendar_collaboration_acceptance_cli(
         type=Path,
         default=Path("/var/lib/lea/acceptance/calendar-collaboration.json"),
     )
+    parser.add_argument("--candidate-commit", required=True)
     for name in (
         "server-to-android-verified",
         "android-to-server-verified",
@@ -42,6 +43,7 @@ def execute_calendar_collaboration_acceptance_cli(
             raise ValueError("--record-file must be absolute.")
         record = create_calendar_collaboration_acceptance_record(
             accepted_at=datetime.now(UTC),
+            candidate_commit=namespace.candidate_commit,
             server_to_android_verified=namespace.server_to_android_verified,
             android_to_server_verified=namespace.android_to_server_verified,
             recurrence_verified=namespace.recurrence_verified,
