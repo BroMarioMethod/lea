@@ -45,6 +45,7 @@ from lea.calendars.proposal_builders import (
     build_calendar_sync_proposal,
 )
 from lea.calendars.provider import CalendarProvider
+from lea.calendars.recurrence import CalendarRecurrence
 from lea.calendars.synchronization import (
     CalendarSynchronizationInspectionResult,
     CalendarSynchronizationResult,
@@ -69,6 +70,7 @@ __all__ = [
     "CalendarProvider",
     "CalendarProviderInspectionResult",
     "CalendarProviderIssue",
+    "CalendarRecurrence",
     "CalendarShowEventResult",
     "CalendarSynchronizationInspectionResult",
     "CalendarSynchronizationResult",

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from lea.calendars.recurrence import CalendarRecurrence
+
 
 @dataclass(frozen=True, slots=True)
 class CalendarProviderIssue:
@@ -120,6 +122,7 @@ class CalendarEvent:
     description: str | None = None
     location: str | None = None
     cancelled: bool = False
+    recurrence: CalendarRecurrence | None = None
 
     def __post_init__(self) -> None:
         """Validate one canonical calendar event."""
@@ -135,6 +138,11 @@ class CalendarEvent:
 
         if not isinstance(self.cancelled, bool):
             raise TypeError("cancelled must be a boolean.")
+
+        if self.recurrence is not None and not isinstance(
+            self.recurrence, CalendarRecurrence
+        ):
+            raise TypeError("recurrence must be a CalendarRecurrence or None.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +191,7 @@ class CalendarCreateRequest:
     timing: CalendarEventTiming
     description: str | None = None
     location: str | None = None
+    recurrence: CalendarRecurrence | None = None
 
     def __post_init__(self) -> None:
         """Validate one event-creation request."""
@@ -194,6 +203,11 @@ class CalendarCreateRequest:
 
         _validate_optional_text(self.description, field_name="description")
         _validate_optional_text(self.location, field_name="location")
+
+        if self.recurrence is not None and not isinstance(
+            self.recurrence, CalendarRecurrence
+        ):
+            raise TypeError("recurrence must be a CalendarRecurrence or None.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +222,8 @@ class CalendarModifyRequest:
     clear_description: bool = False
     location: str | None = None
     clear_location: bool = False
+    recurrence: CalendarRecurrence | None = None
+    clear_recurrence: bool = False
 
     def __post_init__(self) -> None:
         """Validate one exact event modification."""
@@ -236,11 +252,24 @@ class CalendarModifyRequest:
                 "location and clear_location must not be supplied together."
             )
 
+        if self.recurrence is not None and self.clear_recurrence:
+            raise ValueError(
+                "recurrence and clear_recurrence must not be supplied together."
+            )
+
         if not isinstance(self.clear_description, bool):
             raise TypeError("clear_description must be a boolean.")
 
         if not isinstance(self.clear_location, bool):
             raise TypeError("clear_location must be a boolean.")
+
+        if not isinstance(self.clear_recurrence, bool):
+            raise TypeError("clear_recurrence must be a boolean.")
+
+        if self.recurrence is not None and not isinstance(
+            self.recurrence, CalendarRecurrence
+        ):
+            raise TypeError("recurrence must be a CalendarRecurrence or None.")
 
         if not any(
             (
@@ -250,6 +279,8 @@ class CalendarModifyRequest:
                 self.clear_description,
                 self.location is not None,
                 self.clear_location,
+                self.recurrence is not None,
+                self.clear_recurrence,
             )
         ):
             raise ValueError(

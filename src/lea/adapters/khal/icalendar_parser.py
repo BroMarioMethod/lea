@@ -14,6 +14,7 @@ from lea.calendars import (
     CalendarEvent,
     CalendarEventTiming,
     CalendarProviderIssue,
+    CalendarRecurrence,
 )
 
 _PROVIDER = "khal"
@@ -35,6 +36,8 @@ class _ICalendarProperty(Protocol):
     """Structural subset used from one iCalendar property."""
 
     params: Mapping[object, object]
+
+    def to_ical(self) -> bytes: ...
 
 
 class _ICalendarComponent(Protocol):
@@ -125,18 +128,32 @@ def parse_khal_calendar_item(
 
     component = events[0]
 
+    recurrence = None
+    recurrence_property = component.get("RRULE")
+    if recurrence_property is not None:
+        try:
+            recurrence_value = cast(_ICalendarProperty, recurrence_property).to_ical()
+            recurrence = CalendarRecurrence.from_rrule(recurrence_value.decode("ascii"))
+        except (AttributeError, UnicodeDecodeError, ValueError):
+            return _failure(
+                code="khal_icalendar_recurrence_invalid",
+                message="The iCalendar RRULE value is unsupported or invalid.",
+                calendar_id=calendar_id,
+                field="RRULE",
+            )
+
     recurrence_field = next(
-        (field for field in _RECURRENCE_FIELDS if component.get(field) is not None),
+        (
+            field
+            for field in _RECURRENCE_FIELDS
+            if field != "RRULE" and component.get(field) is not None
+        ),
         None,
     )
-
     if recurrence_field is not None:
         return _failure(
-            code="khal_icalendar_recurrence_unsupported",
-            message=(
-                "Recurring events and recurrence exceptions are not "
-                "supported by this calendar provider."
-            ),
+            code="khal_icalendar_recurrence_exception_unsupported",
+            message="Recurrence exceptions are not supported by this slice.",
             calendar_id=calendar_id,
             field=recurrence_field,
         )
@@ -224,6 +241,7 @@ def parse_khal_calendar_item(
             description=description_result,
             location=location_result,
             cancelled=status == "CANCELLED",
+            recurrence=recurrence,
         )
     except (TypeError, ValueError):
         return _failure(
