@@ -101,6 +101,12 @@ def _add_calendar_subcommands(parser: argparse.ArgumentParser) -> None:
     create_parser.add_argument("--timezone", help="IANA timezone for timed events.")
     create_parser.add_argument("--description", help="Event description.")
     create_parser.add_argument("--location", help="Event location.")
+    create_parser.add_argument(
+        "--attendee",
+        action="append",
+        default=[],
+        help="Participant email address. May be supplied more than once.",
+    )
 
     modify_parser = subparsers.add_parser(
         "modify", help="Create a persistent event-modification proposal."
@@ -108,12 +114,41 @@ def _add_calendar_subcommands(parser: argparse.ArgumentParser) -> None:
     modify_parser.add_argument("calendar_id", help="Stable calendar identifier.")
     modify_parser.add_argument("event_uid", help="Stable event UID.")
     modify_parser.add_argument("--summary", required=True, help="Replacement summary.")
+    modify_parser.add_argument(
+        "--attendee",
+        action="append",
+        default=None,
+        help="Replacement participant email address. May be supplied more than once.",
+    )
+    modify_parser.add_argument(
+        "--clear-attendees",
+        action="store_true",
+        help="Remove all participants.",
+    )
+    modify_parser.add_argument(
+        "--target-kind",
+        choices=("series", "instance"),
+        help="Recurring target scope.",
+    )
+    modify_parser.add_argument(
+        "--recurrence-id",
+        help="Instance date or UTC datetime when --target-kind=instance.",
+    )
 
     cancel_parser = subparsers.add_parser(
         "cancel", help="Create a persistent event-cancellation proposal."
     )
     cancel_parser.add_argument("calendar_id", help="Stable calendar identifier.")
     cancel_parser.add_argument("event_uid", help="Stable event UID.")
+    cancel_parser.add_argument(
+        "--target-kind",
+        choices=("series", "instance"),
+        help="Recurring target scope.",
+    )
+    cancel_parser.add_argument(
+        "--recurrence-id",
+        help="Instance date or UTC datetime when --target-kind=instance.",
+    )
 
     subparsers.add_parser(
         "sync", help="Create a persistent explicit synchronization proposal."

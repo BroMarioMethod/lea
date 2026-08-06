@@ -128,3 +128,48 @@ def test_calendar_create_rejects_naive_datetime_before_configuration_access() ->
     )
 
     assert exit_code == LocalCliExitCode.VALIDATION_ERROR
+
+
+def test_calendar_modify_exposes_attendees_and_instance_target(
+    tmp_path: Path,
+) -> None:
+    """Collaboration flags must survive CLI proposal construction."""
+    dependencies, repository = _dependencies(tmp_path)
+    exit_code = execute_local_cli(
+        [
+            "--config",
+            str(tmp_path / "lea.toml"),
+            "calendar",
+            "modify",
+            "personal",
+            "event-1",
+            "--summary",
+            "Updated",
+            "--attendee",
+            "Alice@example.com",
+            "--target-kind",
+            "instance",
+            "--recurrence-id",
+            "2026-08-04T08:00:00+00:00",
+        ],
+        stdout=StringIO(),
+        stderr=StringIO(),
+        calendar_proposal_dependencies=dependencies,
+    )
+
+    assert exit_code == LocalCliExitCode.SUCCESS
+    written = repository.read(PROPOSAL_ID)
+    assert written.proposal is not None
+    attendees = written.proposal.parameters["attendees"]
+    assert isinstance(attendees, tuple)
+    assert len(attendees) == 1
+    assert dict(attendees[0]) == {
+        "address": "alice@example.com",
+        "role": "REQ-PARTICIPANT",
+        "response": "NEEDS-ACTION",
+        "rsvp": False,
+    }
+    assert written.proposal.parameters["target"] == {
+        "kind": "instance",
+        "recurrence_id": "2026-08-04T08:00:00+00:00",
+    }

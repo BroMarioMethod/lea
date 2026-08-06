@@ -32,6 +32,16 @@ def freeze_json_value(
 
         return value
 
+    if isinstance(value, tuple):
+        if not all(isinstance(item, (Mapping, tuple)) for item in value):
+            raise ActionContractError(
+                f"{path} contains an unsupported value of type tuple."
+            )
+        return tuple(
+            freeze_json_value(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        )
+
     if isinstance(value, list):
         return tuple(
             freeze_json_value(item, path=f"{path}[{index}]")

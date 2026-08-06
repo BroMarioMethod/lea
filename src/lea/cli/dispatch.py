@@ -11,9 +11,11 @@ from uuid import UUID
 
 from lea.actions import ActionProposal, ActionStatus
 from lea.calendars import (
+    CalendarAttendee,
     CalendarCancelRequest,
     CalendarCreateRequest,
     CalendarEventQuery,
+    CalendarEventTarget,
     CalendarEventTiming,
     CalendarModifyRequest,
     build_calendar_cancel_event_proposal,
@@ -483,6 +485,9 @@ def _calendar_proposal_builder(
                 ),
                 description=namespace.description,
                 location=namespace.location,
+                attendees=tuple(
+                    CalendarAttendee(address) for address in namespace.attendee
+                ),
             )
             return lambda proposal_id, created_at: build_calendar_create_event_proposal(
                 create_request,
@@ -495,6 +500,13 @@ def _calendar_proposal_builder(
                 calendar_id=namespace.calendar_id,
                 event_uid=namespace.event_uid,
                 summary=namespace.summary,
+                target=_calendar_target(namespace),
+                attendees=(
+                    tuple(CalendarAttendee(address) for address in namespace.attendee)
+                    if namespace.attendee is not None
+                    else None
+                ),
+                clear_attendees=namespace.clear_attendees,
             )
             return lambda proposal_id, created_at: build_calendar_modify_event_proposal(
                 modify_request,
@@ -504,7 +516,9 @@ def _calendar_proposal_builder(
             )
         if namespace.calendar_command == "cancel":
             cancel_request = CalendarCancelRequest(
-                namespace.calendar_id, namespace.event_uid
+                namespace.calendar_id,
+                namespace.event_uid,
+                target=_calendar_target(namespace),
             )
             return lambda proposal_id, created_at: build_calendar_cancel_event_proposal(
                 cancel_request,
@@ -529,6 +543,36 @@ def _calendar_proposal_builder(
             issues=(CliIssue(code="calendar_proposal_invalid", message=str(error)),),
             data={"proposal": None},
         )
+
+
+def _calendar_target(namespace: argparse.Namespace) -> CalendarEventTarget | None:
+    """Parse optional recurring target flags from a calendar mutation command."""
+    kind = namespace.target_kind
+    recurrence_text = namespace.recurrence_id
+    if kind is None and recurrence_text is None:
+        return None
+    if kind is None:
+        raise ValueError("--recurrence-id requires --target-kind.")
+    recurrence_id: date | datetime | None = None
+    if recurrence_text is not None:
+        try:
+            recurrence_id = datetime.fromisoformat(recurrence_text)
+            if recurrence_id.tzinfo is None:
+                raise ValueError
+            recurrence_id = recurrence_id.astimezone(UTC)
+        except ValueError:
+            try:
+                recurrence_id = date.fromisoformat(recurrence_text)
+            except ValueError as error:
+                raise ValueError(
+                    "--recurrence-id must be ISO date or UTC datetime."
+                ) from error
+    return CalendarEventTarget(
+        namespace.calendar_id,
+        namespace.event_uid,
+        kind,
+        recurrence_id,
+    )
 
 
 def _calendar_timing(
