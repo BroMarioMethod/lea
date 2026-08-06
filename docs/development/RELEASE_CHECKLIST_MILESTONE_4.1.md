@@ -10,16 +10,16 @@
 
 ## Automated gate
 
-- [ ] recurrence contracts, parser and timezone tests pass;
-- [ ] recurring-series and explicit-instance mutation tests pass;
-- [ ] attendee and response-state tests pass;
-- [ ] CLI and Telegram policy/proposal parity tests pass;
-- [ ] synchronization and conflict diagnostics tests pass;
-- [ ] backup/restore compatibility tests pass;
-- [ ] Ruff, mypy, validators and complete pytest pass;
-- [ ] Google OAuth and additional providers are excluded from the MVP artifact
+- [x] recurrence contracts, parser and timezone tests pass;
+- [x] recurring-series and explicit-instance mutation tests pass;
+- [x] attendee and response-state tests pass;
+- [x] CLI and Telegram policy/proposal parity tests pass;
+- [x] synchronization and conflict diagnostics tests pass;
+- [x] backup/restore compatibility tests pass;
+- [x] Ruff, mypy, validators and complete pytest pass;
+- [x] Google OAuth and additional providers are excluded from the MVP artifact
   or separately labeled and approved as beta;
-- [ ] the merge-result quality gate passes.
+- [ ] the merge-result quality gate passes on the final merge result.
 
 ## Physical test-card gate
 
@@ -36,6 +36,11 @@
 - [ ] verify backup/isolated restore preserves series, instances and attendees;
 - [ ] verify upgrade, rollback, non-purge removal and confirmed purge;
 - [ ] retain credential-free evidence outside Git.
+
+The final card operator must persist the required live evidence with
+`lea accept-calendar-collaboration` using all seven verification flags listed
+in `MILESTONE_4_1_TEST_CARD.md`. The resulting record remains on the card and
+is not committed.
 
 ## Release decision
 
