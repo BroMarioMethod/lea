@@ -34,6 +34,7 @@ from lea.calendars.contracts import (
     CalendarProviderIssue,
     CalendarShowEventResult,
 )
+from lea.calendars.expansion import CalendarEventOccurrence, expand_calendar_event
 from lea.calendars.proposal_builders import (
     build_calendar_cancel_event_proposal,
     build_calendar_create_event_proposal,
@@ -61,6 +62,7 @@ __all__ = [
     "CalendarCollection",
     "CalendarCreateRequest",
     "CalendarEvent",
+    "CalendarEventOccurrence",
     "CalendarEventQuery",
     "CalendarEventTiming",
     "CalendarListCalendarsResult",
@@ -88,6 +90,7 @@ __all__ = [
     "create_android_calendar_acceptance_record",
     "create_calendar_event_action_handler",
     "discover_calendars_action_handler",
+    "expand_calendar_event",
     "list_calendar_events_action_handler",
     "list_calendars_action_handler",
     "modify_calendar_event_action_handler",
