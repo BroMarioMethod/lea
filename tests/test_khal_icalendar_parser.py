@@ -253,6 +253,25 @@ def test_parses_supported_rrule_without_flattening() -> None:
     assert result.event.recurrence.to_rrule() == ("FREQ=WEEKLY;INTERVAL=2;COUNT=3")
 
 
+def test_parses_attendee_parameters() -> None:
+    result = parse_khal_calendar_item(
+        calendar_document(
+            timed_event(
+                extra=(
+                    "ATTENDEE;CN=Alice;ROLE=REQ-PARTICIPANT;"
+                    "PARTSTAT=ACCEPTED;RSVP=TRUE:mailto:alice@example.com\r\n"
+                )
+            )
+        ),
+        calendar_id="work",
+    )
+
+    assert result.success is True
+    assert result.event is not None
+    assert result.event.attendees[0].address == "alice@example.com"
+    assert result.event.attendees[0].response == "ACCEPTED"
+
+
 def test_rejects_floating_time() -> None:
     """Naive local datetimes should remain explicitly unsupported."""
     result = parse_khal_calendar_item(

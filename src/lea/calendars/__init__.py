@@ -19,6 +19,7 @@ from lea.calendars.android_acceptance import (
     create_android_calendar_acceptance_record,
     write_android_calendar_acceptance_record,
 )
+from lea.calendars.attendees import CalendarAttendee, canonical_attendees
 from lea.calendars.contracts import (
     CalendarCancelRequest,
     CalendarCollection,
@@ -59,6 +60,7 @@ __all__ = [
     "AndroidCalendarAcceptanceRecord",
     "AndroidCalendarAcceptanceResult",
     "CalendarActionHandlerError",
+    "CalendarAttendee",
     "CalendarCancelRequest",
     "CalendarCollection",
     "CalendarCreateRequest",
@@ -89,6 +91,7 @@ __all__ = [
     "build_calendar_sync_proposal",
     "calendar_action_handler_registry",
     "cancel_calendar_event_action_handler",
+    "canonical_attendees",
     "create_android_calendar_acceptance_record",
     "create_calendar_event_action_handler",
     "discover_calendars_action_handler",

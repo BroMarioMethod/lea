@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from lea.calendars.attendees import CalendarAttendee, canonical_attendees
 from lea.calendars.recurrence import CalendarRecurrence
 
 
@@ -152,6 +153,7 @@ class CalendarEvent:
     location: str | None = None
     cancelled: bool = False
     recurrence: CalendarRecurrence | None = None
+    attendees: tuple[CalendarAttendee, ...] = ()
 
     def __post_init__(self) -> None:
         """Validate one canonical calendar event."""
@@ -172,6 +174,7 @@ class CalendarEvent:
             self.recurrence, CalendarRecurrence
         ):
             raise TypeError("recurrence must be a CalendarRecurrence or None.")
+        object.__setattr__(self, "attendees", canonical_attendees(self.attendees))
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +224,7 @@ class CalendarCreateRequest:
     description: str | None = None
     location: str | None = None
     recurrence: CalendarRecurrence | None = None
+    attendees: tuple[CalendarAttendee, ...] = ()
 
     def __post_init__(self) -> None:
         """Validate one event-creation request."""
@@ -237,6 +241,7 @@ class CalendarCreateRequest:
             self.recurrence, CalendarRecurrence
         ):
             raise TypeError("recurrence must be a CalendarRecurrence or None.")
+        object.__setattr__(self, "attendees", canonical_attendees(self.attendees))
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +259,8 @@ class CalendarModifyRequest:
     recurrence: CalendarRecurrence | None = None
     clear_recurrence: bool = False
     target: CalendarEventTarget | None = None
+    attendees: tuple[CalendarAttendee, ...] | None = None
+    clear_attendees: bool = False
 
     def __post_init__(self) -> None:
         """Validate one exact event modification."""
@@ -309,6 +316,12 @@ class CalendarModifyRequest:
                 self.event_uid,
             ):
                 raise ValueError("target identity must match the request identity.")
+        if self.attendees is not None:
+            object.__setattr__(self, "attendees", canonical_attendees(self.attendees))
+        if not isinstance(self.clear_attendees, bool):
+            raise TypeError("clear_attendees must be a boolean.")
+        if self.attendees is not None and self.clear_attendees:
+            raise ValueError("attendees and clear_attendees must not both be supplied.")
 
         if not any(
             (
@@ -320,6 +333,8 @@ class CalendarModifyRequest:
                 self.clear_location,
                 self.recurrence is not None,
                 self.clear_recurrence,
+                self.attendees is not None,
+                self.clear_attendees,
             )
         ):
             raise ValueError(

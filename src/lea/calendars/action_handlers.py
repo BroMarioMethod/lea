@@ -9,6 +9,7 @@ from lea.actions import (
     ActionHandlerRegistry,
     ActionProposal,
 )
+from lea.calendars.attendees import CalendarAttendee
 from lea.calendars.contracts import (
     CalendarCancelRequest,
     CalendarCollection,
@@ -119,7 +120,14 @@ def create_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
     def handle(proposal: ActionProposal) -> Mapping[str, object]:
         parameters = _parameters(
             proposal,
-            allowed={"calendar_id", "summary", "timing", "description", "location"},
+            allowed={
+                "calendar_id",
+                "summary",
+                "timing",
+                "description",
+                "location",
+                "attendees",
+            },
         )
         request = CalendarCreateRequest(
             calendar_id=_required_identifier(parameters, "calendar_id"),
@@ -127,6 +135,7 @@ def create_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
             timing=_required_timing(parameters, "timing"),
             description=_optional_text(parameters, "description"),
             location=_optional_text(parameters, "location"),
+            attendees=_optional_attendees(parameters, "attendees") or (),
         )
         return _mutation_output(provider.create_event(request))
 
@@ -149,6 +158,8 @@ def modify_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
                 "location",
                 "clear_location",
                 "target",
+                "attendees",
+                "clear_attendees",
             },
         )
         calendar_id = _required_identifier(parameters, "calendar_id")
@@ -163,6 +174,8 @@ def modify_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
             location=_optional_text(parameters, "location"),
             clear_location=_optional_boolean(parameters, "clear_location"),
             target=_optional_target(parameters, "target", calendar_id, event_uid),
+            attendees=_optional_attendees(parameters, "attendees"),
+            clear_attendees=_optional_boolean(parameters, "clear_attendees"),
         )
         return _mutation_output(provider.modify_event(request))
 
@@ -420,6 +433,46 @@ def _optional_target(
             code="calendar_action_parameter_invalid",
             message="target is not a valid series or instance target.",
         ) from error
+
+
+def _optional_attendees(
+    parameters: Mapping[str, object],
+    field: str,
+) -> tuple[CalendarAttendee, ...] | None:
+    """Parse one optional deterministic attendee collection."""
+    if field not in parameters:
+        return None
+    value = parameters[field]
+    if not isinstance(value, (list, tuple)):
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message="attendees must be an array.",
+        )
+    attendees: list[CalendarAttendee] = []
+    for item in value:
+        if not isinstance(item, Mapping) or not isinstance(item.get("address"), str):
+            raise CalendarActionHandlerError(
+                code="calendar_action_parameter_invalid",
+                message="each attendee must contain an address.",
+            )
+        try:
+            attendees.append(
+                CalendarAttendee(
+                    item["address"],
+                    display_name=item.get("display_name")
+                    if isinstance(item.get("display_name"), str)
+                    else None,
+                    role=item.get("role", "REQ-PARTICIPANT"),
+                    response=item.get("response", "NEEDS-ACTION"),
+                    rsvp=item.get("rsvp", False),
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise CalendarActionHandlerError(
+                code="calendar_action_parameter_invalid",
+                message="attendee is invalid.",
+            ) from error
+    return tuple(attendees)
 
 
 def _required_text(parameters: Mapping[str, object], field: str) -> str:

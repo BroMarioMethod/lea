@@ -11,10 +11,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from lea.adapters.khal.contracts import KhalCalendarItemParseResult
 from lea.calendars import (
+    CalendarAttendee,
     CalendarEvent,
     CalendarEventTiming,
     CalendarProviderIssue,
     CalendarRecurrence,
+    canonical_attendees,
 )
 
 _PROVIDER = "khal"
@@ -199,6 +201,14 @@ def parse_khal_calendar_item(
     if isinstance(location_result, KhalCalendarItemParseResult):
         return location_result
 
+    attendees_result = _decode_attendees(
+        component,
+        calendar_id=calendar_id,
+        event_uid=event_uid,
+    )
+    if isinstance(attendees_result, KhalCalendarItemParseResult):
+        return attendees_result
+
     status_result = _decode_optional_text(
         component,
         property_name="STATUS",
@@ -242,6 +252,7 @@ def parse_khal_calendar_item(
             location=location_result,
             cancelled=status == "CANCELLED",
             recurrence=recurrence,
+            attendees=attendees_result,
         )
     except (TypeError, ValueError):
         return _failure(
@@ -257,6 +268,75 @@ def parse_khal_calendar_item(
         event=event,
         issues=(),
     )
+
+
+def _decode_attendees(
+    component: _ICalendarComponent,
+    *,
+    calendar_id: str,
+    event_uid: str,
+) -> tuple[CalendarAttendee, ...] | KhalCalendarItemParseResult:
+    """Decode supported ATTENDEE properties into canonical participants."""
+    attendees: list[CalendarAttendee] = []
+    try:
+        value = component.get("ATTENDEE")
+        if value is None:
+            properties: tuple[object, ...] = ()
+        elif isinstance(value, (list, tuple)):
+            properties = tuple(value)
+        else:
+            properties = (value,)
+    except (AttributeError, TypeError):
+        return _failure(
+            code="khal_icalendar_attendee_invalid",
+            message="The iCalendar attendee properties could not be read.",
+            calendar_id=calendar_id,
+            event_uid=event_uid,
+            field="ATTENDEE",
+        )
+    for property_value in properties:
+        try:
+            property_item = cast(_ICalendarProperty, property_value)
+            address = property_item.to_ical().decode("utf-8")
+            params = property_item.params
+
+            attendees.append(
+                CalendarAttendee.from_ical(
+                    address,
+                    display_name=(
+                        str(params["CN"]) if params.get("CN") is not None else None
+                    ),
+                    role=(
+                        str(params["ROLE"]) if params.get("ROLE") is not None else None
+                    ),
+                    response=(
+                        str(params["PARTSTAT"])
+                        if params.get("PARTSTAT") is not None
+                        else None
+                    ),
+                    rsvp=(
+                        str(params["RSVP"]) if params.get("RSVP") is not None else None
+                    ),
+                )
+            )
+        except (AttributeError, UnicodeDecodeError, TypeError, ValueError):
+            return _failure(
+                code="khal_icalendar_attendee_invalid",
+                message="The iCalendar attendee property is invalid.",
+                calendar_id=calendar_id,
+                event_uid=event_uid,
+                field="ATTENDEE",
+            )
+    try:
+        return canonical_attendees(attendees)
+    except (TypeError, ValueError):
+        return _failure(
+            code="khal_icalendar_attendee_duplicate",
+            message="The iCalendar event contains duplicate attendees.",
+            calendar_id=calendar_id,
+            event_uid=event_uid,
+            field="ATTENDEE",
+        )
 
 
 def read_khal_calendar_item(

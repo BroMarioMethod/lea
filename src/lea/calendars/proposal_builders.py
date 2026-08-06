@@ -114,6 +114,8 @@ def build_calendar_create_event_proposal(
         parameters["description"] = request.description
     if request.location is not None:
         parameters["location"] = request.location
+    if request.attendees:
+        parameters["attendees"] = _attendee_parameters(request.attendees)
 
     return _proposal(
         action="calendar.create",
@@ -155,6 +157,10 @@ def build_calendar_modify_event_proposal(
         parameters["clear_location"] = True
     if request.target is not None:
         parameters["target"] = _target_parameters(request.target)
+    if request.attendees is not None:
+        parameters["attendees"] = _attendee_parameters(request.attendees)
+    if request.clear_attendees:
+        parameters["clear_attendees"] = True
 
     return _proposal(
         action="calendar.modify",
@@ -275,6 +281,26 @@ def _target_parameters(target: object) -> dict[str, object]:
     if target.recurrence_id is not None:
         result["recurrence_id"] = target.recurrence_id.isoformat()
     return result
+
+
+def _attendee_parameters(attendees: object) -> list[dict[str, object]]:
+    """Serialize canonical attendees into proposal parameters."""
+    from lea.calendars.attendees import CalendarAttendee, canonical_attendees
+
+    values = canonical_attendees(attendees)  # type: ignore[arg-type]
+    return [
+        {
+            "address": attendee.address,
+            **(
+                {"display_name": attendee.display_name} if attendee.display_name else {}
+            ),
+            "role": attendee.role,
+            "response": attendee.response,
+            "rsvp": attendee.rsvp,
+        }
+        for attendee in values
+        if isinstance(attendee, CalendarAttendee)
+    ]
 
 
 def _utc_timestamp(value: datetime) -> datetime:
