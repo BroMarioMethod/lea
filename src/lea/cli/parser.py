@@ -50,6 +50,12 @@ def create_local_cli_parser() -> argparse.ArgumentParser:
     )
     _add_task_subcommands(task_parser)
 
+    calendar_parser = subparsers.add_parser(
+        "calendar",
+        help="Read calendars through the configured calendar provider.",
+    )
+    _add_calendar_subcommands(calendar_parser)
+
     proposal_parser = subparsers.add_parser(
         "proposal",
         help="Review and decide persistent action proposals.",
@@ -57,6 +63,64 @@ def create_local_cli_parser() -> argparse.ArgumentParser:
     _add_proposal_subcommands(proposal_parser)
 
     return parser
+
+
+def _add_calendar_subcommands(parser: argparse.ArgumentParser) -> None:
+    """Add provider-neutral calendar commands."""
+    subparsers = parser.add_subparsers(dest="calendar_command", required=True)
+    subparsers.add_parser("list", help="List local calendar collections.")
+
+    events_parser = subparsers.add_parser("events", help="List calendar events.")
+    events_parser.add_argument(
+        "--start-date", required=True, help="Inclusive ISO date."
+    )
+    events_parser.add_argument("--end-date", required=True, help="Exclusive ISO date.")
+    events_parser.add_argument(
+        "--calendar-id",
+        action="append",
+        default=[],
+        help="Calendar identifier. May be supplied more than once.",
+    )
+    events_parser.add_argument(
+        "--include-cancelled",
+        action="store_true",
+        help="Include cancelled events.",
+    )
+
+    show_parser = subparsers.add_parser("show", help="Show one exact calendar event.")
+    show_parser.add_argument("calendar_id", help="Stable calendar identifier.")
+    show_parser.add_argument("event_uid", help="Stable event UID.")
+
+    create_parser = subparsers.add_parser(
+        "create", help="Create a persistent calendar-event proposal."
+    )
+    create_parser.add_argument("calendar_id", help="Stable calendar identifier.")
+    create_parser.add_argument("--summary", required=True, help="Event summary.")
+    create_parser.add_argument("--start", required=True, help="ISO date or datetime.")
+    create_parser.add_argument("--end", required=True, help="ISO date or datetime.")
+    create_parser.add_argument("--timezone", help="IANA timezone for timed events.")
+    create_parser.add_argument("--description", help="Event description.")
+    create_parser.add_argument("--location", help="Event location.")
+
+    modify_parser = subparsers.add_parser(
+        "modify", help="Create a persistent event-modification proposal."
+    )
+    modify_parser.add_argument("calendar_id", help="Stable calendar identifier.")
+    modify_parser.add_argument("event_uid", help="Stable event UID.")
+    modify_parser.add_argument("--summary", required=True, help="Replacement summary.")
+
+    cancel_parser = subparsers.add_parser(
+        "cancel", help="Create a persistent event-cancellation proposal."
+    )
+    cancel_parser.add_argument("calendar_id", help="Stable calendar identifier.")
+    cancel_parser.add_argument("event_uid", help="Stable event UID.")
+
+    subparsers.add_parser(
+        "sync", help="Create a persistent explicit synchronization proposal."
+    )
+    subparsers.add_parser(
+        "discover", help="Create a persistent collection-discovery proposal."
+    )
 
 
 def _absolute_path(value: str) -> Path:

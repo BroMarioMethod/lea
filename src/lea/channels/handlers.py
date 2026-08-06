@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TypeGuard, cast
 from uuid import UUID
@@ -16,6 +16,24 @@ from lea.actions import (
     RiskLevel,
     proposal_to_dict,
 )
+from lea.calendars.contracts import (
+    CalendarCancelRequest,
+    CalendarCollection,
+    CalendarCreateRequest,
+    CalendarEvent,
+    CalendarEventQuery,
+    CalendarEventTiming,
+    CalendarModifyRequest,
+    CalendarProviderIssue,
+)
+from lea.calendars.proposal_builders import (
+    build_calendar_cancel_event_proposal,
+    build_calendar_create_event_proposal,
+    build_calendar_discover_proposal,
+    build_calendar_modify_event_proposal,
+    build_calendar_sync_proposal,
+)
+from lea.calendars.provider import CalendarProvider
 from lea.channels.application import (
     ChannelCommandDefinition,
     DispatchingChannelApplication,
@@ -74,6 +92,14 @@ _SUPPORTED_EXPLICIT_COMMANDS = (
     "/help",
     "/status",
     "/tasks",
+    "/calendars",
+    "/calendar_events <start-date> <end-date> [calendar-id ...]",
+    "/calendar_show <calendar-id> <event-uid>",
+    "/calendar_sync",
+    "/calendar_discover",
+    "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
+    "/calendar_modify <calendar-id> <event-uid> <summary>",
+    "/calendar_cancel <calendar-id> <event-uid>",
     "/task_add <description>",
     "/task_show <task-uuid>",
     "/task_modify <task-uuid> <description>",
@@ -100,6 +126,7 @@ class ChannelHandlerDependencies:
     control_id_source: IdentifierSource
     status_dependencies: StatusDependencies | None = None
     task_dependencies: TaskCommandDependencies | None = None
+    calendar_provider: CalendarProvider | None = None
     proposal_dependencies: ProposalCommandDependencies | None = None
     status_executor: CommandExecutor = execute_status
     task_list_executor: CommandExecutor = execute_task_list
@@ -141,6 +168,47 @@ def build_default_channel_application(
             ChannelCommandDefinition(
                 "tasks.show",
                 lambda request: _tasks_show(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.list_calendars",
+                lambda request: _calendar_list_calendars(
+                    request,
+                    dependencies,
+                ),
+            ),
+            ChannelCommandDefinition(
+                "calendar.list_events",
+                lambda request: _calendar_list_events(
+                    request,
+                    dependencies,
+                ),
+            ),
+            ChannelCommandDefinition(
+                "calendar.show_event",
+                lambda request: _calendar_show_event(
+                    request,
+                    dependencies,
+                ),
+            ),
+            ChannelCommandDefinition(
+                "calendar.sync",
+                lambda request: _calendar_sync(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.discover",
+                lambda request: _calendar_discover(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.create",
+                lambda request: _calendar_create(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.modify",
+                lambda request: _calendar_modify(request, dependencies),
+            ),
+            ChannelCommandDefinition(
+                "calendar.cancel",
+                lambda request: _calendar_cancel(request, dependencies),
             ),
             ChannelCommandDefinition(
                 "tasks.create",
@@ -454,6 +522,903 @@ def _task_show_data_failure(
     )
 
 
+def _calendar_list_calendars(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """List permitted calendar collections through the provider boundary."""
+    denied = _calendar_read_denied(request, dependencies)
+
+    if denied is not None:
+        return denied
+
+    parameters = _business_parameters(request)
+    allowed = {"arguments"}
+    unknown = sorted(set(parameters) - allowed)
+
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+
+    arguments = _arguments(parameters)
+
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+
+    if arguments:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue(
+                "channel_arguments_excessive",
+                "calendar.list_calendars does not accept positional arguments.",
+                "arguments",
+            ),
+        )
+
+    provider = dependencies.calendar_provider
+
+    if provider is None:
+        return _calendar_provider_unavailable(request, dependencies)
+
+    result = provider.list_calendars()
+
+    if not result.success:
+        return _calendar_provider_failure(
+            request,
+            dependencies,
+            result.issues,
+        )
+
+    allowed_calendar_ids = set(request.identity.calendar_ids)
+    calendars = (
+        tuple(
+            calendar
+            for calendar in result.calendars
+            if calendar.calendar_id in allowed_calendar_ids
+        )
+        if allowed_calendar_ids
+        else result.calendars
+    )
+    return _mapped(
+        request,
+        CliResult.succeeded(
+            data=cast(
+                JsonValue,
+                {
+                    "calendars": [
+                        _calendar_collection_data(calendar) for calendar in calendars
+                    ]
+                },
+            )
+        ),
+        dependencies,
+        success_message="Calendars loaded.",
+    )
+
+
+def _calendar_list_events(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """List events in one half-open local-date range."""
+    denied = _calendar_read_denied(request, dependencies)
+
+    if denied is not None:
+        return denied
+
+    parameters = _business_parameters(request)
+    allowed = {
+        "arguments",
+        "start_date",
+        "end_date",
+        "calendar_ids",
+        "include_cancelled",
+    }
+    unknown = sorted(set(parameters) - allowed)
+
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+
+    arguments = _arguments(parameters)
+
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+
+    try:
+        start_date, end_date, positional_calendar_ids = _calendar_event_range(
+            parameters, arguments
+        )
+        explicit_calendar_ids = _calendar_identifier_tuple(
+            parameters.get("calendar_ids"),
+            field="calendar_ids",
+        )
+
+        if positional_calendar_ids and explicit_calendar_ids:
+            raise ValueError(
+                "calendar_ids must be supplied either positionally or "
+                "as a named parameter, not both."
+            )
+
+        selected_calendar_ids = (
+            positional_calendar_ids
+            if positional_calendar_ids
+            else explicit_calendar_ids
+        )
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            selected_calendar_ids,
+        )
+        if policy_denied is not None:
+            return policy_denied
+        query = CalendarEventQuery(
+            start_date=start_date,
+            end_date=end_date,
+            calendar_ids=(selected_calendar_ids or request.identity.calendar_ids),
+            include_cancelled=_calendar_optional_boolean(
+                parameters.get("include_cancelled"),
+                field="include_cancelled",
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue(
+                "calendar_event_query_invalid",
+                str(error),
+            ),
+        )
+
+    provider = dependencies.calendar_provider
+
+    if provider is None:
+        return _calendar_provider_unavailable(request, dependencies)
+
+    result = provider.list_events(query)
+
+    if not result.success:
+        return _calendar_provider_failure(
+            request,
+            dependencies,
+            result.issues,
+            not_found_codes={"khal_calendar_not_found"},
+        )
+
+    return _mapped(
+        request,
+        CliResult.succeeded(
+            data=cast(
+                JsonValue,
+                {"events": [_calendar_event_data(event) for event in result.events]},
+            )
+        ),
+        dependencies,
+        success_message="Calendar events loaded.",
+    )
+
+
+def _calendar_show_event(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Read one exact event using calendar ID and event UID."""
+    denied = _calendar_read_denied(request, dependencies)
+
+    if denied is not None:
+        return denied
+
+    parameters = _business_parameters(request)
+    allowed = {"arguments", "calendar_id", "event_uid"}
+    unknown = sorted(set(parameters) - allowed)
+
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+
+    arguments = _arguments(parameters)
+
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+
+    try:
+        calendar_id, event_uid = _calendar_event_identity(
+            parameters,
+            arguments,
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue(
+                "calendar_event_identity_invalid",
+                str(error),
+            ),
+        )
+
+    policy_denied = _calendar_policy_denied(
+        request,
+        dependencies,
+        (calendar_id,),
+    )
+    if policy_denied is not None:
+        return policy_denied
+
+    provider = dependencies.calendar_provider
+
+    if provider is None:
+        return _calendar_provider_unavailable(request, dependencies)
+
+    result = provider.show_event(calendar_id, event_uid)
+
+    if not result.success:
+        return _calendar_provider_failure(
+            request,
+            dependencies,
+            result.issues,
+            not_found_codes={
+                "khal_calendar_not_found",
+                "khal_calendar_event_not_found",
+            },
+        )
+
+    if result.event is None:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.INTERNAL_ERROR,
+                issues=(
+                    _issue(
+                        "calendar_event_result_invalid",
+                        "Successful calendar event lookup returned no event.",
+                    ),
+                ),
+                data={"event": None},
+            ),
+            dependencies,
+            success_message="",
+        )
+
+    return _mapped(
+        request,
+        CliResult.succeeded(
+            data=cast(
+                JsonValue,
+                {
+                    "event": _calendar_event_data(result.event),
+                },
+            )
+        ),
+        dependencies,
+        success_message="Calendar event loaded.",
+    )
+
+
+def _calendar_read_denied(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse | None:
+    """Require Calendar.Read at the channel-neutral command boundary."""
+    capability = ChannelCapability.CALENDAR_READ.value
+
+    if capability in request.identity.capabilities:
+        return None
+
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.PERMISSION_DENIED,
+            issues=(
+                _issue(
+                    "calendar_read_capability_required",
+                    "Calendar.Read capability is required.",
+                    "capabilities",
+                ),
+            ),
+            data={"required_capability": capability},
+        ),
+        dependencies,
+        success_message="",
+    )
+
+
+def _calendar_sync(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit synchronization as an explicitly confirmed proposal."""
+    capability = ChannelCapability.CALENDAR_SYNC.value
+    if capability not in request.identity.capabilities:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.PERMISSION_DENIED,
+                issues=(
+                    _issue(
+                        "calendar_sync_capability_required",
+                        "Calendar.Sync capability is required.",
+                        "capabilities",
+                    ),
+                ),
+                data={"required_capability": capability},
+            ),
+            dependencies,
+            success_message="",
+        )
+    parameters = _business_parameters(request)
+    unknown = sorted(set(parameters) - {"arguments"})
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    if arguments:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue(
+                "channel_arguments_excessive",
+                "calendar.sync does not accept positional arguments.",
+                "arguments",
+            ),
+        )
+    try:
+        proposal = _interactive_proposal(
+            build_calendar_sync_proposal(
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_sync_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_discover(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit collection discovery as an explicitly confirmed proposal."""
+    capability = ChannelCapability.CALENDAR_SYNC.value
+    if capability not in request.identity.capabilities:
+        return _mapped(
+            request,
+            CliResult.failed(
+                exit_code=LocalCliExitCode.PERMISSION_DENIED,
+                issues=(
+                    _issue(
+                        "calendar_sync_capability_required",
+                        "Calendar.Sync capability is required.",
+                        "capabilities",
+                    ),
+                ),
+                data={"required_capability": capability},
+            ),
+            dependencies,
+            success_message="",
+        )
+    parameters = _business_parameters(request)
+    unknown = sorted(set(parameters) - {"arguments"})
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    if arguments:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue(
+                "channel_arguments_excessive",
+                "calendar.discover does not accept positional arguments.",
+                "arguments",
+            ),
+        )
+    try:
+        proposal = _interactive_proposal(
+            build_calendar_discover_proposal(
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_discovery_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_create(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit event creation without directly mutating the provider."""
+    denied = _calendar_capability_denied(
+        request,
+        dependencies,
+        capability=ChannelCapability.CALENDAR_WRITE,
+        code="calendar_write_capability_required",
+    )
+    if denied is not None:
+        return denied
+    parameters = _business_parameters(request)
+    allowed = {
+        "arguments",
+        "calendar_id",
+        "summary",
+        "start",
+        "end",
+        "timezone",
+        "description",
+        "location",
+    }
+    unknown = sorted(set(parameters) - allowed)
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    try:
+        if arguments:
+            if len(arguments) < 5:
+                raise ValueError("calendar.create requires at least five arguments.")
+            calendar_id, start, end, timezone = arguments[:4]
+            summary = " ".join(arguments[4:])
+            timezone_value = None if timezone == "-" else timezone
+        else:
+            calendar_id = _required_text(
+                parameters.get("calendar_id"), field="calendar_id"
+            )
+            start = _required_text(parameters.get("start"), field="start")
+            end = _required_text(parameters.get("end"), field="end")
+            summary = _required_text(parameters.get("summary"), field="summary")
+            timezone_value = _optional_text(parameters.get("timezone"))
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            (calendar_id,),
+        )
+        if policy_denied is not None:
+            return policy_denied
+        create_request = CalendarCreateRequest(
+            calendar_id=calendar_id,
+            summary=summary,
+            timing=_calendar_event_timing(start, end, timezone_value),
+            description=_optional_text(parameters.get("description")),
+            location=_optional_text(parameters.get("location")),
+        )
+        proposal = _interactive_proposal(
+            build_calendar_create_event_proposal(
+                create_request,
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_creation_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_modify(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit an exact event modification without provider access."""
+    denied = _calendar_capability_denied(
+        request,
+        dependencies,
+        capability=ChannelCapability.CALENDAR_WRITE,
+        code="calendar_write_capability_required",
+    )
+    if denied is not None:
+        return denied
+    parameters = _business_parameters(request)
+    allowed = {"arguments", "calendar_id", "event_uid", "summary"}
+    unknown = sorted(set(parameters) - allowed)
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    try:
+        if arguments:
+            if len(arguments) < 3:
+                raise ValueError("calendar.modify requires at least three arguments.")
+            calendar_id, event_uid = arguments[:2]
+            summary = " ".join(arguments[2:])
+        else:
+            calendar_id = _required_text(
+                parameters.get("calendar_id"), field="calendar_id"
+            )
+            event_uid = _required_text(parameters.get("event_uid"), field="event_uid")
+            summary = _required_text(parameters.get("summary"), field="summary")
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            (calendar_id,),
+        )
+        if policy_denied is not None:
+            return policy_denied
+        proposal = _interactive_proposal(
+            build_calendar_modify_event_proposal(
+                CalendarModifyRequest(
+                    calendar_id=calendar_id,
+                    event_uid=event_uid,
+                    summary=summary,
+                ),
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_modification_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_cancel(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Submit exact event cancellation without provider access."""
+    denied = _calendar_capability_denied(
+        request,
+        dependencies,
+        capability=ChannelCapability.CALENDAR_WRITE,
+        code="calendar_write_capability_required",
+    )
+    if denied is not None:
+        return denied
+    parameters = _business_parameters(request)
+    allowed = {"arguments", "calendar_id", "event_uid"}
+    unknown = sorted(set(parameters) - allowed)
+    if unknown:
+        return _unknown_parameter(request, dependencies, unknown[0])
+    arguments = _arguments(parameters)
+    if arguments is None:
+        return _invalid_arguments(request, dependencies)
+    try:
+        calendar_id, event_uid = _calendar_event_identity(parameters, arguments)
+        policy_denied = _calendar_policy_denied(
+            request,
+            dependencies,
+            (calendar_id,),
+        )
+        if policy_denied is not None:
+            return policy_denied
+        proposal = _interactive_proposal(
+            build_calendar_cancel_event_proposal(
+                CalendarCancelRequest(calendar_id, event_uid),
+                proposal_id=_next_identifier(
+                    dependencies.proposal_id_source,
+                    field="proposal_id",
+                ),
+                source=_proposal_source(request),
+                created_at=request.received_at,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        return _validation_response(
+            request,
+            dependencies,
+            _issue("calendar_cancellation_invalid", str(error)),
+        )
+    return _submit_interactive_proposal(request, dependencies, proposal)
+
+
+def _calendar_capability_denied(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+    *,
+    capability: ChannelCapability,
+    code: str,
+) -> ChannelResponse | None:
+    if capability.value in request.identity.capabilities:
+        return None
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.PERMISSION_DENIED,
+            issues=(
+                _issue(
+                    code,
+                    f"{capability.value} capability is required.",
+                    "capabilities",
+                ),
+            ),
+            data={"required_capability": capability.value},
+        ),
+        dependencies,
+        success_message="",
+    )
+
+
+def _calendar_policy_denied(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+    calendar_ids: tuple[str, ...],
+) -> ChannelResponse | None:
+    """Enforce a configured calendar allow-list without leaking existence."""
+    allowed = set(request.identity.calendar_ids)
+    if not allowed or all(calendar_id in allowed for calendar_id in calendar_ids):
+        return None
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.PERMISSION_DENIED,
+            issues=(
+                _issue(
+                    "calendar_policy_denied",
+                    "The requested calendar is not permitted by user policy.",
+                    "calendar_id",
+                ),
+            ),
+            data={"calendar": None},
+        ),
+        dependencies,
+        success_message="",
+    )
+
+
+def _calendar_event_timing(
+    start: str,
+    end: str,
+    timezone: str | None,
+) -> CalendarEventTiming:
+    """Parse exact all-day dates or canonical UTC instants."""
+    if "T" not in start and "T" not in end:
+        if timezone is not None:
+            raise ValueError("All-day events must use '-' instead of a timezone.")
+        return CalendarEventTiming(date.fromisoformat(start), date.fromisoformat(end))
+    if timezone is None:
+        raise ValueError("Timed events require an IANA timezone.")
+    return CalendarEventTiming(
+        datetime.fromisoformat(start),
+        datetime.fromisoformat(end),
+        timezone,
+    )
+
+
+def _calendar_provider_unavailable(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+) -> ChannelResponse:
+    """Return a stable response when no calendar provider is wired."""
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=LocalCliExitCode.PROVIDER_UNAVAILABLE,
+            issues=(
+                _issue(
+                    "calendar_provider_unavailable",
+                    "The calendar provider is not available.",
+                ),
+            ),
+        ),
+        dependencies,
+        success_message="",
+    )
+
+
+def _calendar_provider_failure(
+    request: ChannelRequest,
+    dependencies: ChannelHandlerDependencies,
+    issues: tuple[CalendarProviderIssue, ...],
+    *,
+    not_found_codes: set[str] | None = None,
+) -> ChannelResponse:
+    """Map the first structured provider issue to a channel response."""
+    if not issues:
+        cli_issue = _issue(
+            "calendar_provider_failed",
+            "The calendar provider failed without reporting an issue.",
+        )
+        exit_code = LocalCliExitCode.APPLICATION_ERROR
+    else:
+        provider_issue = issues[0]
+        cli_issue = _issue(
+            provider_issue.code,
+            provider_issue.message,
+            provider_issue.field,
+        )
+        exit_code = (
+            LocalCliExitCode.NOT_FOUND
+            if provider_issue.code in (not_found_codes or set())
+            else LocalCliExitCode.APPLICATION_ERROR
+        )
+
+    return _mapped(
+        request,
+        CliResult.failed(
+            exit_code=exit_code,
+            issues=(cli_issue,),
+        ),
+        dependencies,
+        success_message="",
+    )
+
+
+def _calendar_event_range(
+    parameters: Mapping[str, object],
+    arguments: tuple[str, ...],
+) -> tuple[date, date, tuple[str, ...]]:
+    """Parse either named or positional date-range input."""
+    has_named_range = "start_date" in parameters or "end_date" in parameters
+
+    if has_named_range and arguments:
+        raise ValueError(
+            "Calendar event dates must be supplied either positionally "
+            "or as named parameters, not both."
+        )
+
+    if has_named_range:
+        start_value = parameters.get("start_date")
+        end_value = parameters.get("end_date")
+        positional_calendar_ids: tuple[str, ...] = ()
+    else:
+        if len(arguments) < 2:
+            raise ValueError("calendar.list_events requires start_date and end_date.")
+
+        start_value = arguments[0]
+        end_value = arguments[1]
+        positional_calendar_ids = tuple(
+            _calendar_identifier(value, field="calendar_ids") for value in arguments[2:]
+        )
+
+    return (
+        _calendar_date(start_value, field="start_date"),
+        _calendar_date(end_value, field="end_date"),
+        positional_calendar_ids,
+    )
+
+
+def _calendar_event_identity(
+    parameters: Mapping[str, object],
+    arguments: tuple[str, ...],
+) -> tuple[str, str]:
+    """Parse exact event identity without normalising either component."""
+    has_named_identity = "calendar_id" in parameters or "event_uid" in parameters
+
+    if has_named_identity and arguments:
+        raise ValueError(
+            "Calendar event identity must be supplied either positionally "
+            "or as named parameters, not both."
+        )
+
+    if has_named_identity:
+        calendar_id = parameters.get("calendar_id")
+        event_uid = parameters.get("event_uid")
+    else:
+        if len(arguments) != 2:
+            raise ValueError("calendar.show_event requires calendar_id and event_uid.")
+
+        calendar_id, event_uid = arguments
+
+    return (
+        _calendar_identifier(calendar_id, field="calendar_id"),
+        _calendar_identifier(event_uid, field="event_uid"),
+    )
+
+
+def _calendar_date(value: object, *, field: str) -> date:
+    """Require one canonical YYYY-MM-DD local date."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field} must be a canonical ISO date string.")
+
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"{field} must be a valid ISO date.") from error
+
+    if parsed.isoformat() != value:
+        raise ValueError(f"{field} must use YYYY-MM-DD format.")
+
+    return parsed
+
+
+def _calendar_identifier(value: object, *, field: str) -> str:
+    """Require one exact opaque calendar-provider identifier."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string.")
+
+    if value != value.strip():
+        raise ValueError(f"{field} must not contain leading or trailing whitespace.")
+
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError(f"{field} must not contain control characters.")
+
+    return value
+
+
+def _calendar_identifier_tuple(
+    value: object,
+    *,
+    field: str,
+) -> tuple[str, ...]:
+    """Return one optional array of exact provider identifiers."""
+    if value is None:
+        return ()
+
+    if not _is_sequence(value):
+        raise TypeError(f"{field} must be an array of non-empty strings.")
+
+    return tuple(_calendar_identifier(item, field=field) for item in value)
+
+
+def _calendar_optional_boolean(
+    value: object,
+    *,
+    field: str,
+) -> bool:
+    """Return one optional boolean defaulting to false."""
+    if value is None:
+        return False
+
+    if not isinstance(value, bool):
+        raise TypeError(f"{field} must be a boolean.")
+
+    return value
+
+
+def _calendar_collection_data(
+    calendar: CalendarCollection,
+) -> dict[str, JsonValue]:
+    """Serialise one calendar collection for channel output."""
+    return {
+        "calendar_id": calendar.calendar_id,
+        "display_name": calendar.display_name,
+        "read_only": calendar.read_only,
+    }
+
+
+def _calendar_event_data(
+    event: CalendarEvent,
+) -> dict[str, JsonValue]:
+    """Serialise one canonical event for channel output."""
+    return {
+        "calendar_id": event.calendar_id,
+        "event_uid": event.event_uid,
+        "summary": event.summary,
+        "timing": {
+            "start": event.timing.start.isoformat(),
+            "end": event.timing.end.isoformat(),
+            "all_day": event.timing.all_day,
+            "timezone": event.timing.timezone,
+        },
+        "description": event.description,
+        "location": event.location,
+        "cancelled": event.cancelled,
+    }
+
+
 def _tasks_create(
     request: ChannelRequest,
     dependencies: ChannelHandlerDependencies,
@@ -487,7 +1452,7 @@ def _tasks_create(
             priority=_optional_text(parameters.get("priority")),
             tags=_text_tuple(parameters.get("tags"), field="tags"),
         )
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_create_proposal(
                 task_request,
                 proposal_id=_next_identifier(
@@ -505,7 +1470,7 @@ def _tasks_create(
             _issue("task_creation_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
 def _tasks_modify(
@@ -563,7 +1528,7 @@ def _tasks_modify(
                 field="remove_tags",
             ),
         )
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_modify_proposal(
                 modify_request,
                 proposal_id=_next_identifier(
@@ -581,7 +1546,7 @@ def _tasks_modify(
             _issue("task_modification_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
 def _tasks_complete(
@@ -594,7 +1559,7 @@ def _tasks_complete(
         return _validation_response(request, dependencies, identifier)
 
     try:
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_complete_proposal(
                 identifier,
                 proposal_id=_next_identifier(
@@ -612,7 +1577,7 @@ def _tasks_complete(
             _issue("task_completion_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
 def _tasks_delete(
@@ -625,7 +1590,7 @@ def _tasks_delete(
         return _validation_response(request, dependencies, identifier)
 
     try:
-        proposal = _interactive_task_proposal(
+        proposal = _interactive_proposal(
             build_task_delete_proposal(
                 identifier,
                 proposal_id=_next_identifier(
@@ -643,20 +1608,20 @@ def _tasks_delete(
             _issue("task_deletion_invalid", str(error)),
         )
 
-    return _submit_task_proposal(request, dependencies, proposal)
+    return _submit_interactive_proposal(request, dependencies, proposal)
 
 
-def _interactive_task_proposal(
+def _interactive_proposal(
     proposal: ActionProposal,
 ) -> ActionProposal:
-    """Require explicit confirmation for an interactive task request."""
+    """Require explicit confirmation for an interactive mutation or sync."""
     return replace(
         proposal,
         confirmation_policy=ConfirmationPolicy.ALWAYS,
     )
 
 
-def _submit_task_proposal(
+def _submit_interactive_proposal(
     request: ChannelRequest,
     dependencies: ChannelHandlerDependencies,
     proposal: ActionProposal,

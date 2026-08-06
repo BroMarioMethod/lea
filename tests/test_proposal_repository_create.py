@@ -1,5 +1,6 @@
 """Tests for atomic persistent proposal creation."""
 
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -282,3 +283,17 @@ def test_creation_with_fsync_succeeds(
     assert result.success is True
     assert result.path is not None
     assert result.path.is_file()
+
+
+def test_created_proposal_uses_group_readable_mode(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "proposals"
+    root.mkdir()
+    repository = MarkdownProposalRepository(root)
+
+    result = repository.create(create_proposal())
+
+    assert result.success is True
+    assert result.path is not None
+    assert stat.S_IMODE(result.path.stat().st_mode) == 0o640

@@ -212,6 +212,8 @@ Current accepted or completed standards and specifications include:
 - `LEA-SPEC-0008` — Action Orchestration Service Specification
 - `LEA-SPEC-0009` — Runtime Layout and Configuration Specification
 - `LEA-SPEC-0010` — Persistent Proposal Repository Specification
+- `LEA-SPEC-0017` — Calendar Provider, Managed Toolchain and CalDAV
+  Synchronisation Specification (Milestone 4.0 candidate)
 
 Operational and development guides:
 
@@ -227,7 +229,10 @@ docs/development/DOCUMENT_STATUS_LIFECYCLE.md
 docs/development/RELEASE_CANDIDATE_ACCEPTANCE.md
 docs/development/RELEASE_CANDIDATE_CLEAN_ROOM_VERIFICATION.md
 docs/development/RELEASE_CHECKLIST_MILESTONE_2.7.md
+docs/development/RELEASE_CHECKLIST_MILESTONE_4.0.md
+docs/development/MILESTONE_4_TEST_CARD.md
 docs/development/TASKWARRIOR_INSTALLATION.md
+docs/development/CALENDAR_PROVIDER_OPERATIONS.md
 ```
 
 The audit integrity implementation uses an unauthenticated SHA-256 hash chain. It detects many unrecomputed changes but does not protect against complete file replacement or valid tail truncation.
@@ -269,4 +274,3 @@ View them with:
 ```bash
 git tag
 ```
-

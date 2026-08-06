@@ -82,6 +82,7 @@ class ChannelIdentity:
     conversation_id: str
     role: str
     capabilities: tuple[str, ...]
+    calendar_ids: tuple[str, ...] = ()
     display_name: str | None = None
 
     def __post_init__(self) -> None:
@@ -108,6 +109,7 @@ class ChannelIdentity:
             _require_text(self.display_name, field_name="display_name")
 
         canonical_capabilities = tuple(sorted(set(self.capabilities)))
+        canonical_calendar_ids = tuple(sorted(set(self.calendar_ids)))
 
         for capability in canonical_capabilities:
             if _CAPABILITY_PATTERN.fullmatch(capability) is None:
@@ -116,6 +118,15 @@ class ChannelIdentity:
                 )
 
         object.__setattr__(self, "capabilities", canonical_capabilities)
+        for calendar_id in canonical_calendar_ids:
+            _require_text(calendar_id, field_name="calendar_ids")
+            if calendar_id != calendar_id.strip():
+                raise ValueError(
+                    "calendar_ids must not contain surrounding whitespace."
+                )
+            if any(ord(character) < 32 for character in calendar_id):
+                raise ValueError("calendar_ids must not contain control characters.")
+        object.__setattr__(self, "calendar_ids", canonical_calendar_ids)
 
 
 @dataclass(frozen=True, slots=True)

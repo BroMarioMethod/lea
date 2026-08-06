@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -21,6 +22,13 @@ MAIN_PATH = REPOSITORY_ROOT / "src/lea/main.py"
 DOCUMENTATION_PATH = (
     REPOSITORY_ROOT / "docs/development/RELEASE_CANDIDATE_ACCEPTANCE.md"
 )
+CALENDAR_REQUIREMENTS_INPUT_PATH = (
+    REPOSITORY_ROOT / "third_party/calendar/requirements.in"
+)
+CALENDAR_REQUIREMENTS_LOCK_PATH = (
+    REPOSITORY_ROOT / "third_party/calendar/requirements-linux-aarch64-py313.txt"
+)
+CALENDAR_SHA256SUMS_PATH = REPOSITORY_ROOT / "third_party/calendar/SHA256SUMS"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +56,9 @@ def validate_release_candidate_acceptance(
     record_path: Path = RECORD_PATH,
     main_path: Path = MAIN_PATH,
     documentation_path: Path = DOCUMENTATION_PATH,
+    calendar_requirements_input_path: Path = (CALENDAR_REQUIREMENTS_INPUT_PATH),
+    calendar_requirements_lock_path: Path = (CALENDAR_REQUIREMENTS_LOCK_PATH),
+    calendar_sha256sums_path: Path = CALENDAR_SHA256SUMS_PATH,
     repository_root: Path = REPOSITORY_ROOT,
 ) -> tuple[AcceptanceValidationIssue, ...]:
     """Validate acceptance assets without running the acceptance harness."""
@@ -58,6 +69,18 @@ def validate_release_candidate_acceptance(
     record = _read(record_path, issues)
     main = _read(main_path, issues)
     documentation = _read(documentation_path, issues)
+    calendar_requirements_input = _read(
+        calendar_requirements_input_path,
+        issues,
+    )
+    calendar_requirements_lock = _read(
+        calendar_requirements_lock_path,
+        issues,
+    )
+    calendar_sha256sums = _read(
+        calendar_sha256sums_path,
+        issues,
+    )
 
     if cli is not None:
         _require_parts(
@@ -155,12 +178,179 @@ def validate_release_candidate_acceptance(
             issues=issues,
         )
 
+    _validate_calendar_release_assets(
+        requirements_input=calendar_requirements_input,
+        requirements_input_path=calendar_requirements_input_path,
+        requirements_lock=calendar_requirements_lock,
+        requirements_lock_path=calendar_requirements_lock_path,
+        sha256sums=calendar_sha256sums,
+        sha256sums_path=calendar_sha256sums_path,
+        issues=issues,
+    )
+
     _validate_help(
         repository_root,
         issues=issues,
     )
 
     return tuple(issues)
+
+
+def _validate_calendar_release_assets(
+    *,
+    requirements_input: str | None,
+    requirements_input_path: Path,
+    requirements_lock: str | None,
+    requirements_lock_path: Path,
+    sha256sums: str | None,
+    sha256sums_path: Path,
+    issues: list[AcceptanceValidationIssue],
+) -> None:
+    """Validate the pinned calendar supply-chain assets."""
+    expected_requirements = (
+        "khal==0.11.4",
+        "vdirsyncer==0.19.3",
+    )
+
+    if requirements_input is not None:
+        active_requirements = tuple(
+            line.strip()
+            for line in requirements_input.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+
+        if active_requirements != expected_requirements:
+            issues.append(
+                AcceptanceValidationIssue(
+                    code="calendar_requirements_input_invalid",
+                    message=(
+                        "The calendar requirements input must contain only "
+                        "the reviewed khal and vdirsyncer pins."
+                    ),
+                    path=requirements_input_path,
+                )
+            )
+
+    if requirements_lock is not None:
+        _require_parts(
+            requirements_lock,
+            path=requirements_lock_path,
+            code="calendar_lock_contract_missing",
+            required=(
+                "--only-binary :all:",
+                "khal==0.11.4 \\",
+                "vdirsyncer==0.19.3 \\",
+                "--hash=sha256:",
+            ),
+            issues=issues,
+        )
+
+        unpinned_lines: list[int] = []
+
+        for line_number, line in enumerate(
+            requirements_lock.splitlines(),
+            start=1,
+        ):
+            stripped = line.strip()
+
+            if (
+                not stripped
+                or stripped.startswith("#")
+                or stripped.startswith("--")
+                or line[0].isspace()
+            ):
+                continue
+
+            if "==" not in stripped:
+                unpinned_lines.append(line_number)
+
+        if unpinned_lines:
+            issues.append(
+                AcceptanceValidationIssue(
+                    code="calendar_lock_unpinned_requirement",
+                    message=(
+                        "The calendar lock contains an unpinned top-level requirement."
+                    ),
+                    path=requirements_lock_path,
+                )
+            )
+
+    if sha256sums is None or requirements_lock is None:
+        return
+
+    manifest_lines = tuple(
+        line.strip()
+        for line in sha256sums.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
+    if len(manifest_lines) != 1:
+        issues.append(
+            AcceptanceValidationIssue(
+                code="calendar_checksum_manifest_invalid",
+                message=(
+                    "The calendar checksum manifest must contain exactly "
+                    "one active entry."
+                ),
+                path=sha256sums_path,
+            )
+        )
+        return
+
+    parts = manifest_lines[0].split()
+
+    if len(parts) != 2:
+        issues.append(
+            AcceptanceValidationIssue(
+                code="calendar_checksum_manifest_invalid",
+                message="The calendar checksum manifest entry is malformed.",
+                path=sha256sums_path,
+            )
+        )
+        return
+
+    expected_sha256, recorded_filename = parts
+
+    if (
+        len(expected_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in expected_sha256)
+        or recorded_filename != requirements_lock_path.name
+    ):
+        issues.append(
+            AcceptanceValidationIssue(
+                code="calendar_checksum_manifest_invalid",
+                message=(
+                    "The calendar checksum manifest does not identify the "
+                    "canonical lock correctly."
+                ),
+                path=sha256sums_path,
+            )
+        )
+        return
+
+    try:
+        actual_sha256 = hashlib.sha256(requirements_lock_path.read_bytes()).hexdigest()
+    except OSError:
+        issues.append(
+            AcceptanceValidationIssue(
+                code="calendar_lock_unreadable",
+                message=("The calendar requirements lock could not be hashed."),
+                path=requirements_lock_path,
+            )
+        )
+        return
+
+    if actual_sha256 != expected_sha256:
+        issues.append(
+            AcceptanceValidationIssue(
+                code="calendar_lock_checksum_mismatch",
+                message=(
+                    "The calendar requirements lock does not match the "
+                    "committed checksum manifest."
+                ),
+                path=requirements_lock_path,
+            )
+        )
 
 
 def main() -> int:

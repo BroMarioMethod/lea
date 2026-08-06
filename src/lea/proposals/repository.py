@@ -20,6 +20,8 @@ from lea.proposals.documents import (
     render_proposal_document,
 )
 
+_PROPOSAL_FILE_MODE = 0o640
+
 
 class MarkdownProposalRepository:
     """Persistent Markdown repository for immutable proposals."""
@@ -625,6 +627,8 @@ class MarkdownProposalRepository:
         temporary_path = Path(temporary_name)
 
         try:
+            os.fchmod(file_descriptor, _PROPOSAL_FILE_MODE)
+
             with os.fdopen(
                 file_descriptor,
                 mode="w",

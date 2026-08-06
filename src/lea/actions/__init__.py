@@ -22,7 +22,7 @@ from lea.actions.enums import (
     ConfirmationPolicy,
     RiskLevel,
 )
-from lea.actions.errors import ActionContractError
+from lea.actions.errors import ActionContractError, ActionHandlerFailure
 from lea.actions.execution import (
     ActionExecutionIssue,
     ActionExecutionResult,
@@ -80,6 +80,7 @@ __all__ = [
     "ActionExecutionIssue",
     "ActionExecutionResult",
     "ActionHandler",
+    "ActionHandlerFailure",
     "ActionHandlerRegistry",
     "ActionProposal",
     "ActionStatus",

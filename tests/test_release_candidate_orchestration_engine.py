@@ -6,6 +6,12 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+from lea.installers.calendar.contracts import (
+    CalendarToolchainInstallMode,
+)
+from lea.installers.calendar.records import (
+    CalendarToolchainInstallationRecord,
+)
 from lea.installers.release_candidate import (
     BaseConfigurationResult,
     HostFacts,
@@ -20,6 +26,8 @@ from lea.installers.release_candidate import (
     InstallerStepState,
     PostInstallHealthResult,
     ReleaseCandidateAcceptanceResult,
+    ReleaseCandidateCalendarInputs,
+    ReleaseCandidateCalendarResult,
     ReleaseCandidateInstallMode,
     ReleaseCandidateInstallRequest,
     ReleaseCandidateOrchestrationDependencies,
@@ -34,6 +42,8 @@ from lea.installers.release_candidate import (
     TelegramOnboardingIdentity,
     TelegramOnboardingRole,
     TelegramSystemdServiceResult,
+    create_calendar_toolchain_installation_plan,
+    create_release_candidate_install_plan,
     create_release_candidate_orchestration_dependencies,
     run_release_candidate_orchestration,
 )
@@ -154,6 +164,8 @@ def _confirmation(
 def _dependencies(
     tmp_path: Path,
     calls: list[str],
+    *,
+    calendar_selections: list[bool] | None = None,
 ) -> ReleaseCandidateOrchestrationDependencies:
     record = _record(tmp_path)
 
@@ -246,8 +258,11 @@ def _dependencies(
 
     def health(
         _request: ReleaseCandidateInstallRequest,
+        calendar_enabled: bool,
     ) -> PostInstallHealthResult:
         calls.append("health")
+        if calendar_selections is not None:
+            calendar_selections.append(calendar_enabled)
         return PostInstallHealthResult(
             healthy=True,
             checks=(),
@@ -256,9 +271,12 @@ def _dependencies(
 
     def acceptance(
         _request: ReleaseCandidateInstallRequest,
+        calendar_enabled: bool,
         _health: PostInstallHealthResult,
     ) -> ReleaseCandidateAcceptanceResult:
         calls.append("acceptance")
+        if calendar_selections is not None:
+            calendar_selections.append(calendar_enabled)
         return ReleaseCandidateAcceptanceResult(
             accepted=True,
             checks=(),
@@ -480,7 +498,7 @@ def test_health_failure_stops_before_acceptance(tmp_path: Path) -> None:
     )
     dependencies = replace(
         dependencies,
-        health=lambda _request: PostInstallHealthResult(
+        health=lambda _request, _calendar_enabled: PostInstallHealthResult(
             healthy=False,
             checks=(),
             issues=(issue,),
@@ -620,15 +638,21 @@ def test_successful_orchestration_reports_step_progress(
 ) -> None:
     """Successful orchestration should report starts and completions."""
     calls: list[str] = []
+    calendar_selections: list[bool] = []
     progress = RecordingProgressReporter()
 
     result = run_release_candidate_orchestration(
         _request(tmp_path),
-        dependencies=_dependencies(tmp_path, calls),
+        dependencies=_dependencies(
+            tmp_path,
+            calls,
+            calendar_selections=calendar_selections,
+        ),
         progress=progress,
     )
 
     assert result.state is ReleaseCandidateOrchestrationState.SUCCEEDED
+    assert calendar_selections == [False, False]
 
     started = [step for event, step, _message in progress.events if event == "started"]
     completed = [
@@ -652,3 +676,201 @@ def test_successful_orchestration_reports_step_progress(
         "health",
         "acceptance",
     ]
+
+
+def _calendar_inputs(tmp_path: Path) -> ReleaseCandidateCalendarInputs:
+    """Return pinned calendar inputs for orchestration tests."""
+    lock = tmp_path / "calendar-requirements.txt"
+    lock.write_text(
+        "khal==0.11.4\nvdirsyncer==0.19.3\n",
+        encoding="utf-8",
+    )
+    uv = tmp_path / "bin" / "uv"
+    uv.parent.mkdir(exist_ok=True)
+    uv.write_text("#!/bin/sh\n", encoding="utf-8")
+    python = tmp_path / "bin" / "python"
+    python.write_text("#!/bin/sh\n", encoding="utf-8")
+    return ReleaseCandidateCalendarInputs(
+        toolchain_version="1.0.0",
+        platform="linux-aarch64",
+        requirements_lock=lock,
+        expected_lock_sha256="a" * 64,
+        uv_executable=uv,
+        python_executable=python,
+        package_index_url="https://pypi.org/simple",
+    )
+
+
+def test_calendar_plan_is_inserted_after_taskwarrior(
+    tmp_path: Path,
+) -> None:
+    """The approved plan should show calendar before optional Telegram."""
+    installation = _installation(
+        tmp_path,
+        enable_telegram=True,
+    )
+    plan = create_release_candidate_install_plan(
+        installation,
+        _inputs(tmp_path),
+        _calendar_inputs(tmp_path),
+    )
+    steps = tuple(item.step for item in plan.steps)
+
+    assert steps.index(InstallerStepId.TASKWARRIOR) < steps.index(
+        InstallerStepId.CALENDAR_TOOLCHAIN
+    )
+    assert steps.index(InstallerStepId.CALENDAR_TOOLCHAIN) < steps.index(
+        InstallerStepId.TELEGRAM_ONBOARDING
+    )
+    calendar_step = next(
+        item for item in plan.steps if item.step is InstallerStepId.CALENDAR_TOOLCHAIN
+    )
+    assert calendar_step.mutations
+    assert any(
+        mutation.target == Path("/opt/lea-tools/calendar/1.0.0/.venv/bin/khal")
+        for mutation in calendar_step.mutations
+    )
+
+
+def test_selected_calendar_runs_between_taskwarrior_and_telegram(
+    tmp_path: Path,
+) -> None:
+    """Selected calendar provisioning should precede Telegram onboarding."""
+    calls: list[str] = []
+    calendar_selections: list[bool] = []
+    dependencies = _dependencies(
+        tmp_path,
+        calls,
+        calendar_selections=calendar_selections,
+    )
+
+    def calendar(
+        request: ReleaseCandidateInstallRequest,
+        inputs: ReleaseCandidateCalendarInputs,
+        replacement_approved: bool,
+    ) -> ReleaseCandidateCalendarResult:
+        assert replacement_approved is False
+        calls.append("calendar")
+        plan = create_calendar_toolchain_installation_plan(request, inputs)
+        return ReleaseCandidateCalendarResult(
+            success=True,
+            already_installed=False,
+            khal_executable=plan.expected_khal_executable,
+            vdirsyncer_executable=plan.expected_vdirsyncer_executable,
+            record=CalendarToolchainInstallationRecord(
+                schema_version=2,
+                component="calendar-toolchain",
+                toolchain_version=inputs.toolchain_version,
+                installation_mode=(CalendarToolchainInstallMode.VERIFIED_NETWORK),
+                platform=inputs.platform,
+                python_version="3.13.5",
+                khal_version=inputs.khal_version,
+                vdirsyncer_version=inputs.vdirsyncer_version,
+                khal_executable=plan.expected_khal_executable,
+                vdirsyncer_executable=(plan.expected_vdirsyncer_executable),
+                lock_or_manifest_sha256=inputs.expected_lock_sha256,
+                khal_executable_sha256=None,
+                vdirsyncer_executable_sha256=None,
+                smoke_test="passed",
+                installed_at=datetime(
+                    2026,
+                    8,
+                    1,
+                    12,
+                    0,
+                    tzinfo=UTC,
+                ),
+            ),
+            issues=(),
+        )
+
+    request = replace(
+        _request(
+            tmp_path,
+            enable_telegram=True,
+        ),
+        calendar=_calendar_inputs(tmp_path),
+    )
+    result = run_release_candidate_orchestration(
+        request,
+        telegram_token="123456789:abcdefghijklmnopqrstuvwxyz_ABCDEFG",
+        telegram_confirmation=_confirmation(),
+        dependencies=replace(dependencies, calendar=calendar),
+    )
+
+    assert result.state is ReleaseCandidateOrchestrationState.SUCCEEDED
+    assert calls.index("taskwarrior") < calls.index("calendar")
+    assert calls.index("calendar") < calls.index("onboarding")
+    assert InstallerStepId.CALENDAR_TOOLCHAIN in {
+        step.step for step in result.step_results
+    }
+    assert calendar_selections == [True, True]
+
+
+def test_calendar_failure_stops_before_telegram(
+    tmp_path: Path,
+) -> None:
+    """A structured calendar failure should stop before onboarding."""
+    calls: list[str] = []
+    dependencies = _dependencies(tmp_path, calls)
+    issue = InstallerIssue(
+        code=InstallerIssueCode.STEP_FAILED,
+        message="Calendar installation failed.",
+        step=InstallerStepId.CALENDAR_TOOLCHAIN,
+        field="requirements_lock",
+    )
+
+    def calendar(
+        request: ReleaseCandidateInstallRequest,
+        inputs: ReleaseCandidateCalendarInputs,
+        replacement_approved: bool,
+    ) -> ReleaseCandidateCalendarResult:
+        del request, inputs, replacement_approved
+        calls.append("calendar")
+        return ReleaseCandidateCalendarResult(
+            success=False,
+            already_installed=False,
+            khal_executable=None,
+            vdirsyncer_executable=None,
+            record=None,
+            issues=(issue,),
+        )
+
+    request = replace(
+        _request(
+            tmp_path,
+            enable_telegram=True,
+        ),
+        calendar=_calendar_inputs(tmp_path),
+    )
+    result = run_release_candidate_orchestration(
+        request,
+        telegram_token="123456789:abcdefghijklmnopqrstuvwxyz_ABCDEFG",
+        telegram_confirmation=_confirmation(),
+        dependencies=replace(dependencies, calendar=calendar),
+    )
+
+    assert result.state is ReleaseCandidateOrchestrationState.FAILED
+    assert result.step_results[-1].step is (InstallerStepId.CALENDAR_TOOLCHAIN)
+    assert result.issues == (issue,)
+    assert "onboarding" not in calls
+
+
+def test_selected_calendar_requires_runner(
+    tmp_path: Path,
+) -> None:
+    """A selected calendar phase should fail closed without its runner."""
+    calls: list[str] = []
+    request = replace(
+        _request(tmp_path),
+        calendar=_calendar_inputs(tmp_path),
+    )
+
+    result = run_release_candidate_orchestration(
+        request,
+        dependencies=_dependencies(tmp_path, calls),
+    )
+
+    assert result.state is ReleaseCandidateOrchestrationState.FAILED
+    assert result.step_results[-1].step is (InstallerStepId.CALENDAR_TOOLCHAIN)
+    assert result.issues[0].field == "calendar"

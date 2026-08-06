@@ -76,6 +76,7 @@ def execute_release_candidate_uninstall(
 
     for step_id in (
         ReleaseCandidateUninstallStepId.TASKWARRIOR,
+        ReleaseCandidateUninstallStepId.CALENDAR_TOOLCHAIN,
         ReleaseCandidateUninstallStepId.CONFIGURATION,
         ReleaseCandidateUninstallStepId.STATE,
         ReleaseCandidateUninstallStepId.LOGS,

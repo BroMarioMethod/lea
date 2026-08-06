@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from lea.installers.release_candidate.calendar import (
+    ReleaseCandidateCalendarInputs,
+    create_calendar_toolchain_installation_plan,
+)
 from lea.installers.release_candidate.configuration import (
     create_base_configuration_plan,
 )
@@ -28,6 +32,7 @@ from lea.installers.release_candidate.taskwarrior import (
 def create_release_candidate_install_plan(
     request: ReleaseCandidateInstallRequest,
     taskwarrior_inputs: ReleaseCandidateTaskwarriorInputs,
+    calendar_inputs: ReleaseCandidateCalendarInputs | None = None,
 ) -> ReleaseCandidateInstallPlan:
     """Create the complete non-mutating plan shown before approval."""
     if not isinstance(request, ReleaseCandidateInstallRequest):
@@ -39,6 +44,15 @@ def create_release_candidate_install_plan(
     ):
         raise TypeError(
             "taskwarrior_inputs must be a ReleaseCandidateTaskwarriorInputs value."
+        )
+
+    if calendar_inputs is not None and not isinstance(
+        calendar_inputs,
+        ReleaseCandidateCalendarInputs,
+    ):
+        raise TypeError(
+            "calendar_inputs must be a ReleaseCandidateCalendarInputs "
+            "value when supplied."
         )
 
     provisioning = create_system_provisioning_plan(request)
@@ -150,6 +164,47 @@ def create_release_candidate_install_plan(
             ),
         ),
     ]
+
+    if calendar_inputs is not None:
+        calendar = create_calendar_toolchain_installation_plan(
+            request,
+            calendar_inputs,
+        )
+        steps.append(
+            InstallerStepPlan(
+                step=InstallerStepId.CALENDAR_TOOLCHAIN,
+                summary=(
+                    "Install the pinned khal "
+                    f"{calendar_inputs.khal_version} and vdirsyncer "
+                    f"{calendar_inputs.vdirsyncer_version} toolchain."
+                ),
+                mutations=(
+                    InstallerMutation(
+                        kind=InstallerMutationKind.INSTALL_COMPONENT,
+                        summary=(
+                            "Create and activate the verified calendar "
+                            "environment from the pinned requirements lock."
+                        ),
+                        target=calendar.expected_khal_executable,
+                    ),
+                    InstallerMutation(
+                        kind=InstallerMutationKind.WRITE_FILE,
+                        summary="Write the managed khal configuration.",
+                        target=calendar.config.configuration_dir / "khal.conf",
+                    ),
+                    InstallerMutation(
+                        kind=InstallerMutationKind.WRITE_FILE,
+                        summary="Write the managed vdirsyncer configuration.",
+                        target=(calendar.config.configuration_dir / "vdirsyncer.conf"),
+                    ),
+                    InstallerMutation(
+                        kind=InstallerMutationKind.WRITE_FILE,
+                        summary="Write the calendar installation record.",
+                        target=calendar.config.installation_record,
+                    ),
+                ),
+            )
+        )
 
     if request.enable_telegram:
         telegram_root = request.configuration_root / "telegram"

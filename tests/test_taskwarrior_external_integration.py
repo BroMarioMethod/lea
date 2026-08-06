@@ -19,10 +19,12 @@ def _require_real_taskwarrior() -> Path:
     configured = os.environ.get("LEA_TEST_TASKWARRIOR_EXECUTABLE")
     executable = Path(configured) if configured is not None else _DEFAULT_EXECUTABLE
 
-    if not executable.is_file() or not os.access(
-        executable,
-        os.X_OK,
-    ):
+    try:
+        available = executable.is_file() and os.access(executable, os.X_OK)
+    except OSError:
+        available = False
+
+    if not available:
         pytest.skip(f"Taskwarrior executable unavailable: {executable}")
 
     return executable

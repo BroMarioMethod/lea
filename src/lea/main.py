@@ -7,6 +7,8 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Protocol, TextIO
 
 from lea.application import run
+from lea.calendar_acceptance_cli import execute_calendar_acceptance_cli
+from lea.calendar_provider_cli import execute_calendar_provider_cli
 from lea.cli import execute_local_cli
 from lea.config import AppConfig, load_config
 from lea.errors import ConfigurationError, LeaError
@@ -72,6 +74,14 @@ class LocalCliRunner(Protocol):
         ...
 
 
+class CalendarAcceptanceCliRunner(Protocol):
+    """Callable boundary for Android calendar acceptance recording."""
+
+    def __call__(
+        self, arguments: Sequence[str], *, stdout: TextIO, stderr: TextIO
+    ) -> int: ...
+
+
 def execute(
     environment: Mapping[str, str], application_runner: ApplicationRunner = run
 ) -> int:
@@ -127,6 +137,12 @@ def dispatch(
         execute_release_candidate_uninstall_cli
     ),
     local_cli_runner: LocalCliRunner = execute_local_cli,
+    calendar_acceptance_cli_runner: CalendarAcceptanceCliRunner = (
+        execute_calendar_acceptance_cli
+    ),
+    calendar_provider_cli_runner: CalendarAcceptanceCliRunner = (
+        execute_calendar_provider_cli
+    ),
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
 ) -> int:
@@ -151,6 +167,12 @@ def dispatch(
             stdout=stdout,
             stderr=stderr,
         )
+    if arguments and arguments[0] == "accept-calendar-android":
+        return calendar_acceptance_cli_runner(
+            arguments[1:], stdout=stdout, stderr=stderr
+        )
+    if arguments and arguments[0] == "calendar-provider":
+        return calendar_provider_cli_runner(arguments[1:], stdout=stdout, stderr=stderr)
     if _uses_local_cli(arguments):
         return local_cli_runner(arguments, stdout=stdout, stderr=stderr)
     return execute(environment, application_runner)
@@ -169,6 +191,7 @@ def _uses_local_cli(arguments: Sequence[str]) -> bool:
         "--no-colour",
         "status",
         "task",
+        "calendar",
         "proposal",
     }
 

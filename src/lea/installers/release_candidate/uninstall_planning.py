@@ -94,6 +94,17 @@ def create_release_candidate_uninstall_plan(
                 ),
             ),
             ReleaseCandidateUninstallStepPlan(
+                step=ReleaseCandidateUninstallStepId.CALENDAR_TOOLCHAIN,
+                summary="Remove the managed calendar client toolchain.",
+                mutations=(
+                    ReleaseCandidateUninstallMutation(
+                        kind=(ReleaseCandidateUninstallMutationKind.REMOVE_DIRECTORY),
+                        summary="Remove LEA's managed calendar toolchain root.",
+                        target=request.calendar_toolchain_root,
+                    ),
+                ),
+            ),
+            ReleaseCandidateUninstallStepPlan(
                 step=ReleaseCandidateUninstallStepId.CONFIGURATION,
                 summary="Remove managed LEA configuration and secrets.",
                 mutations=(

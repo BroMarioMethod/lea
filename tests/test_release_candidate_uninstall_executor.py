@@ -31,6 +31,7 @@ def _request(tmp_path: Path) -> ReleaseCandidateUninstallRequest:
         state_root=tmp_path / "var" / "lib" / "lea",
         log_root=tmp_path / "var" / "log" / "lea",
         taskwarrior_root=tmp_path / "tools" / "taskwarrior",
+        calendar_toolchain_root=tmp_path / "tools" / "calendar",
         systemd_unit=(tmp_path / "systemd" / "lea-telegram.service"),
         tmpfiles_configuration=(tmp_path / "tmpfiles" / "lea.conf"),
         runtime_directory=(tmp_path / "run" / "lea"),
@@ -45,6 +46,7 @@ def _populate(request: ReleaseCandidateUninstallRequest) -> None:
         request.state_root,
         request.log_root,
         request.taskwarrior_root,
+        request.calendar_toolchain_root,
     ):
         root.mkdir(parents=True)
         (root / "managed.txt").write_text(
@@ -131,6 +133,7 @@ def test_purge_removes_all_managed_resources_in_safe_order(
         ReleaseCandidateUninstallStepState.COMPLETED,
         ReleaseCandidateUninstallStepState.COMPLETED,
         ReleaseCandidateUninstallStepState.COMPLETED,
+        ReleaseCandidateUninstallStepState.COMPLETED,
     )
 
     assert runner.commands == [
@@ -165,6 +168,7 @@ def test_purge_removes_all_managed_resources_in_safe_order(
     assert not request.state_root.exists()
     assert not request.log_root.exists()
     assert not request.taskwarrior_root.exists()
+    assert not request.calendar_toolchain_root.exists()
 
     assert not request.installation_root.exists()
 

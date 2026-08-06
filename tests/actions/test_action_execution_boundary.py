@@ -227,6 +227,32 @@ def test_handler_exception_becomes_failed_execution() -> None:
     assert result.completion_transition.to_status is ActionStatus.FAILED
 
 
+def test_expected_handler_failure_preserves_redaction_safe_diagnostic() -> None:
+    from lea.actions import ActionHandlerFailure
+
+    def handler(proposal: ActionProposal) -> None:
+        del proposal
+        raise ActionHandlerFailure(
+            code="provider_bootstrap_required",
+            message="Explicit provider bootstrap approval is required.",
+        )
+
+    registry = ActionHandlerRegistry()
+    registry.register("task.create", handler)
+
+    result = execute_action(
+        create_proposal(),
+        registry,
+        started_at=STARTED_AT,
+        completed_at=COMPLETED_AT,
+    )
+
+    assert result.execution is not None
+    assert result.execution.error is not None
+    assert result.execution.error.code == "provider_bootstrap_required"
+    assert result.execution.error.details is None
+
+
 def test_non_mapping_handler_output_fails_safely() -> None:
     """Unsupported handler output should become an execution failure."""
 

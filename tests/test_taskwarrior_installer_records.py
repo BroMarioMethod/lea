@@ -3,6 +3,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from lea.installers.taskwarrior import (
     TaskwarriorInstallationRecord,
@@ -58,6 +59,27 @@ def test_missing_record_returns_structured_issue(
 
     assert record is None
     assert issues[0].code is TaskwarriorInstallFailureCode.RECORD_FAILED
+
+
+def test_inaccessible_record_returns_structured_issue(
+    tmp_path: Path,
+) -> None:
+    """Permission failures must not escape as Python tracebacks."""
+    path = tmp_path / "taskwarrior.json"
+
+    with patch.object(
+        Path,
+        "exists",
+        side_effect=PermissionError("permission denied"),
+    ):
+        record, issues = read_taskwarrior_installation_record(path)
+
+    assert record is None
+    assert len(issues) == 1
+    assert issues[0].code is TaskwarriorInstallFailureCode.RECORD_FAILED
+    assert issues[0].field == "installation_record"
+    assert issues[0].path == path
+    assert "could not be accessed" in issues[0].message
 
 
 def test_unknown_record_key_is_rejected(tmp_path: Path) -> None:

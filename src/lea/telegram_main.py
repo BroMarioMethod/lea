@@ -16,6 +16,10 @@ from typing import TextIO, cast
 from uuid import uuid4
 
 from lea.actions import ActionHandlerRegistry
+from lea.adapters.khal import (
+    KhalCalendarProviderFactoryConfig,
+    build_khal_calendar_provider,
+)
 from lea.adapters.telegram.bot_api import telegram_bot_api_transport
 from lea.adapters.telegram.worker import (
     TelegramWorkerConfig,
@@ -24,13 +28,14 @@ from lea.adapters.telegram.worker import (
     run_telegram_worker,
 )
 from lea.audit import IntegrityJsonlAuditStore, generate_event_id
+from lea.calendars import CalendarProvider, CalendarProviderIssue
 from lea.channels.handlers import (
     ChannelHandlerDependencies,
     build_default_channel_application,
 )
 from lea.orchestration import ActionOrchestrator
 from lea.proposals import ProposalSubmissionService
-from lea.runtime.contracts import RuntimeConfig
+from lea.runtime.contracts import RuntimeConfig, RuntimeProfile
 from lea.runtime.health import check_runtime_health
 from lea.runtime.loader import load_runtime_config
 from lea.runtime.proposal_repository import runtime_proposal_repository
@@ -47,6 +52,12 @@ EXIT_INTERNAL_ERROR = 70
 
 _RUNTIME_CONFIG_ENV = "LEA_RUNTIME_CONFIG"
 _TELEGRAM_CONFIG_ENV = "LEA_TELEGRAM_CONFIG"
+_SYSTEM_CALENDAR_INSTALLATION_RECORD = Path(
+    "/var/lib/lea/install/calendar-toolchain.json"
+)
+_SYSTEM_CALENDAR_TOOLS_ROOT = Path("/opt/lea-tools/calendar")
+_SYSTEM_CALENDAR_CONFIGURATION_DIRECTORY = Path("/etc/lea/calendar")
+_SYSTEM_CALENDAR_STATE_ROOT = Path("/var/lib/lea/calendar")
 _TELEGRAM_FIELDS = frozenset(
     {
         "enabled",
@@ -70,6 +81,48 @@ TelegramRuntimeBuilder = Callable[
     TelegramRuntimeResult,
 ]
 """Callable boundary for Telegram runtime construction."""
+
+
+@dataclass(frozen=True, slots=True)
+class TelegramCalendarProviderBuildResult:
+    """Result of constructing the optional Telegram calendar provider."""
+
+    success: bool
+    provider: CalendarProvider | None
+    issues: tuple[CalendarProviderIssue, ...]
+
+    def __post_init__(self) -> None:
+        """Validate runtime-provider result consistency."""
+        if not isinstance(self.success, bool):
+            raise TypeError("success must be a boolean.")
+
+        if self.success:
+            if self.provider is None:
+                raise ValueError(
+                    "A successful calendar provider build must contain a provider."
+                )
+
+            if self.issues:
+                raise ValueError(
+                    "A successful calendar provider build must not contain issues."
+                )
+
+            return
+
+        if self.provider is not None:
+            raise ValueError(
+                "A failed calendar provider build must not contain a provider."
+            )
+
+        if not self.issues:
+            raise ValueError("A failed calendar provider build must contain an issue.")
+
+
+CalendarProviderBuilder = Callable[
+    [RuntimeConfig],
+    TelegramCalendarProviderBuildResult,
+]
+"""Callable boundary for production calendar-provider construction."""
 
 
 @dataclass(slots=True)
@@ -155,6 +208,7 @@ def execute(
     stderr: TextIO = sys.stderr,
     worker_runner: TelegramWorkerRunner = run_telegram_worker,
     runtime_builder: TelegramRuntimeBuilder | None = None,
+    calendar_provider_builder: CalendarProviderBuilder | None = None,
     register_signal: Callable[..., object] = signal.signal,
 ) -> int:
     """Execute the Telegram worker from explicit process inputs."""
@@ -204,6 +258,40 @@ def execute(
         )
         return EXIT_CONFIGURATION_ERROR
 
+    calendar_provider: CalendarProvider | None = None
+    provider_builder = calendar_provider_builder
+
+    if provider_builder is None and runtime.profile is RuntimeProfile.SYSTEM:
+        provider_builder = _default_calendar_provider_builder
+
+    if provider_builder is not None:
+        try:
+            calendar_built = provider_builder(runtime)
+        except (TypeError, ValueError):
+            stderr.write("Telegram calendar provider configuration is invalid.\n")
+            return EXIT_CONFIGURATION_ERROR
+        except Exception:
+            stderr.write(
+                "Telegram calendar provider construction failed unexpectedly.\n"
+            )
+            return EXIT_INTERNAL_ERROR
+
+        if not isinstance(calendar_built, TelegramCalendarProviderBuildResult):
+            stderr.write(
+                "Telegram calendar provider builder returned an invalid result.\n"
+            )
+            return EXIT_INTERNAL_ERROR
+
+        if calendar_built.success:
+            calendar_provider = calendar_built.provider
+        else:
+            provider_issue = calendar_built.issues[0]
+            stderr.write(
+                "Telegram calendar provider unavailable: "
+                f"{provider_issue.code}: "
+                f"{provider_issue.message}\n"
+            )
+
     stop = TelegramStopFlag()
 
     try:
@@ -231,6 +319,7 @@ def execute(
                 proposal_submitter=proposal_submission.submit,
                 proposal_id_source=lambda: str(uuid4()),
                 control_id_source=lambda: str(uuid4()),
+                calendar_provider=calendar_provider,
             )
         )
         result = worker_runner(
@@ -280,6 +369,39 @@ def main(arguments: Sequence[str] | None = None) -> int:
         return EXIT_CONFIGURATION_ERROR
 
     return execute(os.environ)
+
+
+def _system_calendar_provider_factory_config(
+    runtime: RuntimeConfig,
+) -> KhalCalendarProviderFactoryConfig:
+    """Return the exact managed system calendar-provider configuration."""
+    if runtime.profile is not RuntimeProfile.SYSTEM:
+        raise ValueError(
+            "System calendar provider construction requires the system profile."
+        )
+
+    return KhalCalendarProviderFactoryConfig(
+        installation_record=_SYSTEM_CALENDAR_INSTALLATION_RECORD,
+        tools_root=_SYSTEM_CALENDAR_TOOLS_ROOT,
+        configuration_directory=(_SYSTEM_CALENDAR_CONFIGURATION_DIRECTORY),
+        state_root=_SYSTEM_CALENDAR_STATE_ROOT,
+        working_directory=_SYSTEM_CALENDAR_STATE_ROOT,
+        display_timezone=runtime.display_timezone,
+    )
+
+
+def _default_calendar_provider_builder(
+    runtime: RuntimeConfig,
+) -> TelegramCalendarProviderBuildResult:
+    """Build the verified managed khal provider without repair."""
+    result = build_khal_calendar_provider(
+        _system_calendar_provider_factory_config(runtime)
+    )
+    return TelegramCalendarProviderBuildResult(
+        success=result.success,
+        provider=result.provider,
+        issues=result.issues,
+    )
 
 
 def _default_runtime_builder(

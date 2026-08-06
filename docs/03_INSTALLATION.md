@@ -5,13 +5,17 @@
 LEA remains under active development and is not yet recommended for production
 use.
 
-The current release-candidate installer can provision a supported DietPi host,
-create LEA's managed runtime layout, install the pinned Taskwarrior runtime,
-run post-install health checks and execute disposable functional acceptance.
+The current Milestone 4.0 release-candidate installer can provision a supported
+DietPi host, create LEA's managed runtime layout, install the pinned
+Taskwarrior and calendar-client runtimes, run post-install health checks and
+execute disposable functional acceptance. Radicale remains a separately
+managed CalDAV service, and DAVx⁵ remains an Android-side component.
 
 The non-Telegram installation profile has passed clean-room verification on a
 fresh Raspberry Pi 4B DietPi installation. Live Telegram onboarding and service
-acceptance remain outstanding.
+acceptance remain outstanding. Milestone 4.0 additionally requires recorded
+Radicale user-isolation, Android two-way synchronisation and backup/restore
+acceptance before release tagging.
 
 ## Supported environment
 
@@ -48,6 +52,21 @@ Managed runtime state is stored separately beneath:
 ```
 
 The source repository must not be used as LEA's runtime data store.
+
+### Root installation and managed-file ownership
+
+The installer normally runs as root, but root's creation ownership and umask
+are not the desired final state for LEA runtime files. Every integration that
+creates or replaces a managed file must explicitly apply and then verify its
+contracted mode, owner and group. It must not assume that `open`, `write_text`,
+an atomic rename or mode `0640` alone produces a file readable by the intended
+service process.
+
+Tests and release-candidate acceptance must cover both expected ownership
+patterns where applicable: operator-owned configuration shared with group
+`lea`, and service-owned state such as `lea:lea`. They must exercise the real
+root installation path and verify numeric mode, owner, group and service
+readability after atomic creation, replacement, upgrade and restore.
 
 ## DietPi system D-Bus requirement
 
@@ -175,6 +194,30 @@ sha256sum /opt/lea-release-assets/task-3.4.2.tar.gz
 
 The result must match the expected checksum exactly.
 
+## Calendar release assets
+
+Milestone 4.0 installs khal and vdirsyncer as one managed, versioned toolchain.
+Use the reviewed lock supplied with the release assets:
+
+```text
+/opt/lea-release-assets/calendar-requirements.lock
+```
+
+Create the canonical release-assets directory with the supported preparation
+command documented in `MILESTONE_4_TEST_CARD.md`; do not manually copy or
+regenerate the tracked lock during installation.
+
+Verify its independently reviewed SHA-256 before installation. The installer
+requires the absolute lock path, lowercase digest, exact trusted `uv` and
+Python paths, toolchain layout version, and pinned khal and vdirsyncer
+versions. It rejects unpinned, unhashed and source-only packages.
+
+The complete commands and security boundaries for calendar installation,
+Radicale provisioning, DAVx⁵ pairing, acceptance, backup, upgrade and removal
+are in `docs/development/CALENDAR_PROVIDER_OPERATIONS.md`. Radicale is not
+implicitly installed by the release-candidate command and must not be exposed
+directly to the public internet.
+
 ## Current supported installer entry point
 
 The current advanced release-candidate interface is:
@@ -192,6 +235,15 @@ sudo "$(command -v uv)" run lea install-release-candidate \
     --taskwarrior-platform linux-aarch64 \
     --taskwarrior-build-directory /var/tmp/lea-taskwarrior-build \
     --taskwarrior-build-concurrency 1 \
+    --calendar-requirements-lock \
+        /opt/lea-release-assets/calendar-requirements.lock \
+    --calendar-requirements-sha256 \
+        <reviewed-lowercase-sha256> \
+    --calendar-uv-executable "$(command -v uv)" \
+    --calendar-python-executable /usr/bin/python3.13 \
+    --calendar-toolchain-version <pinned-layout-version> \
+    --calendar-khal-version 0.11.4 \
+    --calendar-vdirsyncer-version 0.19.3 \
     --approve
 ```
 
@@ -202,8 +254,15 @@ This command:
 3. provisions managed directories and files;
 4. installs base runtime configuration;
 5. builds and activates Taskwarrior 3.4.2;
-6. runs read-only health checks;
-7. runs disposable functional acceptance.
+6. installs and verifies the managed khal/vdirsyncer toolchain;
+7. runs read-only health checks;
+8. runs disposable functional acceptance.
+
+Before repeating a physical release-candidate test-card run for any new tool
+integration, prove in automated tests that every public CLI option reaches the
+release-candidate request, orchestration engine, installer dispatch and
+post-install acceptance path. A standalone installer implementation is not a
+complete integration.
 
 The supported guided user entry point is:
 

@@ -29,6 +29,7 @@ class InstallerStepId(StrEnum):
     FILESYSTEM = "filesystem"
     BASE_CONFIGURATION = "base-configuration"
     TASKWARRIOR = "taskwarrior"
+    CALENDAR_TOOLCHAIN = "calendar-toolchain"
     TELEGRAM_ONBOARDING = "telegram-onboarding"
     TELEGRAM_CONFIGURATION = "telegram-configuration"
     SYSTEMD_SERVICE = "systemd-service"

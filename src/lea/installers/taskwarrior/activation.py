@@ -239,6 +239,9 @@ def write_taskwarrior_installation_record(
             parents=True,
             exist_ok=True,
         )
+        destination.parent.chmod(0o750)
+        apply_ownership(destination.parent, owner, group)
+
         file_descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{destination.name}.",
             suffix=".tmp",
@@ -316,6 +319,18 @@ def _inspect_existing_installation(
             final_executable=final_executable,
             service_group=config.service_group,
             apply_ownership=apply_ownership,
+        )
+
+        config.installation_record.parent.mkdir(
+            mode=0o750,
+            parents=True,
+            exist_ok=True,
+        )
+        config.installation_record.parent.chmod(0o750)
+        apply_ownership(
+            config.installation_record.parent,
+            "root",
+            config.service_group,
         )
 
         if config.installation_record.exists():

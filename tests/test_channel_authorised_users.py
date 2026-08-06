@@ -26,6 +26,7 @@ role = "owner"
 enabled = true
 add_capabilities = ["Knowledge.Read.Medium"]
 remove_capabilities = ["Tasks.Delete"]
+calendar_ids = ["work", "personal", "work"]
 """
 
 
@@ -43,6 +44,7 @@ def test_parse_valid_configuration() -> None:
         ChannelCapability.KNOWLEDGE_READ_MEDIUM,
     )
     assert result.users[0].remove_capabilities == (ChannelCapability.TASKS_DELETE,)
+    assert result.users[0].calendar_ids == ("personal", "work")
 
 
 def test_string_identifiers_are_accepted() -> None:

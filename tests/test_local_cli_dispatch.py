@@ -20,6 +20,7 @@ def test_root_help_returns_success() -> None:
     assert stdout.getvalue().startswith("usage: lea ")
     assert "status" in stdout.getvalue()
     assert "task" in stdout.getvalue()
+    assert "calendar" in stdout.getvalue()
     assert "proposal" in stdout.getvalue()
     assert stderr.getvalue() == ""
 

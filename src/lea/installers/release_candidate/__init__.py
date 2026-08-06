@@ -14,6 +14,13 @@ from lea.installers.release_candidate.acceptance_record import (
     render_release_candidate_acceptance_record,
     write_release_candidate_acceptance_record,
 )
+from lea.installers.release_candidate.calendar import (
+    ReleaseCandidateCalendarInputs,
+    ReleaseCandidateCalendarPlan,
+    ReleaseCandidateCalendarResult,
+    create_calendar_toolchain_installation_plan,
+    install_release_candidate_calendar_toolchain,
+)
 from lea.installers.release_candidate.configuration import (
     BaseConfigurationPlan,
     BaseConfigurationResult,
@@ -180,6 +187,9 @@ __all__ = [
     "ReleaseCandidateAcceptanceHarnessResult",
     "ReleaseCandidateAcceptanceRecord",
     "ReleaseCandidateAcceptanceResult",
+    "ReleaseCandidateCalendarInputs",
+    "ReleaseCandidateCalendarPlan",
+    "ReleaseCandidateCalendarResult",
     "ReleaseCandidateInstallMode",
     "ReleaseCandidateInstallPlan",
     "ReleaseCandidateInstallRequest",
@@ -222,6 +232,7 @@ __all__ = [
     "collect_host_facts",
     "confirm_telegram_identity",
     "create_base_configuration_plan",
+    "create_calendar_toolchain_installation_plan",
     "create_installation_record",
     "create_post_install_health_plan",
     "create_release_candidate_acceptance_harness_plan",
@@ -240,6 +251,7 @@ __all__ = [
     "extract_start_identity",
     "format_release_candidate_summary",
     "install_base_configuration",
+    "install_release_candidate_calendar_toolchain",
     "install_release_candidate_taskwarrior",
     "persist_telegram_configuration",
     "provision_system_layout",

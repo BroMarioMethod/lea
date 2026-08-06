@@ -121,6 +121,14 @@ def test_activation_is_idempotent_for_matching_binary(
     final_executable.parent.mkdir(parents=True)
     final_executable.write_bytes(b"taskwarrior-binary")
     staged = make_staged_binary(tmp_path)
+    ownership: list[tuple[Path, str, str]] = []
+
+    def apply_ownership(
+        path: Path,
+        owner: str,
+        group: str,
+    ) -> None:
+        ownership.append((path, owner, group))
 
     first_record = TaskwarriorInstallationRecord(
         schema_version=1,
@@ -137,6 +145,7 @@ def test_activation_is_idempotent_for_matching_binary(
         installed_at=INSTALLED_AT,
     )
     config.installation_record.parent.mkdir(parents=True)
+    config.installation_record.parent.chmod(0o700)
     config.installation_record.write_text(
         render_taskwarrior_installation_record(first_record),
         encoding="utf-8",
@@ -146,12 +155,19 @@ def test_activation_is_idempotent_for_matching_binary(
         staged,
         config,
         clock=lambda: INSTALLED_AT,
+        apply_ownership=apply_ownership,
     )
 
     assert result.success is True
     assert result.already_installed is True
     assert result.record == first_record
     assert staged.staging_root.exists()
+    assert config.installation_record.parent.stat().st_mode & 0o777 == 0o750
+    assert (
+        config.installation_record.parent,
+        "root",
+        "lea",
+    ) in ownership
 
 
 def test_activation_rejects_existing_checksum_mismatch(
@@ -258,12 +274,18 @@ def test_activation_applies_managed_ownership_and_modes(
     assert final_root.stat().st_mode & 0o777 == 0o750
     assert final_bin.stat().st_mode & 0o777 == 0o750
     assert final_executable.stat().st_mode & 0o777 == 0o750
+    assert config.installation_record.parent.stat().st_mode & 0o777 == 0o750
     assert config.installation_record.stat().st_mode & 0o777 == 0o640
 
     assert (config.tools_root, "root", "lea") in ownership
     assert (final_root, "root", "lea") in ownership
     assert (final_bin, "root", "lea") in ownership
     assert (final_executable, "root", "lea") in ownership
+    assert (
+        config.installation_record.parent,
+        "root",
+        "lea",
+    ) in ownership
     assert (config.installation_record, "root", "lea") in ownership
 
 

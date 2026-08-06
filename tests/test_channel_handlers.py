@@ -55,6 +55,8 @@ DEFAULT_CAPABILITIES = (
     "Proposals.Read",
     "Proposals.Confirm",
     "Proposals.Execute.LowRisk",
+    "Calendar.Sync",
+    "Calendar.Write",
 )
 
 
@@ -63,6 +65,7 @@ def _request(
     parameters: dict[str, object],
     *,
     capabilities: tuple[str, ...] = DEFAULT_CAPABILITIES,
+    calendar_ids: tuple[str, ...] = (),
 ) -> ChannelRequest:
     return ChannelRequest(
         request_id=REQUEST_ID,
@@ -74,6 +77,7 @@ def _request(
             role="owner",
             display_name="Owner",
             capabilities=capabilities,
+            calendar_ids=calendar_ids,
         ),
         request_type=ChannelRequestType.COMMAND,
         command=command,
@@ -183,6 +187,203 @@ def test_task_create_submits_without_direct_execution(
     assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
     assert submitted[0].source == "telegram:owner"
     assert submitted[0].parameters["description"] == "Write Slice 12"
+
+
+def test_calendar_sync_submits_confirmation_required_medium_proposal(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(_request("calendar.sync", {"arguments": []}))
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert result.response.message == "Proposal awaiting confirmation."
+    assert calls == []
+    assert len(submitted) == 1
+    assert submitted[0].action == "calendar.sync"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+
+
+def test_calendar_sync_requires_independent_capability(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+    capabilities = tuple(
+        value for value in DEFAULT_CAPABILITIES if value != "Calendar.Sync"
+    )
+
+    result = application.handle(
+        _request("calendar.sync", {"arguments": []}, capabilities=capabilities)
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert submitted == []
+
+
+def test_calendar_discover_submits_confirmation_required_medium_proposal(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(_request("calendar.discover", {"arguments": []}))
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert calls == []
+    assert len(submitted) == 1
+    assert submitted[0].action == "calendar.discover"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+
+
+def test_calendar_create_submits_all_day_confirmation_proposal(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.create",
+            {
+                "arguments": [
+                    "personal",
+                    "2026-08-02",
+                    "2026-08-03",
+                    "-",
+                    "Public",
+                    "holiday",
+                ]
+            },
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert calls == []
+    assert submitted[0].action == "calendar.create"
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+    assert submitted[0].parameters["summary"] == "Public holiday"
+    assert submitted[0].parameters["timing"] == {
+        "start": "2026-08-02",
+        "end": "2026-08-03",
+        "all_day": True,
+        "timezone": None,
+    }
+
+
+def test_calendar_create_requires_write_capability(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+    capabilities = tuple(
+        value for value in DEFAULT_CAPABILITIES if value != "Calendar.Write"
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.create",
+            {"arguments": ["personal", "2026-08-02", "2026-08-03", "-", "X"]},
+            capabilities=capabilities,
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert submitted == []
+
+
+def test_calendar_modify_submits_exact_identity_proposal(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.modify",
+            {"arguments": ["personal", "event-uid", "Changed", "summary"]},
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert calls == []
+    assert submitted[0].action == "calendar.modify"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+    assert dict(submitted[0].parameters) == {
+        "calendar_id": "personal",
+        "event_uid": "event-uid",
+        "summary": "Changed summary",
+    }
+
+
+def test_calendar_cancel_submits_exact_identity_proposal(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.cancel",
+            {"arguments": ["personal", "event-uid"]},
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.SUCCEEDED
+    assert calls == []
+    assert submitted[0].action == "calendar.cancel"
+    assert submitted[0].risk_level is RiskLevel.MEDIUM
+    assert submitted[0].confirmation_policy is ConfirmationPolicy.ALWAYS
+    assert dict(submitted[0].parameters) == {
+        "calendar_id": "personal",
+        "event_uid": "event-uid",
+    }
+
+
+def test_calendar_policy_denies_mutation_before_proposal_submission(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    submitted: list[ActionProposal] = []
+    application = build_default_channel_application(
+        _dependencies(tmp_path, calls, submitted)
+    )
+
+    result = application.handle(
+        _request(
+            "calendar.cancel",
+            {"arguments": ["work", "secret-event"]},
+            calendar_ids=("personal",),
+        )
+    )
+
+    assert result.response is not None
+    assert result.response.outcome is ChannelResponseOutcome.NOT_AUTHORISED
+    assert submitted == []
 
 
 def test_task_modify_submits_confirmation_required_proposal(
@@ -481,6 +682,14 @@ def test_system_commands_report_only_supported_commands(
         "/help",
         "/status",
         "/tasks",
+        "/calendars",
+        "/calendar_events <start-date> <end-date> [calendar-id ...]",
+        "/calendar_show <calendar-id> <event-uid>",
+        "/calendar_sync",
+        "/calendar_discover",
+        "/calendar_add <calendar-id> <start> <end> <timezone-or-dash> <summary>",
+        "/calendar_modify <calendar-id> <event-uid> <summary>",
+        "/calendar_cancel <calendar-id> <event-uid>",
         "/task_add <description>",
         "/task_show <task-uuid>",
         "/task_modify <task-uuid> <description>",

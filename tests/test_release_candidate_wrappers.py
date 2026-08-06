@@ -12,6 +12,10 @@ INSTALL_WRAPPER = REPOSITORY_ROOT / "install.sh"
 UNINSTALL_WRAPPER = REPOSITORY_ROOT / "uninstall.sh"
 
 TASKWARRIOR_SHA256 = "d302761fcd1268e4a5a545613a2b68c61abd50c0bcaade3b3e68d728dd02e716"
+CALENDAR_REQUIREMENTS_SHA256 = (
+    "f5f7a0749b993e49bbd50b8807242611fff1dbc2477a59a4a292c0aa42420ba5"
+)
+CALENDAR_REQUIREMENTS_LOCK = Path("/opt/lea-release-assets/calendar-requirements.lock")
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -54,6 +58,15 @@ exit "${LEA_TEST_UV_EXIT:-0}"
 """,
     )
 
+    fake_python = tmp_path / "python3.13"
+    _write_executable(
+        fake_python,
+        """#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+""",
+    )
+
     environment = dict(os.environ)
     environment.update(
         {
@@ -63,6 +76,7 @@ exit "${LEA_TEST_UV_EXIT:-0}"
             "LEA_TEST_ARGUMENTS_FILE": str(arguments_file),
             "LEA_TEST_WORKING_DIRECTORY_FILE": str(working_directory_file),
             "LEA_UV_BIN": str(fake_uv),
+            "LEA_CALENDAR_PYTHON_BIN": str(fake_python),
         }
     )
     return environment, arguments_file, working_directory_file
@@ -143,6 +157,24 @@ def test_install_wrapper_supplies_pinned_defaults_and_user_arguments(
         "/var/tmp/lea-taskwarrior-build",
         "--taskwarrior-build-concurrency",
         "1",
+        "--calendar-requirements-lock",
+        str(CALENDAR_REQUIREMENTS_LOCK),
+        "--calendar-requirements-sha256",
+        CALENDAR_REQUIREMENTS_SHA256,
+        "--calendar-uv-executable",
+        environment["LEA_UV_BIN"],
+        "--calendar-python-executable",
+        environment["LEA_CALENDAR_PYTHON_BIN"],
+        "--calendar-package-index-url",
+        "https://pypi.org/simple",
+        "--calendar-toolchain-version",
+        "1.0.0",
+        "--calendar-platform",
+        "linux-aarch64",
+        "--calendar-khal-version",
+        "0.11.4",
+        "--calendar-vdirsyncer-version",
+        "0.19.3",
         "--mode",
         "repair",
         "--display-timezone",

@@ -3,7 +3,12 @@
 from collections.abc import Mapping
 from datetime import datetime
 
-from lea.actions import ActionHandler, ActionHandlerRegistry, ActionProposal
+from lea.actions import (
+    ActionHandler,
+    ActionHandlerFailure,
+    ActionHandlerRegistry,
+    ActionProposal,
+)
 from lea.tasks.contracts import (
     TaskCreateRequest,
     TaskCreateResult,
@@ -15,7 +20,7 @@ from lea.tasks.contracts import (
 from lea.tasks.provider import TaskProvider
 
 
-class TaskActionHandlerError(RuntimeError):
+class TaskActionHandlerError(ActionHandlerFailure):
     """Deterministic failure raised by a task action handler."""
 
     def __init__(self, *, code: str, message: str) -> None:
@@ -25,9 +30,7 @@ class TaskActionHandlerError(RuntimeError):
         if not message.strip():
             raise ValueError("message must be non-empty.")
 
-        self.code = code
-        self.message = message
-        super().__init__(f"{code}: {message}")
+        super().__init__(code=code, message=message)
 
 
 def create_task_action_handler(provider: TaskProvider) -> ActionHandler:

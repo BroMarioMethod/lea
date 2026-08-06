@@ -29,11 +29,13 @@ def _require_real_taskwarrior() -> Path:
     """Skip when the real Taskwarrior binary is unavailable."""
     executable = _taskwarrior_executable()
 
-    if not executable.is_file():
-        pytest.skip(f"Taskwarrior executable not found: {executable}")
+    try:
+        available = executable.is_file() and os.access(executable, os.X_OK)
+    except OSError:
+        available = False
 
-    if not os.access(executable, os.X_OK):
-        pytest.skip(f"Taskwarrior executable is not executable: {executable}")
+    if not available:
+        pytest.skip(f"Taskwarrior executable not found: {executable}")
 
     return executable
 

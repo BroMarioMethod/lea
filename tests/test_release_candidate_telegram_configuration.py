@@ -305,6 +305,7 @@ def test_custom_role_resolves_to_exact_selected_capabilities(
         plan.authorised_users_contents,
         encoding="utf-8",
     )
+    plan.authorised_users_file.chmod(plan.configuration_mode)
 
     loaded = load_authorised_channel_users(plan.authorised_users_file)
 

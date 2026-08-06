@@ -2,13 +2,40 @@
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TextIO, cast
 from uuid import UUID
 
-from lea.actions import ActionStatus
+from lea.actions import ActionProposal, ActionStatus
+from lea.calendars import (
+    CalendarCancelRequest,
+    CalendarCreateRequest,
+    CalendarEventQuery,
+    CalendarEventTiming,
+    CalendarModifyRequest,
+    build_calendar_cancel_event_proposal,
+    build_calendar_create_event_proposal,
+    build_calendar_discover_proposal,
+    build_calendar_modify_event_proposal,
+    build_calendar_sync_proposal,
+)
+from lea.cli.calendar_commands import (
+    CalendarCommandDependencies,
+    execute_calendar_events,
+    execute_calendar_list,
+    execute_calendar_show,
+    render_calendar_events_result,
+    render_calendar_list_result,
+    render_calendar_show_result,
+)
+from lea.cli.calendar_proposal_commands import (
+    CalendarProposalCommandDependencies,
+    execute_calendar_proposal,
+    render_calendar_proposal_result,
+)
 from lea.cli.contracts import (
     CliIssue,
     CliResult,
@@ -69,6 +96,8 @@ def execute_local_cli(
     status_dependencies: StatusDependencies | None = None,
     task_dependencies: TaskCommandDependencies | None = None,
     proposal_dependencies: ProposalCommandDependencies | None = None,
+    calendar_dependencies: CalendarCommandDependencies | None = None,
+    calendar_proposal_dependencies: CalendarProposalCommandDependencies | None = None,
 ) -> int:
     """Parse and dispatch one Local CLI command."""
     parser = create_local_cli_parser()
@@ -104,6 +133,66 @@ def execute_local_cli(
             human_renderer=render_status_result,
         )
 
+    if namespace.command == "calendar":
+        if namespace.calendar_command == "list":
+            result = execute_calendar_list(
+                config_path=_config_path(namespace),
+                expected_profile=_expected_profile(namespace),
+                dependencies=calendar_dependencies,
+            )
+            renderer = render_calendar_list_result
+        elif namespace.calendar_command == "show":
+            result = execute_calendar_show(
+                config_path=_config_path(namespace),
+                expected_profile=_expected_profile(namespace),
+                calendar_id=namespace.calendar_id,
+                event_uid=namespace.event_uid,
+                dependencies=calendar_dependencies,
+            )
+            renderer = render_calendar_show_result
+        elif namespace.calendar_command == "events":
+            try:
+                calendar_query = CalendarEventQuery(
+                    start_date=date.fromisoformat(namespace.start_date),
+                    end_date=date.fromisoformat(namespace.end_date),
+                    calendar_ids=tuple(namespace.calendar_id),
+                    include_cancelled=namespace.include_cancelled,
+                )
+            except ValueError as error:
+                result = CliResult.failed(
+                    exit_code=LocalCliExitCode.VALIDATION_ERROR,
+                    issues=(
+                        CliIssue(code="calendar_query_invalid", message=str(error)),
+                    ),
+                    data={"events": []},
+                )
+            else:
+                result = execute_calendar_events(
+                    config_path=_config_path(namespace),
+                    expected_profile=_expected_profile(namespace),
+                    query=calendar_query,
+                    dependencies=calendar_dependencies,
+                )
+            renderer = render_calendar_events_result
+        else:
+            proposal_builder_result = _calendar_proposal_builder(namespace)
+            if isinstance(proposal_builder_result, CliResult):
+                result = proposal_builder_result
+            else:
+                result = execute_calendar_proposal(
+                    config_path=_config_path(namespace),
+                    expected_profile=_expected_profile(namespace),
+                    build_proposal=proposal_builder_result,
+                    dependencies=calendar_proposal_dependencies,
+                )
+            renderer = render_calendar_proposal_result
+        return write_cli_result(
+            result,
+            stdout=stdout,
+            stderr=stderr,
+            json_output=bool(namespace.json),
+            human_renderer=renderer,
+        )
     if namespace.command == "proposal" and namespace.proposal_command == "list":
         result = execute_proposal_list(
             config_path=_config_path(namespace),
@@ -376,6 +465,104 @@ def _validate_runtime_selection(
         )
 
     return None
+
+
+def _calendar_proposal_builder(
+    namespace: argparse.Namespace,
+) -> Callable[[str, datetime], ActionProposal] | CliResult:
+    """Validate calendar mutation input and return its proposal builder."""
+    try:
+        if namespace.calendar_command == "create":
+            create_request = CalendarCreateRequest(
+                calendar_id=namespace.calendar_id,
+                summary=namespace.summary,
+                timing=_calendar_timing(
+                    namespace.start,
+                    namespace.end,
+                    namespace.timezone,
+                ),
+                description=namespace.description,
+                location=namespace.location,
+            )
+            return lambda proposal_id, created_at: build_calendar_create_event_proposal(
+                create_request,
+                proposal_id=proposal_id,
+                source="cli:local",
+                created_at=created_at,
+            )
+        if namespace.calendar_command == "modify":
+            modify_request = CalendarModifyRequest(
+                calendar_id=namespace.calendar_id,
+                event_uid=namespace.event_uid,
+                summary=namespace.summary,
+            )
+            return lambda proposal_id, created_at: build_calendar_modify_event_proposal(
+                modify_request,
+                proposal_id=proposal_id,
+                source="cli:local",
+                created_at=created_at,
+            )
+        if namespace.calendar_command == "cancel":
+            cancel_request = CalendarCancelRequest(
+                namespace.calendar_id, namespace.event_uid
+            )
+            return lambda proposal_id, created_at: build_calendar_cancel_event_proposal(
+                cancel_request,
+                proposal_id=proposal_id,
+                source="cli:local",
+                created_at=created_at,
+            )
+        if namespace.calendar_command == "sync":
+            return lambda proposal_id, created_at: build_calendar_sync_proposal(
+                proposal_id=proposal_id,
+                source="cli:local",
+                created_at=created_at,
+            )
+        return lambda proposal_id, created_at: build_calendar_discover_proposal(
+            proposal_id=proposal_id,
+            source="cli:local",
+            created_at=created_at,
+        )
+    except (TypeError, ValueError) as error:
+        return CliResult.failed(
+            exit_code=LocalCliExitCode.VALIDATION_ERROR,
+            issues=(CliIssue(code="calendar_proposal_invalid", message=str(error)),),
+            data={"proposal": None},
+        )
+
+
+def _calendar_timing(
+    start_text: str,
+    end_text: str,
+    timezone: str | None,
+) -> CalendarEventTiming:
+    """Parse matching ISO dates or aware datetimes into canonical timing."""
+    try:
+        start_date = date.fromisoformat(start_text)
+        end_date = date.fromisoformat(end_text)
+    except ValueError:
+        try:
+            start_datetime = datetime.fromisoformat(start_text)
+            end_datetime = datetime.fromisoformat(end_text)
+        except ValueError as error:
+            raise ValueError("start and end must be ISO dates or datetimes.") from error
+        if timezone is None:
+            raise ValueError("--timezone is required for timed events.") from None
+        if (
+            start_datetime.tzinfo is None
+            or start_datetime.utcoffset() is None
+            or end_datetime.tzinfo is None
+            or end_datetime.utcoffset() is None
+        ):
+            raise ValueError("Timed event inputs must include UTC offsets.") from None
+        return CalendarEventTiming(
+            start_datetime.astimezone(UTC),
+            end_datetime.astimezone(UTC),
+            timezone,
+        )
+    if timezone is not None:
+        raise ValueError("--timezone must not be supplied for all-day events.")
+    return CalendarEventTiming(start_date, end_date)
 
 
 def _config_path(namespace: argparse.Namespace) -> Path:
