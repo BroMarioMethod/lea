@@ -16,6 +16,7 @@ after durable findings have been transferred to the specification/checklist.
 | CLI collaboration flows | `83b4611` | Focused and full gates passed |
 | Conflict diagnostics | `c080fa4` | Focused synchronization and full gate passed |
 | Collaboration acceptance evidence | `7893ed2` | Focused/docs/typing gates passed |
+| Candidate-bound acceptance evidence | `eff2a31` | Full gate passed; evidence now records exact SHA |
 | Isolated restore hardening | `09f2126` | Recovery/rollback suite passed |
 
 ## Current external status
