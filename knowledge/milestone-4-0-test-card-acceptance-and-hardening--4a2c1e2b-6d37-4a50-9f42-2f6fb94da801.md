@@ -6,7 +6,7 @@ document_version: 1
 title: "Milestone 4.0 test-card acceptance and hardening"
 sensitivity: medium
 created_at: 2026-08-05T00:00:00Z
-updated_at: 2026-08-05T00:00:00Z
+updated_at: 2026-08-06T00:00:00Z
 links: []
 external_references: []
 ---
@@ -15,8 +15,8 @@ external_references: []
 ## Accepted source state
 
 - Branch: `milestone-4.0/calendar-provider`.
-- Test-card acceptance source commit: `79d42d5`.
-- The branch was pushed and the development card was verified at the same commit.
+- Test-card acceptance source commit: `50b8bde8ee55c2c3cd5d2cf03d2073caa2f1bc47`.
+- The branch was pushed and the final test-card rerun was verified at this exact commit.
 - This document intentionally contains no credentials, bcrypt verifiers, event
   identifiers or device identifiers.
 
@@ -37,62 +37,48 @@ The Raspberry Pi test card completed these observed checks:
 - fresh synchronization from restored storage with both acceptance events
   present; and
 - creation of the credential-free Android acceptance record.
+- final clean fresh-install and exact pinned provider provisioning;
+- post-reboot service enablement, runtime recreation and two-way sync;
+- idempotent supported upgrade verification; and
+- supported Radicale removal followed by managed LEA purge, with source and
+  release assets preserved.
 
 The live acceptance record and protected backup remain on the test card. They
 are operational evidence and must not be committed to Git.
 
-## Findings that block merge
+## Implemented findings
 
 ### 1. Reproducible Radicale supply chain
 
-The release assets did not contain a reviewed, pinned Radicale distribution.
-Live acceptance required a separate network installation of exact version
-3.5.4. Add a reproducible release asset with independently reviewed hashes,
-exact dependencies and an installation record. Do not infer trust by hashing an
-artifact only after downloading it.
+The branch now contains a reviewed, pinned Radicale 3.5.4 distribution lock,
+exact release hash and installation record.
 
 ### 2. Supported deployment entry point
 
-Radicale and CalDAV provisioning were exposed as library boundaries but lacked
-a supported operator command or release-candidate workflow. Live deployment
-required a temporary script. Provide a deterministic, redaction-safe command
-that accepts explicit trusted paths and approvals and never emits secrets.
+The public `lea calendar-provider install`, `bootstrap`, `backup`,
+`restore-isolated` and `remove` commands provide the supported workflow.
 
 ### 3. Root-run ownership
 
-The default Radicale orchestration provisions mode-0600 credentials without
-applying service ownership. When invoked as root, the `lea` service cannot read
-them. Ownership must be applied transactionally to configuration, secret and
-storage paths before service activation, with regression coverage.
+Root-run provisioning applies and verifies owner, group, mode and effective
+`lea` readability before activation, with regression coverage.
 
 ### 4. Service readiness race
 
-The first health inspection ran immediately after systemd reported activation
-and failed before Radicale began listening. Add a bounded monotonic readiness
-loop with explicit attempt/timeout diagnostics. Do not use an unbounded sleep
-or weaken the health requirement.
+Service readiness uses bounded probing with redaction-safe diagnostics.
 
 ### 5. First-collection bootstrap
 
-Initial discovery encountered a local collection that did not yet exist on the
-new server. vdirsyncer requested interactive confirmation; the non-interactive
-action handler failed with `handler_exception`. Collection creation must be a
-separate explicit, approved operation or an exact declared bootstrap input. It
-must remain non-interactive during execution.
+First collection creation is an explicit, approved, non-interactive bootstrap.
 
 ### 6. Action diagnostics
 
-Expected provider failures must retain redaction-safe phase, exit and issue
-information rather than collapsing to a generic handler exception. Passwords,
-authorization headers and event identifiers must remain excluded.
+Provider failures retain redaction-safe phase, exit and issue information.
 
 ### 7. Backup safety
 
-The manually created credential-bearing archive inherited mode 0644 and had to
-be corrected to root:root mode 0600. Supported backup tooling must create the
-archive securely from the first write, stop or snapshot Radicale consistently,
-preserve ownership and modes, verify an isolated restore, and avoid secret
-output.
+Backup tooling creates credential-bearing archives as root:root 0600 before the
+first write, preserves ownership and modes, and verifies isolated restore.
 
 ## Required development slices
 
@@ -109,8 +95,14 @@ output.
 11. Repeat clean install, repair, reboot persistence, two-way synchronization,
     reciprocal isolation and isolated restore on the test card before merge.
 
-## Merge rule
+## Final verification and merge rule
 
-Do not merge or tag Milestone 4.0 until all blocking findings above have an
-automated regression test, the full quality gate passes, and the final live
-test-card rerun is documented without secret or event-identity material.
+The complete quality gate passed with 2525 tests passed and 7 environment-
+appropriate skips. The final live test-card rerun is documented on the exact
+commit above without secret or event-identity material. Maintainers must still
+review the commit and complete organization-required CI and PR checks before
+merging or tagging Milestone 4.0.
+
+A distinct live replacement rollback was not fabricated because no second
+supported calendar version was available; replacement rollback behavior is
+covered by automated tests.

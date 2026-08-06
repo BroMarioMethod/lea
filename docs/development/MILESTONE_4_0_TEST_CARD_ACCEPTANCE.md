@@ -4,10 +4,10 @@
 
 | Field | Value |
 | --- | --- |
-| Date | 2026-08-04 |
+| Date | 2026-08-06 |
 | Branch | `milestone-4.0/calendar-provider` |
-| Accepted source commit | `79d42d5` |
-| Live result | Passed with development follow-ups |
+| Accepted source commit | `50b8bde8ee55c2c3cd5d2cf03d2073caa2f1bc47` |
+| Live result | Passed final exact-commit rerun; merge review remains required |
 
 This report is intentionally credential-free. It contains no password,
 verifier, device identifier, event identifier or live event summary.
@@ -31,21 +31,27 @@ verifier, device identifier, event identifier or live event summary.
 - The credential-free Android acceptance record was written with mode 0640.
 - The credential-bearing backup was restricted to root ownership and mode
   0600.
+- The final clean fresh-install run completed on the accepted source commit,
+  followed by provider provisioning, bootstrap, two-way Android synchronization,
+  reboot persistence, and post-reboot synchronization.
+- The supported upgrade path completed idempotently without disturbing the
+  activated CalDAV configuration.
+- Supported Radicale removal and managed LEA purge completed; all managed
+  services, state, credentials, service identity and units were absent while
+  the source checkout and release assets remained.
 
-## Follow-up gate
+## Final gate
 
-The live run exposed merge-blocking deployment gaps. The canonical remediation
-plan is the tracked knowledge document with ID
-`4a2c1e2b-6d37-4a50-9f42-2f6fb94da801`. In summary, merge remains blocked on:
+The remediation plan from knowledge document
+`4a2c1e2b-6d37-4a50-9f42-2f6fb94da801` was implemented on this branch. The
+complete repository gate passed with 2525 tests passed and 7 environment-
+appropriate skips. The branch is not marked merge-ready by this report:
+maintainers must review the exact commit and repeat any organization-required
+CI or PR checks.
 
-- reproducible Radicale release assets;
-- a supported Radicale and CalDAV deployment entry point;
-- correct privileged-provisioning ownership;
-- bounded service readiness;
-- explicit non-interactive first-collection bootstrap;
-- redaction-safe execution diagnostics;
-- secure backup tooling; and
-- automated regression coverage followed by a complete live rerun.
+Replacement rollback behavior is covered by automated tests; a distinct live
+version replacement was not fabricated because no second supported calendar
+version was available on the test card.
 
 ## Evidence custody
 
