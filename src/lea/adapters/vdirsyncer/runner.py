@@ -119,6 +119,23 @@ class VdirsyncerRunner:
             duration_seconds=monotonic() - started,
         )
         if completed.returncode != 0:
+            combined_output = f"{stdout}\n{stderr}".lower()
+            if "conflict" in combined_output:
+                return VdirsyncerRunResult(
+                    success=False,
+                    command=evidence,
+                    issues=(
+                        _issue(
+                            "vdirsyncer_conflict_detected",
+                            (
+                                "vdirsyncer reported a synchronization conflict; "
+                                "no automatic overwrite was accepted."
+                            ),
+                            operation,
+                            completed.returncode,
+                        ),
+                    ),
+                )
             if operation == "calendar_discover" and (
                 "Should vdirsyncer attempt to create it?" in stdout
                 or "Should vdirsyncer attempt to create it?" in stderr

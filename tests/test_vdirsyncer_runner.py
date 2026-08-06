@@ -71,6 +71,24 @@ def test_runner_reports_nonzero_without_exposing_stderr_in_issue(
     assert "secret detail" not in result.issues[0].message
 
 
+def test_runner_reports_conflict_without_exposing_provider_output(
+    tmp_path: Path,
+) -> None:
+    """Provider conflicts must stop synchronization without an overwrite."""
+    config = _config(
+        tmp_path,
+        "import sys; print('private conflict payload', file=sys.stderr); "
+        "raise SystemExit(2)",
+    )
+
+    result = VdirsyncerRunner(config).run(("sync",), operation="calendar_sync")
+
+    assert result.success is False
+    assert result.command is not None
+    assert result.issues[0].code == "vdirsyncer_conflict_detected"
+    assert "private conflict payload" not in result.issues[0].message
+
+
 def test_discovery_reports_missing_collection_bootstrap_without_prompt_text(
     tmp_path: Path,
 ) -> None:
