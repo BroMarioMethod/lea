@@ -214,6 +214,8 @@ Current accepted or completed standards and specifications include:
 - `LEA-SPEC-0010` — Persistent Proposal Repository Specification
 - `LEA-SPEC-0017` — Calendar Provider, Managed Toolchain and CalDAV
   Synchronisation Specification (Milestone 4.0 candidate)
+- `LEA-SPEC-0018` — Calendar Collaboration and Recurring Events (Milestone 4.1
+  proposal)
 
 Operational and development guides:
 
@@ -231,6 +233,8 @@ docs/development/RELEASE_CANDIDATE_CLEAN_ROOM_VERIFICATION.md
 docs/development/RELEASE_CHECKLIST_MILESTONE_2.7.md
 docs/development/RELEASE_CHECKLIST_MILESTONE_4.0.md
 docs/development/MILESTONE_4_TEST_CARD.md
+docs/development/MILESTONE_4_1_TEST_CARD.md
+docs/development/RELEASE_CHECKLIST_MILESTONE_4.1.md
 docs/development/TASKWARRIOR_INSTALLATION.md
 docs/development/CALENDAR_PROVIDER_OPERATIONS.md
 ```
