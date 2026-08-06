@@ -22,10 +22,11 @@ after durable findings have been transferred to the specification/checklist.
 ## Current external status
 
 - Automated implementation checks are green for the slices above.
-- Exact candidate `eff2a31` passed `scripts/check.sh`: 2,547 tests passed and
-  7 expected environment skips.
-- At `1c3c12d`, the branch is clean, synced with its origin branch, and
-  `git merge-tree --write-tree origin/main HEAD` reports no conflicts.
+- Exact candidate `6058d0a45fae0b176a894ded012c6471453597a4` passed
+  `scripts/check.sh`: 2,547 tests passed and 7 expected environment skips.
+- The branch is clean and synced with its origin branch. The merge-result gate
+  remains a separate required check because this card cannot create Git's
+  temporary merge state in its restricted filesystem.
 - The physical DAVx⁵/Android test-card run for the final commit is still
   required; it must produce the collaboration acceptance record outside Git.
 - Merge remains blocked until the final card evidence and merge-result gate are
