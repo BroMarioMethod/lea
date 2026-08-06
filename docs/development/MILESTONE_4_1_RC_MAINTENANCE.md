@@ -22,7 +22,7 @@ after durable findings have been transferred to the specification/checklist.
 ## Current external status
 
 - Automated implementation checks are green for the slices above.
-- Exact candidate `11dccd6` passed `scripts/check.sh`: 2,547 tests passed and
+- Exact candidate `eff2a31` passed `scripts/check.sh`: 2,547 tests passed and
   7 expected environment skips.
 - At `1c3c12d`, the branch is clean, synced with its origin branch, and
   `git merge-tree --write-tree origin/main HEAD` reports no conflicts.

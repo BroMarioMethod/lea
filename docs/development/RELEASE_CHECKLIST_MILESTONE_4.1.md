@@ -46,6 +46,6 @@ resulting record remains on the card and is not committed.
 
 Do not merge or tag 4.1 until every MVP gate passes. OAuth and additional
 providers require a separate beta decision and must not be used to declare the
-MVP complete. The current candidate `11dccd6` has a green automated gate
+MVP complete. The current candidate `a77ceb3` has a green automated gate
 (2,547 passed, 7 expected skips); the physical test-card gate and merge-result
 quality gate remain open until their evidence is recorded.
