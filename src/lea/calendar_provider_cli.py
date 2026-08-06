@@ -40,6 +40,7 @@ from lea.installers.radicale.recovery import (
     create_calendar_provider_backup,
     restore_calendar_provider_backup_isolated,
 )
+from lea.installers.radicale.removal import RadicaleRemovalRequest, remove_radicale
 from lea.installers.radicale.service import RadicaleServiceConfig
 
 RADICALE_LOCK_SHA256 = (
@@ -97,6 +98,15 @@ def create_parser() -> argparse.ArgumentParser:
     restore = commands.add_parser("restore-isolated")
     restore.add_argument("--archive", type=Path, required=True)
     restore.add_argument("--destination", type=Path, required=True)
+    remove = commands.add_parser(
+        "remove", help="Stop Radicale and optionally purge its managed state."
+    )
+    remove.add_argument(
+        "--purge", action="store_true", help="Also remove credentials and calendars."
+    )
+    remove.add_argument(
+        "--yes", action="store_true", required=True, help="Approve removal."
+    )
     return parser
 
 
@@ -150,6 +160,8 @@ def execute_calendar_provider_cli(
             )
             stdout.write("Calendar first collection bootstrap: SUCCESS\n")
             return 0
+        if namespace.operation == "remove":
+            return _remove(namespace, stdout, stderr)
         if namespace.operation == "backup":
             recovery = create_calendar_provider_backup(namespace.output)
         else:
@@ -164,6 +176,31 @@ def execute_calendar_provider_cli(
     except (OSError, ValueError, TypeError) as error:
         stderr.write(f"Invalid calendar-provider input: {error}\n")
         return 2
+
+
+def _remove(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> int:
+    """Remove the exact separately managed Radicale service and state."""
+    layout = canonical_radicale_runtime_layout()
+    service = RadicaleServiceConfig(
+        Path("/opt/lea-tools/radicale/3.5.4/.venv/bin/radicale"),
+        layout,
+        Path("/etc/systemd/system/lea-radicale.service"),
+        Path("/usr/bin/systemctl"),
+    )
+    result = remove_radicale(
+        RadicaleRemovalRequest(
+            service,
+            Path("/var/lib/lea/install/radicale.json"),
+            purge=namespace.purge,
+            confirmed=namespace.yes,
+        )
+    )
+    if not result.success:
+        stderr.write(f"Radicale removal failed: {result.issues[0].code}\n")
+        return 1
+    disposition = "service and state" if result.state_purged else "service"
+    stdout.write(f"Radicale {disposition} removal: SUCCESS\n")
+    return 0
 
 
 def _install(namespace: argparse.Namespace, stdout: TextIO, stderr: TextIO) -> int:

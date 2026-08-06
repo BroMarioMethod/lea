@@ -260,12 +260,22 @@ state, logs and finally the service account. It preserves the source checkout
 and `/opt/lea-release-assets`.
 
 Before purge, revoke Android and other CalDAV credentials and make a verified
-backup. Radicale has a separate service lifecycle: stop and disable
-`lea-radicale.service` through `remove_radicale` without purge; this removes its
-unit while retaining configuration, users and collection storage until the
-backup restore has passed. Invoke the same boundary with both `purge=True` and
-`confirmed=True` only as a second, explicitly authorised operation. The tested
-purge removes the exact configuration file, users file, collection storage and
-installation record, rejects symbolic-link targets, and leaves unrelated paths
-alone. Finally verify the revoked credentials fail and no managed service
-remains active.
+backup. Radicale has a separate service lifecycle. Stop and disable it while
+retaining configuration, credentials and collection storage with:
+
+```text
+lea calendar-provider remove --yes
+```
+
+After the backup restore has passed and credential revocation is approved,
+remove the retained Radicale state before the base LEA purge:
+
+```text
+lea calendar-provider remove --purge --yes
+lea uninstall-release-candidate --purge --yes
+```
+
+The tested Radicale purge removes the exact configuration file, users file,
+collection storage and installation record, rejects symbolic-link targets, and
+leaves unrelated paths alone. Finally verify the revoked credentials fail and
+no managed service remains active.

@@ -1,5 +1,6 @@
 """Tests for protected calendar-provider administrative inputs."""
 
+import os
 import urllib.error
 import urllib.request
 from email.message import Message
@@ -9,6 +10,7 @@ from typing import Any
 import pytest
 
 from lea import calendar_provider_cli
+from lea.installers.radicale import RadicaleRemovalResult
 
 
 def test_credentials_file_loads_canonical_accounts_without_exposing_hashes() -> None:
@@ -111,6 +113,33 @@ def test_bootstrap_runtime_paths_are_canonical() -> None:
 
 def test_setgid_mode_is_not_reduced_to_basic_permission_bits() -> None:
     assert 0o42750 & 0o7777 == 0o2750
+
+
+def test_public_remove_command_uses_exact_confirmed_purge_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[Any] = []
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+
+    def remove(request: Any) -> RadicaleRemovalResult:
+        observed.append(request)
+        return RadicaleRemovalResult(True, True, True, (), ())
+
+    monkeypatch.setattr(calendar_provider_cli, "remove_radicale", remove)
+    result = calendar_provider_cli.execute_calendar_provider_cli(
+        ("remove", "--purge", "--yes")
+    )
+
+    assert result == 0
+    assert len(observed) == 1
+    assert observed[0].purge is True
+    assert observed[0].confirmed is True
+    assert observed[0].installation_record == Path("/var/lib/lea/install/radicale.json")
+
+
+def test_public_remove_command_requires_explicit_confirmation() -> None:
+    with pytest.raises(SystemExit):
+        calendar_provider_cli.create_parser().parse_args(("remove", "--purge"))
 
 
 def test_bootstrap_creates_collection_only_after_not_found(
