@@ -89,20 +89,33 @@ def restore_calendar_provider_backup_isolated(
         return _failure(destination, "restore_destination_invalid")
     destination.mkdir(mode=0o700)
     try:
+        os.chmod(destination, 0o700)
+        os.chown(destination, os.getuid(), os.getgid())
         with tarfile.open(archive_path, mode="r:gz") as archive:
             members = archive.getmembers()
+            names: set[str] = set()
             for member in members:
                 path = PurePosixPath(member.name)
                 if (
-                    path.is_absolute()
+                    not member.name
+                    or path.is_absolute()
                     or ".." in path.parts
                     or member.issym()
                     or member.islnk()
                     or member.isdev()
                     or member.isfifo()
+                    or member.name in names
                 ):
                     raise tarfile.TarError("unsafe archive member")
+                names.add(member.name)
             archive.extractall(destination, members=members, filter="fully_trusted")
+        for restored_path in (destination, *destination.rglob("*")):
+            if (
+                restored_path.is_symlink()
+                or restored_path.stat().st_uid != os.getuid()
+                or restored_path.stat().st_gid != os.getgid()
+            ):
+                raise tarfile.TarError("restored ownership is unsafe")
     except (OSError, tarfile.TarError, TypeError):
         return _failure(destination, "restore_failed")
     return CalendarProviderBackupResult(True, destination)
