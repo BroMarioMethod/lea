@@ -153,6 +153,7 @@ class CalendarEvent:
     location: str | None = None
     cancelled: bool = False
     recurrence: CalendarRecurrence | None = None
+    recurrence_id: date | datetime | None = None
     attendees: tuple[CalendarAttendee, ...] = ()
 
     def __post_init__(self) -> None:
@@ -174,6 +175,16 @@ class CalendarEvent:
             self.recurrence, CalendarRecurrence
         ):
             raise TypeError("recurrence must be a CalendarRecurrence or None.")
+        if self.recurrence_id is not None:
+            if type(self.recurrence_id) is date:
+                pass
+            elif isinstance(self.recurrence_id, datetime):
+                _validate_canonical_utc_datetime(
+                    self.recurrence_id,
+                    field_name="recurrence_id",
+                )
+            else:
+                raise TypeError("recurrence_id must be a date or UTC datetime.")
         object.__setattr__(self, "attendees", canonical_attendees(self.attendees))
 
 

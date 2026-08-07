@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from lea.adapters.khal.contracts import KhalCalendarItemParseResult
@@ -144,21 +144,34 @@ def parse_khal_calendar_item(
                 field="RRULE",
             )
 
-    recurrence_field = next(
-        (
-            field
-            for field in _RECURRENCE_FIELDS
-            if field != "RRULE" and component.get(field) is not None
-        ),
-        None,
-    )
-    if recurrence_field is not None:
-        return _failure(
-            code="khal_icalendar_recurrence_exception_unsupported",
-            message="Recurrence exceptions are not supported by this slice.",
-            calendar_id=calendar_id,
-            field=recurrence_field,
-        )
+    recurrence_id: date | datetime | None = None
+    recurrence_id_property = component.get("RECURRENCE-ID")
+    if recurrence_id_property is not None:
+        try:
+            value = cast(Any, recurrence_id_property).dt
+            if isinstance(value, datetime):
+                if value.tzinfo is None or value.utcoffset() is None:
+                    raise ValueError
+                recurrence_id = value.astimezone(UTC)
+            elif type(value) is date:
+                recurrence_id = value
+            else:
+                raise ValueError
+        except (AttributeError, TypeError, ValueError):
+            return _failure(
+                code="khal_icalendar_recurrence_id_invalid",
+                message="The recurrence instance identifier is invalid.",
+                calendar_id=calendar_id,
+                field="RECURRENCE-ID",
+            )
+    for field in ("RDATE", "EXDATE"):
+        if component.get(field) is not None:
+            return _failure(
+                code="khal_icalendar_recurrence_exception_unsupported",
+                message="RDATE and EXDATE recurrence material is unsupported.",
+                calendar_id=calendar_id,
+                field=field,
+            )
 
     uid_result = _decode_required_text(
         component,
@@ -252,6 +265,7 @@ def parse_khal_calendar_item(
             location=location_result,
             cancelled=status == "CANCELLED",
             recurrence=recurrence,
+            recurrence_id=recurrence_id,
             attendees=attendees_result,
         )
     except (TypeError, ValueError):

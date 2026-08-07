@@ -223,7 +223,6 @@ def test_rejects_multiple_events_per_vdir_item() -> None:
     [
         "RDATE:20260802T080000Z\r\n",
         "EXDATE:20260802T080000Z\r\n",
-        "RECURRENCE-ID:20260802T080000Z\r\n",
     ],
 )
 def test_rejects_recurrence_material(
@@ -251,6 +250,17 @@ def test_parses_supported_rrule_without_flattening() -> None:
     assert result.event is not None
     assert result.event.recurrence is not None
     assert result.event.recurrence.to_rrule() == ("FREQ=WEEKLY;INTERVAL=2;COUNT=3")
+
+
+def test_parses_recurrence_id_for_instance_exception() -> None:
+    result = parse_khal_calendar_item(
+        calendar_document(timed_event(extra="RECURRENCE-ID:20260802T080000Z\r\n")),
+        calendar_id="work",
+    )
+
+    assert result.success is True
+    assert result.event is not None
+    assert result.event.recurrence_id is not None
 
 
 def test_parses_attendee_parameters() -> None:

@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from contextlib import suppress
-from datetime import datetime
+from dataclasses import replace
+from datetime import date, datetime, timedelta
 from importlib import import_module
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -23,6 +24,7 @@ from lea.calendars import (
     CalendarModifyRequest,
     CalendarMutationResult,
     CalendarProviderIssue,
+    expand_calendar_event,
 )
 
 CalendarUidFactory = Callable[[], str]
@@ -144,6 +146,17 @@ def modify_khal_calendar_event(
     if isinstance(found, CalendarMutationResult):
         return found
     destination, existing = found
+    if request.target is not None and request.target.kind == "instance":
+        assert request.target.recurrence_id is not None
+        instance = _instance_event(existing, request.target.recurrence_id)
+        if isinstance(instance, CalendarMutationResult):
+            return instance
+        destination = _instance_path(
+            destination.parent,
+            request.event_uid,
+            request.target.recurrence_id,
+        )
+        existing = instance
     updated = CalendarEvent(
         calendar_id=existing.calendar_id,
         event_uid=existing.event_uid,
@@ -164,11 +177,27 @@ def modify_khal_calendar_event(
             else existing.location
         ),
         cancelled=existing.cancelled,
+        recurrence=(
+            None
+            if request.target is not None and request.target.kind == "instance"
+            else request.recurrence
+            if request.recurrence is not None
+            else existing.recurrence
+        ),
+        recurrence_id=(
+            request.target.recurrence_id
+            if request.target is not None and request.target.kind == "instance"
+            else existing.recurrence_id
+        ),
+        attendees=(
+            request.attendees if request.attendees is not None else existing.attendees
+        ),
     )
 
     staged: Path | None = None
+    original: bytes | None = None
     try:
-        original = destination.read_bytes()
+        original = destination.read_bytes() if destination.exists() else None
         staged = _write_staged_document(
             destination.parent,
             _render_event_values(updated),
@@ -201,9 +230,12 @@ def modify_khal_calendar_event(
     readback = read_khal_calendar_item(destination, calendar_id=request.calendar_id)
     if not readback.success or readback.event != updated:
         with suppress(OSError):
-            replacement = _write_staged_document(destination.parent, original)
-            os.replace(replacement, destination)
-            _fsync_directory(destination.parent)
+            if original is None:
+                destination.unlink(missing_ok=True)
+            else:
+                replacement = _write_staged_document(destination.parent, original)
+                os.replace(replacement, destination)
+                _fsync_directory(destination.parent)
         return _failure(
             code="khal_calendar_event_readback_failed",
             message=(
@@ -235,6 +267,17 @@ def cancel_khal_calendar_event(
     if isinstance(found, CalendarMutationResult):
         return found
     destination, existing = found
+    if request.target is not None and request.target.kind == "instance":
+        assert request.target.recurrence_id is not None
+        instance = _instance_event(existing, request.target.recurrence_id)
+        if isinstance(instance, CalendarMutationResult):
+            return instance
+        destination = _instance_path(
+            destination.parent,
+            request.event_uid,
+            request.target.recurrence_id,
+        )
+        existing = instance
     cancelled = CalendarEvent(
         calendar_id=existing.calendar_id,
         event_uid=existing.event_uid,
@@ -243,13 +286,17 @@ def cancel_khal_calendar_event(
         description=existing.description,
         location=existing.location,
         cancelled=True,
+        recurrence=None if existing.recurrence_id is not None else existing.recurrence,
+        recurrence_id=existing.recurrence_id,
+        attendees=existing.attendees,
     )
     if existing.cancelled:
         return CalendarMutationResult(success=True, event=existing, issues=())
 
     staged: Path | None = None
+    original: bytes | None = None
     try:
-        original = destination.read_bytes()
+        original = destination.read_bytes() if destination.exists() else None
         staged = _write_staged_document(
             destination.parent,
             _render_event_values(cancelled),
@@ -282,9 +329,12 @@ def cancel_khal_calendar_event(
     readback = read_khal_calendar_item(destination, calendar_id=request.calendar_id)
     if not readback.success or readback.event != cancelled:
         with suppress(OSError):
-            replacement = _write_staged_document(destination.parent, original)
-            os.replace(replacement, destination)
-            _fsync_directory(destination.parent)
+            if original is None:
+                destination.unlink(missing_ok=True)
+            else:
+                replacement = _write_staged_document(destination.parent, original)
+                os.replace(replacement, destination)
+                _fsync_directory(destination.parent)
         return _failure(
             code="khal_calendar_event_readback_failed",
             message="The cancelled event failed canonical read-back validation.",
@@ -355,6 +405,9 @@ def _find_event_item(
             field="event_uid",
             operation=operation,
         )
+    series_matches = [item for item in matches if item[1].recurrence_id is None]
+    if len(series_matches) == 1:
+        return series_matches[0]
     if len(matches) != 1:
         return _failure(
             code="khal_calendar_event_identity_duplicate",
@@ -365,6 +418,55 @@ def _find_event_item(
             operation=operation,
         )
     return matches[0]
+
+
+def _instance_event(
+    series: CalendarEvent,
+    recurrence_id: date | datetime | None,
+) -> CalendarEvent | CalendarMutationResult:
+    """Project one requested recurrence occurrence for exception mutation."""
+    if series.recurrence is None or recurrence_id is None:
+        return _failure(
+            code="khal_calendar_instance_not_found",
+            message="The requested event does not contain that recurrence instance.",
+            calendar_id=series.calendar_id,
+            event_uid=series.event_uid,
+            operation="modify_event",
+        )
+    local_date = (
+        recurrence_id.date() if isinstance(recurrence_id, datetime) else recurrence_id
+    )
+    occurrences = expand_calendar_event(
+        series,
+        range_start=local_date - timedelta(days=2),
+        range_end=local_date + timedelta(days=3),
+    )
+    for occurrence in occurrences:
+        if occurrence.occurrence_start == recurrence_id:
+            return replace(
+                series,
+                timing=type(series.timing)(
+                    occurrence.occurrence_start,
+                    occurrence.occurrence_end,
+                    series.timing.timezone,
+                ),
+                recurrence=None,
+                recurrence_id=recurrence_id,
+            )
+    return _failure(
+        code="khal_calendar_instance_not_found",
+        message="The requested recurrence instance does not exist.",
+        calendar_id=series.calendar_id,
+        event_uid=series.event_uid,
+        operation="modify_event",
+    )
+
+
+def _instance_path(
+    directory: Path, event_uid: str, recurrence_id: date | datetime
+) -> Path:
+    token = recurrence_id.isoformat().replace(":", "-")
+    return directory / f"{event_uid}.instance-{token}.ics"
 
 
 def _write_staged_document(directory: Path, document: bytes) -> Path:
@@ -434,6 +536,8 @@ def _render_event_values(event: CalendarEvent) -> bytes:
             "rrule",
             vars(module)["vRecur"].from_ical(event.recurrence.to_rrule()),
         )
+    if event.recurrence_id is not None:
+        component.add("recurrence-id", event.recurrence_id)
     for attendee in event.attendees:
         component.add(
             "attendee",
