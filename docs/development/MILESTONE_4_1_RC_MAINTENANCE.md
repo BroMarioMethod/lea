@@ -22,7 +22,7 @@ after durable findings have been transferred to the specification/checklist.
 ## Current external status
 
 - Automated implementation checks are green for the slices above.
-- Exact candidate `6058d0a45fae0b176a894ded012c6471453597a4` passed
+- Exact candidate `67eb89cd15509676b976177f9975f67be4f2d8e3` passed
   `scripts/check.sh`: 2,547 tests passed and 7 expected environment skips.
 - The branch is clean and synced with its origin branch. The merge-result gate
   remains a separate required check because this card cannot create Git's
