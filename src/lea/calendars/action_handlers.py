@@ -26,6 +26,7 @@ from lea.calendars.contracts import (
     CalendarShowEventResult,
 )
 from lea.calendars.provider import CalendarProvider
+from lea.calendars.recurrence import CalendarRecurrence
 from lea.calendars.synchronization import CalendarSynchronizer
 
 
@@ -126,6 +127,7 @@ def create_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
                 "timing",
                 "description",
                 "location",
+                "recurrence",
                 "attendees",
             },
         )
@@ -135,6 +137,7 @@ def create_calendar_event_action_handler(provider: CalendarProvider) -> ActionHa
             timing=_required_timing(parameters, "timing"),
             description=_optional_text(parameters, "description"),
             location=_optional_text(parameters, "location"),
+            recurrence=_optional_recurrence(parameters, "recurrence"),
             attendees=_optional_attendees(parameters, "attendees") or (),
         )
         return _mutation_output(provider.create_event(request))
@@ -382,6 +385,28 @@ def _optional_boolean(
         )
 
     return value
+
+
+def _optional_recurrence(
+    parameters: Mapping[str, object],
+    field: str,
+) -> CalendarRecurrence | None:
+    """Parse one canonical RRULE string from a create proposal."""
+    if field not in parameters:
+        return None
+    value = parameters[field]
+    if not isinstance(value, str):
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message="recurrence must be an RRULE string.",
+        )
+    try:
+        return CalendarRecurrence.from_rrule(value)
+    except (TypeError, ValueError) as error:
+        raise CalendarActionHandlerError(
+            code="calendar_action_parameter_invalid",
+            message="recurrence must be a supported RRULE.",
+        ) from error
 
 
 def _optional_target(

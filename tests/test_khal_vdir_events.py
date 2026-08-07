@@ -307,6 +307,44 @@ def test_timed_overlap_uses_configured_display_timezone(
     )
 
 
+def test_lists_generated_recurring_instances_in_query_range(
+    tmp_path: Path,
+) -> None:
+    config = make_config(tmp_path)
+    collection = make_collection(config, "personal")
+    path = collection / "recurring.ics"
+    path.write_bytes(
+        b"BEGIN:VCALENDAR\r\n"
+        b"VERSION:2.0\r\n"
+        b"BEGIN:VEVENT\r\n"
+        b"UID:recurring\r\n"
+        b"DTSTART;TZID=Africa/Gaborone:20260810T100000\r\n"
+        b"DTEND;TZID=Africa/Gaborone:20260810T103000\r\n"
+        b"RRULE:FREQ=WEEKLY;COUNT=3\r\n"
+        b"SUMMARY:Recurring\r\n"
+        b"END:VEVENT\r\n"
+        b"END:VCALENDAR\r\n"
+    )
+
+    result = list_khal_calendar_events(
+        config,
+        query(start=date(2026, 8, 10), end=date(2026, 8, 31)),
+    )
+
+    assert result.success is True
+    assert tuple(event.event_uid for event in result.events) == (
+        "recurring",
+        "recurring",
+        "recurring",
+    )
+    assert tuple(event.timing.start for event in result.events) == (
+        datetime(2026, 8, 10, 8, tzinfo=UTC),
+        datetime(2026, 8, 17, 8, tzinfo=UTC),
+        datetime(2026, 8, 24, 8, tzinfo=UTC),
+    )
+    assert all(event.recurrence is None for event in result.events)
+
+
 def test_cancelled_events_are_filtered_unless_requested(
     tmp_path: Path,
 ) -> None:

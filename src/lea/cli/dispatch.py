@@ -18,6 +18,7 @@ from lea.calendars import (
     CalendarEventTarget,
     CalendarEventTiming,
     CalendarModifyRequest,
+    CalendarRecurrence,
     build_calendar_cancel_event_proposal,
     build_calendar_create_event_proposal,
     build_calendar_discover_proposal,
@@ -485,6 +486,11 @@ def _calendar_proposal_builder(
                 ),
                 description=namespace.description,
                 location=namespace.location,
+                recurrence=(
+                    CalendarRecurrence.from_rrule(namespace.rrule)
+                    if namespace.rrule is not None
+                    else None
+                ),
                 attendees=tuple(
                     CalendarAttendee(address) for address in namespace.attendee
                 ),

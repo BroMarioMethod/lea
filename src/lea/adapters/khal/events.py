@@ -1,6 +1,7 @@
 """Deterministic read-only listing of local khal vdir events."""
 
-from datetime import UTC, date, datetime, time
+from dataclasses import replace
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -13,9 +14,11 @@ from lea.adapters.khal.vdirs import discover_khal_calendar_collections
 from lea.calendars import (
     CalendarEvent,
     CalendarEventQuery,
+    CalendarEventTiming,
     CalendarListEventsResult,
     CalendarProviderIssue,
     CalendarShowEventResult,
+    expand_calendar_event,
 )
 
 _PROVIDER = "khal"
@@ -58,10 +61,6 @@ def list_khal_calendar_events(
         return _failure(selected_result)
 
     display_zone = ZoneInfo(config.display_timezone)
-    query_start_utc, query_end_utc = _query_utc_bounds(
-        query=query,
-        display_zone=display_zone,
-    )
     events: list[CalendarEvent] = []
     seen_identities: set[tuple[str, str]] = set()
 
@@ -124,15 +123,52 @@ def list_khal_calendar_events(
             if event.cancelled and not query.include_cancelled:
                 continue
 
-            if not _event_overlaps_query(
-                event,
-                query=query,
-                query_start_utc=query_start_utc,
-                query_end_utc=query_end_utc,
-            ):
-                continue
+            try:
+                occurrences = expand_calendar_event(
+                    event,
+                    range_start=query.start_date - timedelta(days=2),
+                    range_end=query.end_date + timedelta(days=2),
+                )
+            except (TypeError, ValueError):
+                return _failure(
+                    _issue(
+                        code="khal_calendar_recurrence_expansion_failed",
+                        message="A calendar recurrence could not be expanded safely.",
+                        calendar_id=event.calendar_id,
+                        event_uid=event.event_uid,
+                        field="recurrence",
+                    )
+                )
 
-            events.append(event)
+            for occurrence in occurrences:
+                if not _occurrence_overlaps_query(
+                    occurrence.occurrence_start,
+                    occurrence.occurrence_end,
+                    event=event,
+                    query_start_utc=datetime.combine(
+                        query.start_date,
+                        time.min,
+                        tzinfo=display_zone,
+                    ).astimezone(UTC),
+                    query_end_utc=datetime.combine(
+                        query.end_date,
+                        time.min,
+                        tzinfo=display_zone,
+                    ).astimezone(UTC),
+                    query=query,
+                ):
+                    continue
+                events.append(
+                    replace(
+                        event,
+                        timing=CalendarEventTiming(
+                            occurrence.occurrence_start,
+                            occurrence.occurrence_end,
+                            event.timing.timezone,
+                        ),
+                        recurrence=None,
+                    )
+                )
 
     events.sort(
         key=lambda event: _event_sort_key(
@@ -145,6 +181,26 @@ def list_khal_calendar_events(
         success=True,
         events=tuple(events),
         issues=(),
+    )
+
+
+def _occurrence_overlaps_query(
+    start: date | datetime,
+    end: date | datetime,
+    *,
+    event: CalendarEvent,
+    query_start_utc: datetime,
+    query_end_utc: datetime,
+    query: CalendarEventQuery,
+) -> bool:
+    """Apply half-open query bounds to one expanded occurrence."""
+    if event.timing.all_day:
+        assert isinstance(start, date) and not isinstance(start, datetime)
+        assert isinstance(end, date) and not isinstance(end, datetime)
+        return end > query.start_date and start < query.end_date
+    assert isinstance(start, datetime) and isinstance(end, datetime)
+    return (
+        end.astimezone(UTC) > query_start_utc and start.astimezone(UTC) < query_end_utc
     )
 
 

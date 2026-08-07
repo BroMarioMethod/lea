@@ -397,6 +397,8 @@ def _render_event(request: CalendarCreateRequest, *, event_uid: str) -> bytes:
             timing=request.timing,
             description=request.description,
             location=request.location,
+            recurrence=request.recurrence,
+            attendees=request.attendees,
         )
     )
 
@@ -427,6 +429,26 @@ def _render_event_values(event: CalendarEvent) -> bytes:
         component.add("location", event.location)
     if event.cancelled:
         component.add("status", "CANCELLED")
+    if event.recurrence is not None:
+        component.add(
+            "rrule",
+            vars(module)["vRecur"].from_ical(event.recurrence.to_rrule()),
+        )
+    for attendee in event.attendees:
+        component.add(
+            "attendee",
+            f"mailto:{attendee.address}",
+            parameters={
+                **(
+                    {"CN": attendee.display_name}
+                    if attendee.display_name is not None
+                    else {}
+                ),
+                "ROLE": attendee.role,
+                "PARTSTAT": attendee.response,
+                "RSVP": "TRUE" if attendee.rsvp else "FALSE",
+            },
+        )
     calendar.add_component(component)
     document = calendar.to_ical()
     if not isinstance(document, bytes):

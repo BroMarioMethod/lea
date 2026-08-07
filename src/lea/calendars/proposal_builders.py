@@ -114,6 +114,8 @@ def build_calendar_create_event_proposal(
         parameters["description"] = request.description
     if request.location is not None:
         parameters["location"] = request.location
+    if request.recurrence is not None:
+        parameters["recurrence"] = request.recurrence.to_rrule()
     if request.attendees:
         parameters["attendees"] = _attendee_parameters(request.attendees)
 

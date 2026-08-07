@@ -10,10 +10,12 @@ from lea.adapters.khal import (
     modify_khal_calendar_event,
 )
 from lea.calendars import (
+    CalendarAttendee,
     CalendarCancelRequest,
     CalendarCreateRequest,
     CalendarEventTiming,
     CalendarModifyRequest,
+    CalendarRecurrence,
 )
 
 
@@ -81,6 +83,42 @@ def test_create_timed_event_preserves_canonical_utc_and_timezone(
     assert result.event is not None
     assert result.event.timing == timing
     assert result.event.location == "Office"
+
+
+def test_create_preserves_recurrence_and_attendee_properties(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    (config.vdirs_directory / "work").mkdir()
+    request = CalendarCreateRequest(
+        "work",
+        "Recurring collaboration",
+        CalendarEventTiming(
+            datetime(2026, 8, 2, 8, tzinfo=UTC),
+            datetime(2026, 8, 2, 9, tzinfo=UTC),
+            "Africa/Gaborone",
+        ),
+        recurrence=CalendarRecurrence("WEEKLY", count=3),
+        attendees=(
+            CalendarAttendee(
+                "Alice@example.com",
+                display_name="Alice",
+                response="ACCEPTED",
+                rsvp=True,
+            ),
+        ),
+    )
+
+    result = create_khal_calendar_event(
+        config,
+        request,
+        uid_factory=lambda: "recurring@lea.local",
+    )
+
+    assert result.success is True
+    assert result.event is not None
+    assert result.event.recurrence == request.recurrence
+    assert result.event.attendees == request.attendees
 
 
 def test_create_rejects_unknown_calendar_without_writing(tmp_path: Path) -> None:

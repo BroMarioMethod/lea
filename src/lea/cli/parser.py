@@ -102,6 +102,10 @@ def _add_calendar_subcommands(parser: argparse.ArgumentParser) -> None:
     create_parser.add_argument("--description", help="Event description.")
     create_parser.add_argument("--location", help="Event location.")
     create_parser.add_argument(
+        "--rrule",
+        help="Supported RFC 5545 recurrence rule, for example FREQ=WEEKLY;COUNT=4.",
+    )
+    create_parser.add_argument(
         "--attendee",
         action="append",
         default=[],
