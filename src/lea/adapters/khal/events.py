@@ -105,6 +105,31 @@ def list_khal_calendar_events(
             identity = (event.calendar_id, event.event_uid)
 
             if identity in seen_identities:
+                if event.recurrence_id is not None:
+                    events[:] = [
+                        existing
+                        for existing in events
+                        if not (
+                            (existing.calendar_id, existing.event_uid) == identity
+                            and existing.timing.start == event.recurrence_id
+                        )
+                    ]
+                    if event.cancelled and not query.include_cancelled:
+                        continue
+                    if _occurrence_overlaps_query(
+                        event.timing.start,
+                        event.timing.end,
+                        event=event,
+                        query_start_utc=datetime.combine(
+                            query.start_date, time.min, tzinfo=display_zone
+                        ).astimezone(UTC),
+                        query_end_utc=datetime.combine(
+                            query.end_date, time.min, tzinfo=display_zone
+                        ).astimezone(UTC),
+                        query=query,
+                    ):
+                        events.append(event)
+                    continue
                 return _failure(
                     _issue(
                         code="khal_calendar_event_identity_duplicate",
